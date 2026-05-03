@@ -1,714 +1,218 @@
-# Phase 1: Database Schema với SQL Migrations
+# Phase 1: Database Schema (Entry-Driven, 17 Tables)
 
-**Status:** ⏳ In Progress
-**File:** `phase-01-database-schema.md`
-
----
-
-## 1. Database Design Overview
-
-### 1.1 Technology Stack
-
-| Component | Choice | Reason |
-|-----------|--------|--------|
-| Database | PostgreSQL 15+ | ACID compliance, JSONB for flexible metadata |
-| Migration Tool | Alembic | Industry standard, version control for DB |
-| Connection Pool | SQLAlchemy 2.0 + asyncpg | Async native, connection pooling |
-
-### 1.2 Schema Design Principles
-
-1. **Normalization**: BCNF for core entities
-2. **JSONB**: Flexible fields for extensible metadata (rules, config, scores breakdown)
-3. **Soft Deletes**: `deleted_at` for audit trail
-4. **UUID Primary Keys**: `gen_random_uuid()` for security & distributed systems
-5. **Audit Fields**: `created_at`, `updated_at` on all tables
+**Status:** 🔄 Revised to align with `ai-contest-database-design-specification.md`
+**Ref:** `plans/reports/planner-260424-1148-spec-reconciliation.md`
 
 ---
 
-## 2. Entity-Relationship Diagram
+## 1. Design Principles (per spec)
+
+1. **Contest-entry-driven** — `contest_entries` is the unit of participation (individual or team, official/virtual/practice)
+2. **Logical vs real phases** — `contest_phase_defs` (per-contest logical) vs `phases` (per-task real)
+3. **Score-on-submission** — V1 stores `raw_score`/`display_score`/`score_payload` directly on submissions (no separate multi-metric table)
+4. **Dual leaderboards** — `task_phase_leaderboard_entries` and `contest_phase_leaderboard_entries`
+5. **Composite FKs** — enforce cross-contest integrity with `UNIQUE(id, contest_id)` on parents
+6. **JSONB for flex fields** — rules, schemas, validation, score_payload, breakdowns
+
+---
+
+## 2. Tech Stack
+
+| Component | Choice | Notes |
+|-----------|--------|-------|
+| DB | PostgreSQL 15+ | JSONB, CHECK, partial unique indexes |
+| ORM | SQLAlchemy 2.0 / SQLModel | Async via asyncpg |
+| Migration | Alembic | 5 migrations, 17 tables |
+
+---
+
+## 3. Entity-Relationship
 
 ```
-┌──────────┐       ┌──────────┐       ┌──────────┐
-│  USERS   │──────<│  TEAMS   │>──────│TEAM_MBR │
-└──────────┘ 1:N   └────┬─────┘ 1:N   └──────────┘
-                        │
-                        │ N:N (via registrations)
-                        │
-┌──────────┐       ┌─────┴─────┐       ┌──────────┐
-│CONTESTS  │──1:N──│   TASKS   │──1:N──│  PHASES  │
-└──────────┘       └────┬─────┘       └────┬─────┘
-                        │                    │
-                        │ 1:N                 │ 1:N
-                        ▼                    ▼
-┌──────────────┐  ┌────────────┐  ┌──────────────────┐
-│ SUBMISSIONS  │──│SUBM_FILES  │  │ EVALUATION_JOBS  │
-└──────┬───────┘  └────────────┘  └────────┬─────────┘
-       │                                     │
-       │ 1:1                          ┌──────▼──────┐
-       ▼                                │   SCORES   │
-┌──────────────────┐                   └────────────┘
-│LEADERBOARD_ENTRY │
-└──────────────────┘
+users ──< team_members >── teams
+  │                          │
+  │                          │
+  └─┬─── contest_entries ────┘
+    │      │  ▲
+    │      │  │
+    │      ▼  │ (FK exactly-one)
+    │    contest_entry_members
+    │
+  contests ──1:N─ tasks ──1:N─ phases
+    │                           │
+    └─1:N─ contest_phase_defs ──┘ (FK logical↔real)
+                │
+    contest_entries ──1:N─ submissions ─1:N─ submission_files
+                              │
+                              └─1:N─ evaluation_jobs
 
-┌──────────────┐  ┌────────────────┐  ┌──────────┐
-│ANNOUNCEMENTS │  │CLARIFICATIONS │  │ TICKETS  │
-└──────────────┘  └────────────────┘  └──────────┘
-                        │
-┌───────────────────────┴───────────────────────┐
-│                 AUDIT_LOGS                     │
-└───────────────────────────────────────────────┘
+  Leaderboards (two kinds):
+    task_phase_leaderboard_entries   (phase_id, contest_entry_id UNIQUE)
+    contest_phase_leaderboard_entries (contest_phase_def_id, contest_entry_id UNIQUE)
+
+  Comms: announcements, clarifications, tickets
 ```
 
 ---
 
-## 3. SQL Migration Files (Alembic)
+## 4. Migration Plan (5 files)
 
-### 3.1 Directory Structure
+### 4.1 `001_init_users_teams.py`
 
-```
-backend/
-├── alembic/
-│   ├── versions/
-│   │   ├── 001_initial_schema.py
-│   │   ├── 002_add_submission_files.py
-│   │   ├── 003_add_evaluation_jobs.py
-│   │   └── ...
-│   ├── env.py
-│   └── script.py.mako
-```
+**Tables:** `users`, `teams`, `team_members`
 
-### 3.2 Migration 001: Initial Schema
+Key columns:
+- `users(id PK UUID, email UNIQUE, password_hash, full_name, role, student_id NULL, avatar_url NULL, last_visit NULL, created_at, updated_at)`
+- `teams(id PK UUID, slug UNIQUE, name, owner_id FK users, created_at, updated_at)` — **global, no contest_id**
+- `team_members(team_id, user_id, role, joined_at)` — PK `(team_id, user_id)`
 
-```python
-# alembic/versions/001_initial_schema.py
-"""Initial schema - users, teams, contests, tasks, phases
+Indexes: `users(email)`, `teams(slug)`, `team_members(user_id)`.
 
-Revision ID: 001
-Revises:
-Create Date: 2026-04-15
-"""
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+### 4.2 `002_contests_tasks_phases.py`
 
-revision = '001'
-down_revision = None
-branch_labels = None
-depends_on = None
+**Tables:** `contests`, `contest_phase_defs`, `tasks`, `phases`
 
-def upgrade():
-    # === USERS ===
-    op.create_table(
-        'users',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('email', sa.String(255), unique=True, nullable=False),
-        sa.Column('password_hash', sa.String(255), nullable=False),
-        sa.Column('full_name', sa.String(255), nullable=False),
-        sa.Column('role', sa.String(50), nullable=False, server_default='contestant'),
-        sa.Column('student_id', sa.String(50)),
-        sa.Column('avatar_url', sa.String(500)),
-        sa.Column('is_active', sa.Boolean(), default=True),
-        sa.Column('deleted_at', sa.DateTime()),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_users_email', 'users', ['email'])
-    op.create_index('idx_users_role', 'users', ['role'])
+- `contests(id PK, slug UNIQUE, title, description, banner_url, status, entry_policy ENUM[individual|team|both], registration_start/end, start_time, end_time, visibility, rules_json JSONB, created_by FK users, max_team_size, require_approval, created_at, updated_at)` + `UNIQUE(id, contest_id)` stub ⇒ actually `UNIQUE(id)` is PK; expose `UNIQUE(id)` as candidate for composite FK targets. Spec requires `UNIQUE(id, contest_id)` on children where contest_id exists — for contests themselves, PK is enough.
+- `contest_phase_defs(id PK, contest_id FK contests, key ENUM[public_test|private_test|final_public|final_private], title, sort_order)` + `UNIQUE(contest_id, key)`.
+- `tasks(id PK, contest_id FK, slug, title, description, problem_statement_url, submission_schema JSONB, score_label, higher_is_better BOOL, sort_order, created_at, updated_at)` + `UNIQUE(contest_id, slug)` + `UNIQUE(id, contest_id)`.
+- `phases(id PK, task_id FK tasks, contest_phase_def_id FK contest_phase_defs, slug, title, description NULL, open_time, close_time, judge_key, submission_limit NULL, leaderboard_mode ENUM[best|latest], allow_official_submit BOOL, allow_virtual_submit BOOL, allow_practice_submit BOOL, display_scores BOOL, is_frozen BOOL, is_final BOOL, sort_order, created_at, updated_at)` + `UNIQUE(task_id, slug)` + `UNIQUE(task_id, contest_phase_def_id)` + `UNIQUE(id, task_id)`.
 
-    # === CONTESTS ===
-    op.create_table(
-        'contests',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('slug', sa.String(255), unique=True, nullable=False),
-        sa.Column('title', sa.String(500), nullable=False),
-        sa.Column('description', sa.Text()),
-        sa.Column('banner_url', sa.String(500)),
-        sa.Column('start_time', sa.DateTime(), nullable=False),
-        sa.Column('end_time', sa.DateTime(), nullable=False),
-        sa.Column('registration_start', sa.DateTime()),
-        sa.Column('registration_end', sa.DateTime()),
-        sa.Column('status', sa.String(50), nullable=False, server_default='draft'),
-        sa.Column('rules', JSONB),
-        sa.Column('max_team_size', sa.Integer(), default=1),
-        sa.Column('require_approval', sa.Boolean(), default=False),
-        sa.Column('visibility', sa.String(20), server_default='public'),
-        sa.Column('created_by', UUID(as_uuid=True), sa.ForeignKey('users.id')),
-        sa.Column('deleted_at', sa.DateTime()),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_contests_slug', 'contests', ['slug'])
-    op.create_index('idx_contests_status', 'contests', ['status'])
-    op.create_index('idx_contests_time', 'contests', ['start_time', 'end_time'])
+CHECKs: `contests.registration_start ≤ registration_end`, `contests.start_time < end_time`, `contests.max_team_size > 0`, `phases.open_time < close_time`, `phases.submission_limit IS NULL OR >= 0`.
 
-    # === TASKS ===
-    op.create_table(
-        'tasks',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('contest_id', UUID(as_uuid=True), sa.ForeignKey('contests.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('slug', sa.String(255), nullable=False),
-        sa.Column('title', sa.String(500), nullable=False),
-        sa.Column('description', sa.Text()),
-        sa.Column('problem_statement_url', sa.String(500)),
-        sa.Column('submission_schema', JSONB),
-        sa.Column('evaluator_type', sa.String(100), server_default='output'),
-        sa.Column('metric_names', JSONB, server_default='["accuracy"]'),
-        sa.Column('aggregation_rule', sa.String(100), server_default='mean'),
-        sa.Column('dataset_ref', sa.String(255)),
-        sa.Column('max_submissions', sa.Integer(), default=100),
-        sa.Column('max_upload_size_mb', sa.Integer(), default=100),
-        sa.Column('allowed_file_types', JSONB),
-        sa.Column('sort_order', sa.Integer(), default=0),
-        sa.Column('deleted_at', sa.DateTime()),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-        sa.UniqueConstraint('contest_id', 'slug'),
-    )
-    op.create_index('idx_tasks_contest', 'tasks', ['contest_id'])
+Indexes: `contests(slug, status, start_time, end_time)`, `contest_phase_defs(contest_id, key, sort_order)`, `tasks(contest_id, sort_order)`, `phases(task_id, open_time, close_time)`.
 
-    # === PHASES ===
-    op.create_table(
-        'phases',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('task_id', UUID(as_uuid=True), sa.ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('slug', sa.String(255), nullable=False),
-        sa.Column('title', sa.String(255), nullable=False),
-        sa.Column('phase_type', sa.String(100)),
-        sa.Column('description', sa.Text()),
-        sa.Column('open_time', sa.DateTime(), nullable=False),
-        sa.Column('close_time', sa.DateTime(), nullable=False),
-        sa.Column('judging_mode', sa.String(50), server_default='output'),
-        sa.Column('submission_limit', sa.Integer()),
-        sa.Column('leaderboard_mode', sa.String(50), server_default='best'),
-        sa.Column('is_frozen', sa.Boolean(), default=False),
-        sa.Column('display_scores', sa.Boolean(), default=True),
-        sa.Column('weight', sa.Numeric(5, 2), default=1.0),
-        sa.Column('sort_order', sa.Integer(), default=0),
-        sa.Column('deleted_at', sa.DateTime()),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-        sa.UniqueConstraint('task_id', 'slug'),
-    )
-    op.create_index('idx_phases_task', 'phases', ['task_id'])
-    op.create_index('idx_phases_time', 'phases', ['open_time', 'close_time'])
+### 4.3 `003_contest_entries.py`
 
-    # === TEAMS ===
-    op.create_table(
-        'teams',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('slug', sa.String(255), unique=True),
-        sa.Column('contest_id', UUID(as_uuid=True), sa.ForeignKey('contests.id')),
-        sa.Column('leader_id', UUID(as_uuid=True), sa.ForeignKey('users.id')),
-        sa.Column('status', sa.String(50), server_default='active'),
-        sa.Column('approved_by', UUID(as_uuid=True)),
-        sa.Column('approved_at', sa.DateTime()),
-        sa.Column('invite_code', sa.String(64)),
-        sa.Column('deleted_at', sa.DateTime()),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_teams_contest', 'teams', ['contest_id'])
-    op.create_index('idx_teams_invite_code', 'teams', ['invite_code'])
+**Tables:** `contest_entries`, `contest_entry_members`
 
-    # === TEAM MEMBERS ===
-    op.create_table(
-        'team_members',
-        sa.Column('team_id', UUID(as_uuid=True), sa.ForeignKey('teams.id', ondelete='CASCADE'), primary_key=True),
-        sa.Column('user_id', UUID(as_uuid=True), sa.ForeignKey('users.id'), primary_key=True),
-        sa.Column('role', sa.String(50), server_default='member'),
-        sa.Column('joined_at', sa.DateTime(), server_default=sa.func.now()),
-    )
-    op.create_index('idx_team_members_user', 'team_members', ['user_id'])
+- `contest_entries(id PK, contest_id FK, entry_type ENUM[individual|team], entry_mode ENUM[official|virtual|practice], user_id FK users NULL, team_id FK teams NULL, display_name, status ENUM[pending|approved|active|disqualified|finished], registered_by FK users, approved_by FK users NULL, approved_at NULL, start_at NULL, end_at NULL, created_at, updated_at)` + `UNIQUE(id, contest_id)`.
+- `contest_entry_members(contest_entry_id FK contest_entries, user_id FK users, role ENUM[leader|member], joined_at)` — PK `(contest_entry_id, user_id)`.
 
-    # === CONTEST REGISTRATIONS ===
-    op.create_table(
-        'contest_registrations',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('contest_id', UUID(as_uuid=True), sa.ForeignKey('contests.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('team_id', UUID(as_uuid=True), sa.ForeignKey('teams.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('status', sa.String(50), server_default='pending'),
-        sa.Column('registered_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('approved_by', UUID(as_uuid=True)),
-        sa.Column('approved_at', sa.DateTime()),
-        sa.UniqueConstraint('contest_id', 'team_id'),
-    )
-    op.create_index('idx_reg_contest', 'contest_registrations', ['contest_id'])
-    op.create_index('idx_reg_team', 'contest_registrations', ['team_id'])
+CHECKs:
+- Exactly-one: `(user_id IS NOT NULL AND team_id IS NULL) OR (user_id IS NULL AND team_id IS NOT NULL)`
+- Type consistency: `(entry_type='individual' AND user_id IS NOT NULL) OR (entry_type='team' AND team_id IS NOT NULL)`
+- Virtual window: `entry_mode <> 'virtual' OR (start_at IS NOT NULL AND end_at IS NOT NULL AND start_at < end_at)`
 
-def downgrade():
-    op.drop_table('contest_registrations')
-    op.drop_table('team_members')
-    op.drop_table('teams')
-    op.drop_table('phases')
-    op.drop_table('tasks')
-    op.drop_table('contests')
-    op.drop_table('users')
-```
+Partial unique indexes:
+- `UNIQUE(contest_id, entry_mode, user_id) WHERE user_id IS NOT NULL`
+- `UNIQUE(contest_id, entry_mode, team_id) WHERE team_id IS NOT NULL`
+
+Indexes: `contest_entries(contest_id, entry_mode, status)`, `contest_entry_members(contest_entry_id, user_id)`.
+
+**App-layer rules (documented):**
+- Individual entry ⇒ exactly one lineup row matching `user_id`
+- Team entry lineup ⊆ global `team_members`
+- One user cannot join two official entries in same contest
+
+### 4.4 `004_submissions_jobs.py`
+
+**Tables:** `submissions`, `submission_files`, `evaluation_jobs`
+
+- `submissions(id PK, contest_id FK, contest_entry_id FK, task_id FK, phase_id FK, submitted_by FK users, status ENUM[uploaded|validating|queued|running|done|failed], submitted_at, file_count, total_size_bytes, manifest_hash NULL, validation_result JSONB NULL, error_message NULL, raw_score NUMERIC NULL, display_score NUMERIC NULL, score_payload JSONB NULL, evaluated_at NULL, is_final BOOL, rejudge_count, client_ip NULL, user_agent NULL, created_at, updated_at)`
+- Composite FKs:
+  - `FK(contest_entry_id, contest_id) → contest_entries(id, contest_id)`
+  - `FK(task_id, contest_id) → tasks(id, contest_id)`
+  - `FK(phase_id, task_id) → phases(id, task_id)`
+  - `FK(contest_entry_id, submitted_by) → contest_entry_members(contest_entry_id, user_id)`
+- CHECKs: `file_count>=0`, `total_size_bytes>=0`, `rejudge_count>=0`.
+
+- `submission_files(id PK, submission_id FK, original_filename, storage_path, file_size, content_type NULL, hash_sha256 NULL, created_at)`
+
+- `evaluation_jobs(id PK, submission_id FK, job_type ENUM[validate|judge|rejudge], status ENUM[pending|running|done|failed], priority, worker_id NULL, attempt_count, max_attempts, input_data JSONB NULL, output_data JSONB NULL, started_at NULL, completed_at NULL, execution_time_ms NULL, error_log NULL, celery_task_id NULL, created_at)` — **no `phase_id`** (derived via submission)
+- CHECKs: `attempt_count>=0`, `max_attempts>=0`, `priority>=0`.
+
+Indexes: `submissions(contest_id, contest_entry_id, task_id, phase_id, submitted_at)`, `submissions(status)`, `evaluation_jobs(status, created_at)`.
+
+### 4.5 `005_leaderboards_comms.py`
+
+**Tables:** `task_phase_leaderboard_entries`, `contest_phase_leaderboard_entries`, `announcements`, `clarifications`, `tickets`
+
+- `task_phase_leaderboard_entries(id PK, contest_id FK, task_id FK, phase_id FK, contest_entry_id FK, rank, score NUMERIC, score_breakdown JSONB NULL, chosen_submission_id FK submissions NULL, entries_count, is_frozen, is_disqualified, dq_reason NULL, updated_at)` + `UNIQUE(phase_id, contest_entry_id)`. Composite FKs guaranteeing phase∈task, entry∈contest.
+- `contest_phase_leaderboard_entries(id PK, contest_id FK, contest_phase_def_id FK, contest_entry_id FK, rank, score NUMERIC, score_breakdown JSONB NULL, entries_count, is_frozen, is_disqualified, dq_reason NULL, updated_at)` + `UNIQUE(contest_phase_def_id, contest_entry_id)`.
+- `announcements(id PK, contest_id FK, task_id FK NULL, title, content, is_pinned, is_public, created_by FK users, created_at, updated_at)`
+- `clarifications(id PK, contest_id FK, task_id FK NULL, phase_id FK NULL, contest_entry_id FK, question, answer NULL, is_public, status ENUM[pending|answered|closed], asked_by FK users, answered_by FK users NULL, answered_at NULL, created_at, updated_at)`
+- `tickets(id PK, submission_id FK NULL, contest_entry_id FK, category ENUM[upload|judge|score|system], subject, description, status ENUM[open|in_progress|resolved|rejected], priority ENUM[low|normal|high|urgent], assigned_to FK users NULL, created_by FK users, created_at, resolved_at NULL, updated_at)`
+
+Indexes: `task_phase_leaderboard_entries(phase_id, rank)`, `contest_phase_leaderboard_entries(contest_phase_def_id, rank)`, `clarifications(contest_id, status)`, `tickets(contest_entry_id, status)`.
 
 ---
 
-## 4. SQL Migration 002: Submissions & Files
+## 5. ORM Models (SQLModel sketch)
 
-```python
-# alembic/versions/002_add_submissions.py
-"""Add submissions, submission_files tables
+File layout: `backend/app/models/{users,teams,contests,phases,entries,submissions,jobs,leaderboards,comms}.py` (split per domain to stay <200 LOC per file).
 
-Revision ID: 002
-Revises: 001
-"""
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-
-def upgrade():
-    # === SUBMISSIONS ===
-    op.create_table(
-        'submissions',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('team_id', UUID(as_uuid=True), sa.ForeignKey('teams.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('task_id', UUID(as_uuid=True), sa.ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('phase_id', UUID(as_uuid=True), sa.ForeignKey('phases.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('status', sa.String(50), nullable=False, server_default='draft'),
-        sa.Column('submitted_at', sa.DateTime()),
-        sa.Column('file_count', sa.Integer(), default=0),
-        sa.Column('total_size_bytes', sa.BigInteger(), default=0),
-        sa.Column('manifest_hash', sa.String(64)),
-        sa.Column('validation_result', JSONB),
-        sa.Column('execution_time_ms', sa.Integer()),
-        sa.Column('error_message', sa.Text()),
-        sa.Column('is_final', sa.Boolean(), default=False),
-        sa.Column('rejudge_count', sa.Integer(), default=0),
-        sa.Column('client_ip', sa.String(45)),
-        sa.Column('user_agent', sa.String(500)),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_submissions_team_task', 'submissions', ['team_id', 'task_id', 'phase_id'])
-    op.create_index('idx_submissions_status', 'submissions', ['status'])
-    op.create_index('idx_submissions_submitted_at', 'submissions', ['submitted_at'])
-
-    # === SUBMISSION FILES ===
-    op.create_table(
-        'submission_files',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('submission_id', UUID(as_uuid=True), sa.ForeignKey('submissions.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('filename', sa.String(255), nullable=False),
-        sa.Column('original_filename', sa.String(255)),
-        sa.Column('file_path', sa.String(1000), nullable=False),
-        sa.Column('file_size', sa.BigInteger()),
-        sa.Column('content_type', sa.String(100)),
-        sa.Column('hash_sha256', sa.String(64)),
-        sa.Column('sort_order', sa.Integer(), default=0),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-    )
-    op.create_index('idx_submission_files_submission', 'submission_files', ['submission_id'])
-
-def downgrade():
-    op.drop_table('submission_files')
-    op.drop_table('submissions')
-```
+Follow migration column definitions above 1:1. Relationships:
+- `User.team_memberships`, `User.contest_entries_registered`
+- `Team.members`, `Team.entries`
+- `Contest.phase_defs`, `Contest.tasks`, `Contest.entries`
+- `Task.phases`, `Task.submissions`
+- `Phase.def` (→ contest_phase_def), `Phase.submissions`
+- `ContestEntry.members`, `ContestEntry.submissions`, `ContestEntry.task_board_rows`, `ContestEntry.contest_board_rows`
+- `Submission.files`, `Submission.jobs`
 
 ---
 
-## 5. SQL Migration 003: Evaluation Jobs & Scores
+## 6. Integrity — DB vs App Layer
 
-```python
-# alembic/versions/003_add_evaluation.py
-"""Add evaluation_jobs, scores, leaderboard_entries
+**DB-enforced (hard):**
+- Entry participant exclusivity (CHECK)
+- Cross-contest consistency via composite FKs
+- Phase↔task consistency
+- Non-negative counters, time-range checks
+- Leaderboard row uniqueness
 
-Revision ID: 003
-Revises: 002
-"""
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-
-def upgrade():
-    # === EVALUATION JOBS ===
-    op.create_table(
-        'evaluation_jobs',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('submission_id', UUID(as_uuid=True), sa.ForeignKey('submissions.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('phase_id', UUID(as_uuid=True), sa.ForeignKey('phases.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('job_type', sa.String(50), nullable=False),
-        sa.Column('status', sa.String(50), nullable=False, server_default='pending'),
-        sa.Column('priority', sa.Integer(), server_default=5),
-        sa.Column('worker_id', sa.String(100)),
-        sa.Column('attempt_count', sa.Integer(), default=0),
-        sa.Column('max_attempts', sa.Integer(), default=3),
-        sa.Column('input_data', JSONB),
-        sa.Column('output_data', JSONB),
-        sa.Column('started_at', sa.DateTime()),
-        sa.Column('completed_at', sa.DateTime()),
-        sa.Column('execution_time_ms', sa.Integer()),
-        sa.Column('error_log', sa.Text()),
-        sa.Column('celery_task_id', sa.String(255)),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-    )
-    op.create_index('idx_eval_jobs_status', 'evaluation_jobs', ['status', 'created_at'])
-    op.create_index('idx_eval_jobs_submission', 'evaluation_jobs', ['submission_id'])
-    op.create_index('idx_eval_jobs_celery', 'evaluation_jobs', ['celery_task_id'])
-
-    # === SCORES ===
-    op.create_table(
-        'scores',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('submission_id', UUID(as_uuid=True), sa.ForeignKey('submissions.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('metric_name', sa.String(100), nullable=False),
-        sa.Column('raw_score', sa.Numeric(20, 10)),
-        sa.Column('display_score', sa.Numeric(20, 5)),
-        sa.Column('breakdown', JSONB),
-        sa.Column('rank', sa.Integer()),
-        sa.Column('computed_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.UniqueConstraint('submission_id', 'metric_name'),
-    )
-    op.create_index('idx_scores_submission', 'scores', ['submission_id'])
-    op.create_index('idx_scores_metric', 'scores', ['metric_name'])
-
-    # === LEADERBOARD ENTRIES ===
-    op.create_table(
-        'leaderboard_entries',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('contest_id', UUID(as_uuid=True), sa.ForeignKey('contests.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('task_id', UUID(as_uuid=True), sa.ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('phase_id', UUID(as_uuid=True), sa.ForeignKey('phases.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('team_id', UUID(as_uuid=True), sa.ForeignKey('teams.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('rank', sa.Integer()),
-        sa.Column('raw_total', sa.Numeric(20, 5)),
-        sa.Column('display_total', sa.Numeric(20, 5)),
-        sa.Column('normalized_total', sa.Numeric(20, 5)),
-        sa.Column('chosen_submission_id', UUID(as_uuid=True)),
-        sa.Column('best_submission_id', UUID(as_uuid=True)),
-        sa.Column('is_frozen', sa.Boolean(), default=False),
-        sa.Column('is_disqualified', sa.Boolean(), default=False),
-        sa.Column('dq_reason', sa.Text()),
-        sa.Column('snapshot_time', sa.DateTime()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-        sa.UniqueConstraint('contest_id', 'task_id', 'phase_id', 'team_id'),
-    )
-    op.create_index('idx_lb_contest_task', 'leaderboard_entries', ['contest_id', 'task_id', 'phase_id'])
-    op.create_index('idx_lb_rank', 'leaderboard_entries', ['contest_id', 'task_id', 'phase_id', 'rank'])
-    op.create_index('idx_lb_team', 'leaderboard_entries', ['team_id'])
-
-def downgrade():
-    op.drop_table('leaderboard_entries')
-    op.drop_table('scores')
-    op.drop_table('evaluation_jobs')
-```
+**App-layer (documented, V1):**
+- Each contest has 4 logical phase defs
+- Each task has 1 phase per def
+- Team lineup ⊆ global team
+- Chosen submission belongs to same entry/task/phase (verified before upsert)
+- Unique user across official entries in same contest
 
 ---
 
-## 6. SQL Migration 004: Communications & Audit
+## 7. Database Config
 
-```python
-# alembic/versions/004_add_comms_audit.py
-"""Add announcements, clarifications, tickets, audit_logs
-
-Revision ID: 004
-Revises: 003
-"""
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-
-def upgrade():
-    # === ANNOUNCEMENTS ===
-    op.create_table(
-        'announcements',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('contest_id', UUID(as_uuid=True), sa.ForeignKey('contests.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('task_id', UUID(as_uuid=True), sa.ForeignKey('tasks.id', ondelete='SET NULL')),
-        sa.Column('title', sa.String(500), nullable=False),
-        sa.Column('content', sa.Text(), nullable=False),
-        sa.Column('is_pinned', sa.Boolean(), default=False),
-        sa.Column('is_public', sa.Boolean(), default=True),
-        sa.Column('created_by', UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_announcements_contest', 'announcements', ['contest_id'])
-
-    # === CLARIFICATIONS ===
-    op.create_table(
-        'clarifications',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('contest_id', UUID(as_uuid=True), sa.ForeignKey('contests.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('task_id', UUID(as_uuid=True), sa.ForeignKey('tasks.id', ondelete='SET NULL')),
-        sa.Column('phase_id', UUID(as_uuid=True), sa.ForeignKey('phases.id', ondelete='SET NULL')),
-        sa.Column('team_id', UUID(as_uuid=True), sa.ForeignKey('teams.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('question', sa.Text(), nullable=False),
-        sa.Column('answer', sa.Text()),
-        sa.Column('is_public', sa.Boolean(), default=False),
-        sa.Column('status', sa.String(50), server_default='pending'),
-        sa.Column('asked_by', UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('answered_by', UUID(as_uuid=True), sa.ForeignKey('users.id')),
-        sa.Column('answered_at', sa.DateTime()),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_clarifications_contest', 'clarifications', ['contest_id'])
-    op.create_index('idx_clarifications_team', 'clarifications', ['team_id'])
-    op.create_index('idx_clarifications_status', 'clarifications', ['status'])
-
-    # === TICKETS ===
-    op.create_table(
-        'tickets',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('submission_id', UUID(as_uuid=True), sa.ForeignKey('submissions.id', ondelete='SET NULL')),
-        sa.Column('team_id', UUID(as_uuid=True), sa.ForeignKey('teams.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('category', sa.String(100)),
-        sa.Column('subject', sa.String(500), nullable=False),
-        sa.Column('description', sa.Text(), nullable=False),
-        sa.Column('status', sa.String(50), server_default='open'),
-        sa.Column('priority', sa.String(20), server_default='normal'),
-        sa.Column('assigned_to', UUID(as_uuid=True), sa.ForeignKey('users.id')),
-        sa.Column('created_by', UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-        sa.Column('resolved_at', sa.DateTime()),
-        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
-    op.create_index('idx_tickets_team', 'tickets', ['team_id'])
-    op.create_index('idx_tickets_status', 'tickets', ['status'])
-    op.create_index('idx_tickets_submission', 'tickets', ['submission_id'])
-
-    # === AUDIT LOGS ===
-    op.create_table(
-        'audit_logs',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=sa.func.gen_random_uuid()),
-        sa.Column('user_id', UUID(as_uuid=True), sa.ForeignKey('users.id')),
-        sa.Column('action', sa.String(100), nullable=False),
-        sa.Column('resource_type', sa.String(100)),
-        sa.Column('resource_id', UUID(as_uuid=True)),
-        sa.Column('old_value', JSONB),
-        sa.Column('new_value', JSONB),
-        sa.Column('ip_address', sa.String(45)),
-        sa.Column('user_agent', sa.String(500)),
-        sa.Column('metadata', JSONB),
-        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
-    )
-    op.create_index('idx_audit_user_time', 'audit_logs', ['user_id', 'created_at'])
-    op.create_index('idx_audit_resource', 'audit_logs', ['resource_type', 'resource_id'])
-    op.create_index('idx_audit_action', 'audit_logs', ['action', 'created_at'])
-
-def downgrade():
-    op.drop_table('audit_logs')
-    op.drop_table('tickets')
-    op.drop_table('clarifications')
-    op.drop_table('announcements')
-```
+Async SQLAlchemy engine (`asyncpg`), pool 20+10, `pool_pre_ping=True`. Alembic with `async` env. See `backend/app/core/database.py`.
 
 ---
 
-## 7. SQLAlchemy Models (SQLModel/ORM)
+## 8. Seed Data
 
-```python
-# backend/app/models/database.py
-from datetime import datetime
-from typing import Optional, List
-from uuid import UUID
-from sqlmodel import SQLModel, Field, Relationship, JSON
-from sqlalchemy import Column, DateTime, Boolean, BigInteger
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
-
-class User(SQLModel, table=True):
-    __tablename__ = "users"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True, sa_column=Column(PGUUID(as_uuid=True), default=...))
-    email: str = Field(unique=True, index=True)
-    password_hash: str
-    full_name: str
-    role: str = Field(default="contestant")
-    student_id: Optional[str] = None
-    avatar_url: Optional[str] = None
-    is_active: bool = Field(default=True)
-    deleted_at: Optional[datetime] = None
-
-    # Relationships
-    created_contests: List["Contest"] = Relationship(back_populates="creator")
-    teams_as_leader: List["Team"] = Relationship(back_populates="leader")
-    team_memberships: List["TeamMember"] = Relationship(back_populates="user")
-
-class Team(SQLModel, table=True):
-    __tablename__ = "teams"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    name: str
-    slug: Optional[str] = Field(unique=True)
-    contest_id: Optional[UUID] = Field(default=None, foreign_key="contests.id")
-    leader_id: Optional[UUID] = Field(default=None, foreign_key="users.id")
-    status: str = Field(default="active")
-    invite_code: Optional[str] = None
-
-    leader: Optional["User"] = Relationship(back_populates="teams_as_leader")
-    members: List["TeamMember"] = Relationship(back_populates="team")
-
-class Contest(SQLModel, table=True):
-    __tablename__ = "contests"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    slug: str = Field(unique=True, index=True)
-    title: str
-    description: Optional[str] = None
-    start_time: datetime
-    end_time: datetime
-    status: str = Field(default="draft")
-    rules: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    max_team_size: int = Field(default=1)
-    created_by: Optional[UUID] = Field(default=None, foreign_key="users.id")
-
-    tasks: List["Task"] = Relationship(back_populates="contest")
-    creator: Optional["User"] = Relationship(back_populates="created_contests")
-
-class Task(SQLModel, table=True):
-    __tablename__ = "tasks"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    contest_id: UUID = Field(foreign_key="contests.id")
-    slug: str
-    title: str
-    evaluator_type: str = Field(default="output")
-    metric_names: List[str] = Field(default=["accuracy"], sa_column=Column(JSONB))
-    submission_schema: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    max_submissions: int = Field(default=100)
-
-    contest: Optional["Contest"] = Relationship(back_populates="tasks")
-    phases: List["Phase"] = Relationship(back_populates="task")
-
-class Phase(SQLModel, table=True):
-    __tablename__ = "phases"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    task_id: UUID = Field(foreign_key="tasks.id")
-    slug: str
-    title: str
-    phase_type: Optional[str] = None
-    open_time: datetime
-    close_time: datetime
-    judging_mode: str = Field(default="output")
-    submission_limit: Optional[int] = None
-    leaderboard_mode: str = Field(default="best")
-    is_frozen: bool = Field(default=False)
-    display_scores: bool = Field(default=True)
-    weight: float = Field(default=1.0)
-
-    task: Optional["Task"] = Relationship(back_populates="phases")
-
-class Submission(SQLModel, table=True):
-    __tablename__ = "submissions"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    team_id: UUID = Field(foreign_key="teams.id")
-    task_id: UUID = Field(foreign_key="tasks.id")
-    phase_id: UUID = Field(foreign_key="phases.id")
-    status: str = Field(default="draft")
-    submitted_at: Optional[datetime] = None
-    file_count: int = Field(default=0)
-    total_size_bytes: int = Field(default=0)
-    manifest_hash: Optional[str] = None
-    validation_result: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    execution_time_ms: Optional[int] = None
-    error_message: Optional[str] = None
-    is_final: bool = Field(default=False)
-    rejudge_count: int = Field(default=0)
-
-    files: List["SubmissionFile"] = Relationship(back_populates="submission")
-    scores: List["Score"] = Relationship(back_populates="submission")
-
-class EvaluationJob(SQLModel, table=True):
-    __tablename__ = "evaluation_jobs"
-
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    submission_id: UUID = Field(foreign_key="submissions.id")
-    phase_id: UUID = Field(foreign_key="phases.id")
-    job_type: str  # validate, execute, score
-    status: str = Field(default="pending")
-    priority: int = Field(default=5)
-    worker_id: Optional[str] = None
-    attempt_count: int = Field(default=0)
-    input_data: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    output_data: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    error_log: Optional[str] = None
-    celery_task_id: Optional[str] = None
-
-# ... additional models for Score, LeaderboardEntry, Clarification, etc.
-```
+- Seed 3 roles: `contestant`, `jury`, `admin`
+- Demo contest seed: create 4 `contest_phase_defs` per contest (public_test, private_test, final_public, final_private)
+- No metric table in V1 (score_label per task is free text)
 
 ---
 
-## 8. Database Configuration
+## 9. Todo
 
-```python
-# backend/app/core/database.py
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
-
-DATABASE_URL = "postgresql+asyncpg://user:pass@localhost:5432/olpai"
-
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=settings.DEBUG,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
-)
-
-async_session = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
-
-async def get_session():
-    async with async_session() as session:
-        yield session
-```
+- [ ] Finalize ENUM types (PG native vs VARCHAR+CHECK)
+- [ ] Write migrations 001–005
+- [ ] Write ORM models (one file per domain)
+- [ ] Composite FK verification tests
+- [ ] Seed script + demo contest fixture
+- [ ] Alembic up/down tests
 
 ---
 
-## 9. Seed Data Patterns
+## 10. Success Criteria
 
-```python
-# backend/app/seed_data.py
-SEED_METRICS = [
-    {"name": "accuracy", "display_name": "Accuracy", "category": "classification"},
-    {"name": "f1_score", "display_name": "F1 Score", "category": "classification"},
-    {"name": "bleu", "display_name": "BLEU Score", "category": "nlp"},
-    {"name": "cosine_similarity", "display_name": "Cosine Similarity", "category": "similarity"},
-    {"name": "psnr", "display_name": "PSNR", "category": "image"},
-    {"name": "mae", "display_name": "MAE", "category": "regression"},
-]
-
-SEED_ROLES = ["contestant", "jury", "admin"]
-```
+1. All 17 tables created with spec-required constraints
+2. Composite FKs prevent cross-contest row mixing
+3. Partial unique indexes prevent duplicate entries per mode
+4. Alembic up/down idempotent
+5. ORM models align 1:1 with schema
 
 ---
 
-## 10. Todo List
+## 11. Deferrals (V2)
 
-- [x] ERD Design
-- [x] Migration 001: Core tables (users, contests, tasks, phases, teams)
-- [x] Migration 002: Submissions & Files
-- [x] Migration 003: Evaluation Jobs & Scores
-- [x] Migration 004: Communications & Audit
-- [x] SQLAlchemy Models
-- [ ] Indexing review & optimization
-- [ ] Connection pooling config
-- [ ] Migration testing script
+- `audit_logs`, `user_stats_cache`, `leaderboard_snapshots`
+- Separate multi-metric `scores` table
+- First-class `evaluators` table
 
 ---
 
-## 11. Success Criteria
+## 12. Next → Phase 2
 
-1. **All tables created with correct constraints**
-2. **Foreign keys properly enforced**
-3. **Indexes support query patterns**
-4. **Alembic can upgrade/downgrade cleanly**
-5. **Models sync with schema**
-
----
-
-## 12. Next Steps
-
-→ Phase 2: API Specification (Request/Response Models)
+API layer: contest-entry-centric endpoints, dual leaderboard endpoints.
