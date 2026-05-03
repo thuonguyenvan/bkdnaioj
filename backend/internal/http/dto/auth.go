@@ -1,0 +1,39 @@
+// Package dto holds request/response structs for API endpoints.
+package dto
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Auth endpoints DTOs.
+
+type RegisterRequest struct {
+	Email     string  `json:"email" validate:"required,email,max=255"`
+	Password  string  `json:"password" validate:"required,min=8,max=128"`
+	FullName  string  `json:"full_name" validate:"required,min=2,max=255"`
+	StudentID *string `json:"student_id,omitempty" validate:"omitempty,max=64"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
+}
+
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+type UserResponse struct {
+	ID        uuid.UUID  `json:"id"`
+	Email     string     `json:"email"`
+	FullName  string     `json:"full_name"`
+	Role      string     `json:"role"`
+	StudentID *string    `json:"student_id,omitempty"`
+	AvatarURL *string    `json:"avatar_url,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	LastVisit *time.Time `json:"last_visit,omitempty"`
+}
