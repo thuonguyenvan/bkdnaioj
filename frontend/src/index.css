@@ -1,0 +1,18 @@
+/* Google Fonts: Inter (UI) + JetBrains Mono (technical data) — per OLPAI design system */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-background text-on-surface antialiased;
+  }
+  body {
+    @apply font-sans m-0;
+  }
+  #root {
+    @apply min-h-screen;
+  }
+}
