@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Contest, type Task } from '../lib/api-client';
 import { useAuth } from '../contexts/auth-context';
@@ -238,6 +238,8 @@ export const HomePage: React.FC = () => {
     return `${day}/${month}/${year} ${hours}:${minutes}`;
   };
 
+  const [searchParams] = useSearchParams();
+
   const handleScrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
@@ -245,8 +247,18 @@ export const HomePage: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const scrollTarget = searchParams.get('scroll');
+    if (scrollTarget) {
+      const timer = setTimeout(() => {
+        handleScrollToSection(`${scrollTarget}-section`);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
   return (
-    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '4rem', maxWidth: '1280px' }}>
+    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '4rem' }}>
       
       {/* Hero Banner Section */}
       <div className="home-banner">
@@ -380,7 +392,13 @@ export const HomePage: React.FC = () => {
                   <Plus size={14} /> Tạo cuộc thi
                 </button>
               )}
-              <Link to="/" className="home-section-link">Xem tất cả</Link>
+              <button 
+                onClick={() => handleScrollToSection('contests-section')}
+                className="home-section-link"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                Xem tất cả
+              </button>
             </div>
           </div>
 
@@ -504,7 +522,13 @@ export const HomePage: React.FC = () => {
               <Code2 size={18} style={{ color: '#2563eb' }} />
               Bài tập mới
             </h3>
-            <Link to="/" className="home-section-link">Xem tất cả</Link>
+            <button 
+              onClick={() => handleScrollToSection('exercises-section')}
+              className="home-section-link"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              Xem tất cả
+            </button>
           </div>
 
           <div className="exercise-list">

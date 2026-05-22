@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { api, type Contest, type PhaseDef, type Task, type Phase, type ContestEntry, type Submission, type LeaderboardRow, type Clarification, type Announcement, type Ticket, type Team } from '../lib/api-client';
@@ -13,8 +13,27 @@ export const PhaseHubPage: React.FC = () => {
   const { user, isAdmin, isJury } = useAuth();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'problems' | 'submissions' | 'standings' | 'clarifications' | 'tickets'>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'problems' | 'submissions' | 'standings' | 'clarifications' | 'tickets'>(() => {
+    const validTabs = ['overview', 'problems', 'submissions', 'standings', 'clarifications', 'tickets'];
+    return (tabParam && validTabs.includes(tabParam)) ? (tabParam as any) : 'overview';
+  });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // Sync activeTab state with URL parameter if it changes
+  useEffect(() => {
+    const validTabs = ['overview', 'problems', 'submissions', 'standings', 'clarifications', 'tickets'];
+    if (tabParam && validTabs.includes(tabParam) && tabParam !== activeTab) {
+      setActiveTab(tabParam as any);
+    }
+  }, [tabParam]);
+
+  const handleTabChange = (tab: typeof activeTab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
 
   // Standings Mode
   const [standingsMode, setStandingsMode] = useState<'task' | 'overall'>('task');
@@ -374,22 +393,22 @@ export const PhaseHubPage: React.FC = () => {
 
       {/* Tab bar navigation */}
       <div className="tab-bar">
-        <div className={`tab-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>
+        <div className={`tab-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => handleTabChange('overview')}>
           Overview
         </div>
-        <div className={`tab-item ${activeTab === 'problems' ? 'active' : ''}`} onClick={() => setActiveTab('problems')}>
+        <div className={`tab-item ${activeTab === 'problems' ? 'active' : ''}`} onClick={() => handleTabChange('problems')}>
           Tasks & Submit
         </div>
-        <div className={`tab-item ${activeTab === 'submissions' ? 'active' : ''}`} onClick={() => setActiveTab('submissions')}>
+        <div className={`tab-item ${activeTab === 'submissions' ? 'active' : ''}`} onClick={() => handleTabChange('submissions')}>
           Submissions
         </div>
-        <div className={`tab-item ${activeTab === 'standings' ? 'active' : ''}`} onClick={() => setActiveTab('standings')}>
+        <div className={`tab-item ${activeTab === 'standings' ? 'active' : ''}`} onClick={() => handleTabChange('standings')}>
           Standings
         </div>
-        <div className={`tab-item ${activeTab === 'clarifications' ? 'active' : ''}`} onClick={() => setActiveTab('clarifications')}>
+        <div className={`tab-item ${activeTab === 'clarifications' ? 'active' : ''}`} onClick={() => handleTabChange('clarifications')}>
           Clarifications
         </div>
-        <div className={`tab-item ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>
+        <div className={`tab-item ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => handleTabChange('tickets')}>
           Support Tickets
         </div>
       </div>
