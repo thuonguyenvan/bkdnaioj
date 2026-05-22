@@ -26,7 +26,7 @@ export const RankingsPage: React.FC = () => {
     queryFn: async () => {
       if (contests.length === 0) return [];
       
-      const userScores: { [displayName: string]: { totalScore: number; contestCount: number; details: { contestTitle: string; score: number }[] } } = {};
+      const userScores: { [username: string]: { totalScore: number; contestCount: number; details: { contestTitle: string; score: number }[] } } = {};
 
       await Promise.all(
         contests.map(async (contest) => {
@@ -43,21 +43,35 @@ export const RankingsPage: React.FC = () => {
 
             const leaderboard = await api.getContestPhaseLeaderboard(contest.id, targetDef.id);
             leaderboard.forEach(row => {
-              if (!row.display_name) return;
-              
-              if (!userScores[row.display_name]) {
-                userScores[row.display_name] = {
-                  totalScore: 0,
-                  contestCount: 0,
-                  details: []
-                };
+              // Extract raw score (use raw_score, fallback to score)
+              const rawScore = Number(row.raw_score !== undefined ? row.raw_score : row.score || 0);
+
+              // Get list of usernames for this row
+              let usernames: string[] = [];
+              if (row.user_emails && row.user_emails.length > 0) {
+                usernames = row.user_emails.map(email => email.split('@')[0]);
+              } else if (row.display_name) {
+                const fallbackUsername = row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name;
+                usernames = [fallbackUsername];
               }
-              
-              userScores[row.display_name].totalScore += row.score;
-              userScores[row.display_name].contestCount += 1;
-              userScores[row.display_name].details.push({
-                contestTitle: contest.title,
-                score: row.score
+
+              // Deduplicate usernames in case the same user is listed multiple times (failsafe)
+              const uniqueUsernames = Array.from(new Set(usernames));
+
+              uniqueUsernames.forEach(username => {
+                if (!userScores[username]) {
+                  userScores[username] = {
+                    totalScore: 0,
+                    contestCount: 0,
+                    details: []
+                  };
+                }
+                userScores[username].totalScore += rawScore;
+                userScores[username].contestCount += 1;
+                userScores[username].details.push({
+                  contestTitle: contest.title,
+                  score: rawScore
+                });
               });
             });
           } catch (e) {

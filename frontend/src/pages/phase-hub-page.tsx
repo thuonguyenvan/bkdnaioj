@@ -8,6 +8,23 @@ import {
   FileText, UploadCloud, Play, AlertCircle, RefreshCw, ArrowLeft, Star, Volume2, ShieldAlert, Lock, Unlock, Settings
 } from 'lucide-react';
 
+const formatParticipantName = (row: { display_name: string; entry_type: string; user_emails?: string[] }) => {
+  if (row.entry_type === 'individual') {
+    if (row.user_emails && row.user_emails.length > 0) {
+      const email = row.user_emails[0];
+      return email.split('@')[0];
+    }
+    return row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name;
+  } else if (row.entry_type === 'team') {
+    if (row.user_emails && row.user_emails.length > 0) {
+      const members = row.user_emails.map(email => email.split('@')[0]).join(', ');
+      return `${row.display_name} (${members})`;
+    }
+    return row.display_name;
+  }
+  return row.display_name;
+};
+
 export const PhaseHubPage: React.FC = () => {
   const { contestId, phaseKey } = useParams<{ contestId: string, phaseKey: string }>();
   const { user, isAdmin, isJury } = useAuth();
@@ -836,19 +853,22 @@ export const PhaseHubPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(standingsMode === 'task' ? leaderboard : overallLeaderboard).map((row, index) => (
-                    <tr key={index} style={{ backgroundColor: row.display_name === user?.full_name ? 'hsla(var(--primary), 0.04)' : undefined }}>
-                      <td className="font-mono" style={{ fontWeight: 'bold' }}>{row.rank}</td>
-                      <td style={{ fontWeight: 600 }}>{row.display_name}</td>
-                      <td className="font-mono" style={{ fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
-                        {Number(row.score || 0).toFixed(6)}
-                      </td>
-                      <td className="font-mono">{row.entries_count}</td>
-                      <td className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {new Date(row.updated_at).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
+                  {(standingsMode === 'task' ? leaderboard : overallLeaderboard).map((row, index) => {
+                    const isCurrentUser = row.user_emails?.includes(user?.email || '') || row.display_name === user?.full_name;
+                    return (
+                      <tr key={index} style={{ backgroundColor: isCurrentUser ? 'hsla(var(--primary), 0.04)' : undefined }}>
+                        <td className="font-mono" style={{ fontWeight: 'bold' }}>{row.rank}</td>
+                        <td style={{ fontWeight: 600 }}>{formatParticipantName(row)}</td>
+                        <td className="font-mono" style={{ fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
+                          {Number(row.score || 0).toFixed(6)}
+                        </td>
+                        <td className="font-mono">{row.entries_count}</td>
+                        <td className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {new Date(row.updated_at).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

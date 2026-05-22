@@ -1,7 +1,14 @@
 -- Task-phase leaderboard
 
 -- name: GetTaskPhaseLeaderboard :many
-SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode
+SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
+       COALESCE(
+         (SELECT array_agg(u.email::text)::text[]
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS user_emails
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.phase_id = $1
@@ -27,7 +34,14 @@ RETURNING *;
 -- Contest-phase leaderboard
 
 -- name: GetContestPhaseLeaderboard :many
-SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode
+SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
+       COALESCE(
+         (SELECT array_agg(u.email::text)::text[]
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS user_emails
 FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1

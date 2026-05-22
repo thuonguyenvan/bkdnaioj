@@ -23,6 +23,7 @@ type CreateContestRequest struct {
 	RulesJSON         *json.RawMessage `json:"rules_json,omitempty"`
 	MaxTeamSize       int32            `json:"max_team_size" validate:"required,gt=0"`
 	RequireApproval   bool             `json:"require_approval"`
+	ScaleScores       bool             `json:"scale_scores"`
 }
 
 type UpdateContestRequest struct {
@@ -38,6 +39,7 @@ type UpdateContestRequest struct {
 	RulesJSON         *json.RawMessage `json:"rules_json,omitempty"`
 	MaxTeamSize       *int32           `json:"max_team_size,omitempty" validate:"omitempty,gt=0"`
 	RequireApproval   *bool            `json:"require_approval,omitempty"`
+	ScaleScores       *bool            `json:"scale_scores,omitempty"`
 }
 
 type ContestResponse struct {
@@ -56,6 +58,7 @@ type ContestResponse struct {
 	RulesJSON         json.RawMessage `json:"rules_json"`
 	MaxTeamSize       int32           `json:"max_team_size"`
 	RequireApproval   bool            `json:"require_approval"`
+	ScaleScores       bool            `json:"scale_scores"`
 	CreatedAt         time.Time       `json:"created_at"`
 }
 
@@ -76,6 +79,7 @@ func ContestToResponse(c db.Contest) ContestResponse {
 		RulesJSON:         c.RulesJson,
 		MaxTeamSize:       c.MaxTeamSize,
 		RequireApproval:   c.RequireApproval,
+		ScaleScores:       c.ScaleScores,
 		CreatedAt:         PgTimeVal(c.CreatedAt),
 	}
 }

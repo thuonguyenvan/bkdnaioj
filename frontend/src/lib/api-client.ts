@@ -43,6 +43,7 @@ export interface Contest {
   visibility: 'public' | 'private';
   max_team_size: number;
   require_approval: boolean;
+  scale_scores: boolean;
 }
 
 export interface PhaseDef {
@@ -154,11 +155,16 @@ export interface LeaderboardRow {
   rank: number;
   display_name: string;
   score: number;
+  raw_score: number;
   entries_count: number;
   is_frozen: boolean;
   is_disqualified: boolean;
   updated_at: string;
   submission_id?: string;
+  entry_id: string;
+  entry_type: 'individual' | 'team';
+  entry_mode: 'official' | 'virtual' | 'practice';
+  user_emails: string[];
 }
 
 export interface Team {

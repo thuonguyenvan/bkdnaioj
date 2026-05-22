@@ -63,6 +63,7 @@ func (h *ContestHandler) Create(c echo.Context) error {
 		CreatedBy:         dto.ToPgUUID(uid),
 		MaxTeamSize:       req.MaxTeamSize,
 		RequireApproval:   req.RequireApproval,
+		ScaleScores:       req.ScaleScores,
 	})
 	if err != nil {
 		c.Logger().Errorf("create contest failed: %v", err)
@@ -173,6 +174,7 @@ func (h *ContestHandler) Update(c echo.Context) error {
 		RulesJson:         rulesJSON,
 		MaxTeamSize:       req.MaxTeamSize,
 		RequireApproval:   req.RequireApproval,
+		ScaleScores:       req.ScaleScores,
 	})
 	if err != nil {
 		c.Logger().Errorf("update contest failed: %v", err)

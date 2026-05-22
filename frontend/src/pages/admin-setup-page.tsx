@@ -47,6 +47,7 @@ export const AdminSetupPage: React.FC = () => {
   const [settingsEntryPolicy, setSettingsEntryPolicy] = useState<'individual' | 'team' | 'both'>('individual');
   const [settingsVisibility, setSettingsVisibility] = useState<'public' | 'private'>('public');
   const [settingsRequireApproval, setSettingsRequireApproval] = useState(false);
+  const [settingsScaleScores, setSettingsScaleScores] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
   // Phase Definitions global config state
@@ -90,6 +91,7 @@ export const AdminSetupPage: React.FC = () => {
       setSettingsEntryPolicy(contest.entry_policy);
       setSettingsVisibility(contest.visibility);
       setSettingsRequireApproval(contest.require_approval);
+      setSettingsScaleScores(contest.scale_scores || false);
     }
   }, [contest]);
 
@@ -1002,6 +1004,7 @@ export const AdminSetupPage: React.FC = () => {
                 entry_policy: settingsEntryPolicy,
                 visibility: settingsVisibility,
                 require_approval: settingsRequireApproval,
+                scale_scores: settingsScaleScores,
                 max_team_size: settingsEntryPolicy === 'team' || settingsEntryPolicy === 'both' ? 3 : 1
               });
             }}>
@@ -1085,6 +1088,17 @@ export const AdminSetupPage: React.FC = () => {
                     onChange={(e) => setSettingsRequireApproval(e.target.checked)}
                   />
                   Require Admin/Jury Approval for Contest Registrations
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={settingsScaleScores}
+                    onChange={(e) => setSettingsScaleScores(e.target.checked)}
+                  />
+                  Scale Scores (Normalize task scores so max score = 100)
                 </label>
               </div>
 

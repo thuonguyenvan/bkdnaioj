@@ -196,6 +196,11 @@ WITH candidate AS (
 chosen AS (
   SELECT * FROM candidate WHERE rn = 1
 ),
+chosen_with_max AS (
+  SELECT c.*,
+         MAX(c.display_score) OVER() as max_phase_score
+  FROM chosen c
+),
 ranked AS (
   SELECT
     c.*,
@@ -205,11 +210,11 @@ ranked AS (
         CASE WHEN $2::leaderboard_mode = 'best' AND NOT $3 THEN c.display_score END ASC NULLS LAST,
         c.display_score DESC NULLS LAST
     )::int AS rank
-  FROM chosen c
+  FROM chosen_with_max c
 )
 INSERT INTO task_phase_leaderboard_entries (
   contest_id, task_id, phase_id, contest_entry_id,
-  rank, score, score_breakdown, chosen_submission_id, entries_count,
+  rank, score, raw_score, score_breakdown, chosen_submission_id, entries_count,
   is_frozen, is_disqualified
 )
 SELECT
@@ -218,7 +223,15 @@ SELECT
   r.phase_id,
   r.contest_entry_id,
   r.rank,
-  r.display_score,
+  CASE 
+    WHEN ct.scale_scores = TRUE THEN
+      CASE 
+        WHEN COALESCE(r.max_phase_score, 0) > 0 THEN (r.display_score / r.max_phase_score) * 100
+        ELSE 0
+      END
+    ELSE r.display_score
+  END AS score,
+  r.display_score AS raw_score,
   NULL::jsonb,
   r.submission_id,
   r.entries_count,
@@ -227,9 +240,11 @@ SELECT
 FROM ranked r
 JOIN phases p ON p.id = r.phase_id
 JOIN contest_entries ce ON ce.id = r.contest_entry_id
+JOIN contests ct ON ct.id = r.contest_id
 ON CONFLICT (phase_id, contest_entry_id) DO UPDATE SET
   rank = EXCLUDED.rank,
   score = EXCLUDED.score,
+  raw_score = EXCLUDED.raw_score,
   score_breakdown = EXCLUDED.score_breakdown,
   chosen_submission_id = EXCLUDED.chosen_submission_id,
   entries_count = EXCLUDED.entries_count,
@@ -285,15 +300,31 @@ per_phase_choice AS (
 chosen AS (
   SELECT * FROM per_phase_choice WHERE rn = 1
 ),
+chosen_with_max AS (
+  SELECT c.*,
+         MAX(c.display_score) OVER(PARTITION BY c.phase_id) as max_phase_score
+  FROM chosen c
+),
 agg AS (
   SELECT
     c.contest_id,
     $1::uuid AS contest_phase_def_id,
     c.contest_entry_id,
-    SUM(c.display_score) AS total_score,
+    SUM(
+      CASE 
+        WHEN ct.scale_scores = TRUE THEN
+          CASE 
+            WHEN COALESCE(c.max_phase_score, 0) > 0 THEN (c.display_score / c.max_phase_score) * 100
+            ELSE 0
+          END
+        ELSE c.display_score
+      END
+    ) AS total_score,
+    SUM(c.display_score) AS raw_score,
     COUNT(*)::int AS entries_count
-  FROM chosen c
-  GROUP BY c.contest_id, c.contest_entry_id
+  FROM chosen_with_max c
+  JOIN contests ct ON ct.id = c.contest_id
+  GROUP BY c.contest_id, c.contest_entry_id, ct.scale_scores
 ),
 ranked AS (
   SELECT
@@ -303,7 +334,7 @@ ranked AS (
 )
 INSERT INTO contest_phase_leaderboard_entries (
   contest_id, contest_phase_def_id, contest_entry_id,
-  rank, score, score_breakdown, entries_count,
+  rank, score, raw_score, score_breakdown, entries_count,
   is_frozen, is_disqualified
 )
 SELECT
@@ -312,6 +343,7 @@ SELECT
   r.contest_entry_id,
   r.rank,
   r.total_score,
+  r.raw_score,
   NULL::jsonb,
   r.entries_count,
   false,
@@ -321,6 +353,7 @@ JOIN contest_entries ce ON ce.id = r.contest_entry_id
 ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
   rank = EXCLUDED.rank,
   score = EXCLUDED.score,
+  raw_score = EXCLUDED.raw_score,
   score_breakdown = EXCLUDED.score_breakdown,
   entries_count = EXCLUDED.entries_count,
   is_frozen = EXCLUDED.is_frozen,

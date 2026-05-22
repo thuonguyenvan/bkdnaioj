@@ -14,7 +14,14 @@ import (
 
 const getContestPhaseLeaderboard = `-- name: GetContestPhaseLeaderboard :many
 
-SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, ce.display_name, ce.entry_type, ce.entry_mode
+SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
+       COALESCE(
+         (SELECT array_agg(u.email::text)::text[]
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS user_emails
 FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1
@@ -43,9 +50,11 @@ type GetContestPhaseLeaderboardRow struct {
 	IsDisqualified    bool               `json:"is_disqualified"`
 	DqReason          *string            `json:"dq_reason"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	RawScore          string             `json:"raw_score"`
 	DisplayName       string             `json:"display_name"`
 	EntryType         EntryType          `json:"entry_type"`
 	EntryMode         EntryMode          `json:"entry_mode"`
+	UserEmails        interface{}        `json:"user_emails"`
 }
 
 // Contest-phase leaderboard
@@ -76,9 +85,11 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 			&i.IsDisqualified,
 			&i.DqReason,
 			&i.UpdatedAt,
+			&i.RawScore,
 			&i.DisplayName,
 			&i.EntryType,
 			&i.EntryMode,
+			&i.UserEmails,
 		); err != nil {
 			return nil, err
 		}
@@ -92,7 +103,14 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 
 const getTaskPhaseLeaderboard = `-- name: GetTaskPhaseLeaderboard :many
 
-SELECT lb.id, lb.contest_id, lb.task_id, lb.phase_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.chosen_submission_id, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, ce.display_name, ce.entry_type, ce.entry_mode
+SELECT lb.id, lb.contest_id, lb.task_id, lb.phase_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.chosen_submission_id, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
+       COALESCE(
+         (SELECT array_agg(u.email::text)::text[]
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS user_emails
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.phase_id = $1
@@ -123,9 +141,11 @@ type GetTaskPhaseLeaderboardRow struct {
 	IsDisqualified     bool               `json:"is_disqualified"`
 	DqReason           *string            `json:"dq_reason"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	RawScore           string             `json:"raw_score"`
 	DisplayName        string             `json:"display_name"`
 	EntryType          EntryType          `json:"entry_type"`
 	EntryMode          EntryMode          `json:"entry_mode"`
+	UserEmails         interface{}        `json:"user_emails"`
 }
 
 // Task-phase leaderboard
@@ -158,9 +178,11 @@ func (q *Queries) GetTaskPhaseLeaderboard(ctx context.Context, arg GetTaskPhaseL
 			&i.IsDisqualified,
 			&i.DqReason,
 			&i.UpdatedAt,
+			&i.RawScore,
 			&i.DisplayName,
 			&i.EntryType,
 			&i.EntryMode,
+			&i.UserEmails,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +206,7 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
   entries_count = EXCLUDED.entries_count,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now()
-RETURNING id, contest_id, contest_phase_def_id, contest_entry_id, rank, score, score_breakdown, entries_count, is_frozen, is_disqualified, dq_reason, updated_at
+RETURNING id, contest_id, contest_phase_def_id, contest_entry_id, rank, score, score_breakdown, entries_count, is_frozen, is_disqualified, dq_reason, updated_at, raw_score
 `
 
 type UpsertContestPhaseLeaderboardParams struct {
@@ -225,6 +247,7 @@ func (q *Queries) UpsertContestPhaseLeaderboard(ctx context.Context, arg UpsertC
 		&i.IsDisqualified,
 		&i.DqReason,
 		&i.UpdatedAt,
+		&i.RawScore,
 	)
 	return i, err
 }
@@ -242,7 +265,7 @@ ON CONFLICT (phase_id, contest_entry_id) DO UPDATE SET
   entries_count = EXCLUDED.entries_count,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now()
-RETURNING id, contest_id, task_id, phase_id, contest_entry_id, rank, score, score_breakdown, chosen_submission_id, entries_count, is_frozen, is_disqualified, dq_reason, updated_at
+RETURNING id, contest_id, task_id, phase_id, contest_entry_id, rank, score, score_breakdown, chosen_submission_id, entries_count, is_frozen, is_disqualified, dq_reason, updated_at, raw_score
 `
 
 type UpsertTaskPhaseLeaderboardParams struct {
@@ -289,6 +312,7 @@ func (q *Queries) UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTask
 		&i.IsDisqualified,
 		&i.DqReason,
 		&i.UpdatedAt,
+		&i.RawScore,
 	)
 	return i, err
 }

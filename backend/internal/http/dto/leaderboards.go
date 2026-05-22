@@ -12,6 +12,7 @@ import (
 type LeaderboardRow struct {
 	Rank           *int32          `json:"rank"`
 	Score          string          `json:"score"`
+	RawScore       string          `json:"raw_score"`
 	ScoreBreakdown json.RawMessage `json:"score_breakdown,omitempty"`
 	EntriesCount   int32           `json:"entries_count"`
 	IsFrozen       bool            `json:"is_frozen"`
@@ -23,26 +24,48 @@ type LeaderboardRow struct {
 	DisplayName string    `json:"display_name"`
 	EntryType   string    `json:"entry_type"`
 	EntryMode   string    `json:"entry_mode"`
+	UserEmails  []string  `json:"user_emails"`
+}
+
+func convertUserEmails(emails interface{}) []string {
+	if emails == nil {
+		return []string{}
+	}
+	if arr, ok := emails.([]string); ok {
+		return arr
+	}
+	if arr, ok := emails.([]interface{}); ok {
+		res := make([]string, 0, len(arr))
+		for _, v := range arr {
+			if s, ok := v.(string); ok {
+				res = append(res, s)
+			}
+		}
+		return res
+	}
+	return []string{}
 }
 
 func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 	return LeaderboardRow{
-		Rank: r.Rank, Score: r.Score, ScoreBreakdown: r.ScoreBreakdown,
+		Rank: r.Rank, Score: r.Score, RawScore: r.RawScore, ScoreBreakdown: r.ScoreBreakdown,
 		EntriesCount: r.EntriesCount, IsFrozen: r.IsFrozen,
 		IsDisqualified: r.IsDisqualified, DqReason: r.DqReason,
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
 		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
+		UserEmails: convertUserEmails(r.UserEmails),
 	}
 }
 
 func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRow {
 	return LeaderboardRow{
-		Rank: r.Rank, Score: r.Score, ScoreBreakdown: r.ScoreBreakdown,
+		Rank: r.Rank, Score: r.Score, RawScore: r.RawScore, ScoreBreakdown: r.ScoreBreakdown,
 		EntriesCount: r.EntriesCount, IsFrozen: r.IsFrozen,
 		IsDisqualified: r.IsDisqualified, DqReason: r.DqReason,
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
 		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
+		UserEmails: convertUserEmails(r.UserEmails),
 	}
 }

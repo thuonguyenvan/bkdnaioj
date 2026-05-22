@@ -1080,6 +1080,7 @@ type Contest struct {
 	RequireApproval   bool               `json:"require_approval"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	ScaleScores       bool               `json:"scale_scores"`
 }
 
 type ContestEntry struct {
@@ -1128,6 +1129,7 @@ type ContestPhaseLeaderboardEntry struct {
 	IsDisqualified    bool               `json:"is_disqualified"`
 	DqReason          *string            `json:"dq_reason"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	RawScore          string             `json:"raw_score"`
 }
 
 type EvaluationJob struct {
@@ -1263,6 +1265,7 @@ type TaskPhaseLeaderboardEntry struct {
 	IsDisqualified     bool               `json:"is_disqualified"`
 	DqReason           *string            `json:"dq_reason"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	RawScore           string             `json:"raw_score"`
 }
 
 type Team struct {
