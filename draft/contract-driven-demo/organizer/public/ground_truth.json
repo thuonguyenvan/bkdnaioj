@@ -1,0 +1,18 @@
+{
+  "dataset": "public",
+  "cases": [
+    {
+      "id": "img_001",
+      "expected_marker": "attack-public-001"
+    },
+    {
+      "id": "img_002",
+      "expected_marker": "attack-public-002"
+    },
+    {
+      "id": "img_003",
+      "expected_marker": "attack-public-003"
+    }
+  ]
+}
+

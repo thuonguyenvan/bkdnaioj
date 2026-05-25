@@ -1,0 +1,5 @@
+{
+  "type": "precomputed_adversarial_outputs",
+  "description": "Demo non-final artifact. Files use .png names but contain text markers so the demo has no image dependencies."
+}
+

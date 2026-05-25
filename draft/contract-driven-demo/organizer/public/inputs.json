@@ -1,0 +1,18 @@
+{
+  "dataset": "public",
+  "cases": [
+    {
+      "id": "img_001",
+      "input_token": "public-001"
+    },
+    {
+      "id": "img_002",
+      "input_token": "public-002"
+    },
+    {
+      "id": "img_003",
+      "input_token": "public-003"
+    }
+  ]
+}
+

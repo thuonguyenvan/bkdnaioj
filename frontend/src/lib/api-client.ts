@@ -61,9 +61,74 @@ export interface Task {
   title: string;
   description: string;
   problem_statement_url: string | null;
+  submission_schema: SubmissionSchema;
+  assets?: TaskAsset[];
+  asset_keys?: string[];
+  required_assets?: string[];
   score_label: string;
   higher_is_better: boolean;
   sort_order: number;
+}
+
+export interface SubmissionSchema {
+  non_final?: {
+    description?: string;
+    examples?: string[];
+    max_files?: number;
+  };
+  final?: {
+    description?: string;
+    examples?: string[];
+    max_files?: number;
+    inference_entrypoint?: string;
+  };
+  evaluation?: {
+    required_assets?: string[];
+    description?: string;
+  };
+  task_assets?: {
+    required_assets?: string[];
+    description?: string;
+  };
+}
+
+export interface EvaluationSetAsset {
+  id: string;
+  evaluation_set_id: string;
+  asset_key: string;
+  filename: string;
+  object_key: string;
+  size_bytes: number;
+  content_type?: string | null;
+  sha256?: string | null;
+  created_at: string;
+}
+
+export interface TaskAsset {
+  id: string;
+  task_id: string;
+  asset_key: string;
+  filename: string;
+  object_key: string;
+  size_bytes: number;
+  content_type?: string | null;
+  sha256?: string | null;
+  created_at: string;
+}
+
+export interface EvaluationSet {
+  id: string;
+  task_id: string;
+  key: 'public' | 'private';
+  title: string;
+  description?: string | null;
+  created_at: string;
+  assets?: EvaluationSetAsset[];
+  asset_keys?: string[];
+  required_assets?: string[];
+  has_judge_script: boolean;
+  has_ground_truth?: boolean;
+  has_inputs?: boolean;
 }
 
 export interface Phase {
@@ -97,6 +162,8 @@ export interface ContestEntry {
   display_name: string;
   status: 'pending' | 'approved' | 'disqualified' | 'active' | 'finished';
   registered_by: string;
+  start_at?: string | null;
+  end_at?: string | null;
 }
 
 export interface SubmissionFile {
@@ -298,6 +365,10 @@ export const api = {
     const res = await apiClient.post(`/contests/${contestId}/tasks`, payload);
     return res.data as Task;
   },
+  async updateTask(id: string, payload: any) {
+    const res = await apiClient.patch(`/tasks/${id}`, payload);
+    return res.data as Task;
+  },
   async deleteTask(id: string) {
     const res = await apiClient.delete(`/tasks/${id}`);
     return res.data;
@@ -306,7 +377,19 @@ export const api = {
   // Evaluation Sets (Jury assets config)
   async getEvaluationSets(taskId: string) {
     const res = await apiClient.get(`/tasks/${taskId}/evaluation-sets`);
-    return res.data;
+    return res.data as EvaluationSet[];
+  },
+  async getTaskAssets(taskId: string) {
+    const res = await apiClient.get(`/tasks/${taskId}/assets`);
+    return res.data as TaskAsset[];
+  },
+  async initiateTaskAssets(taskId: string, payload: { assets: { asset_key: string, filename: string, content_type: string, size_bytes: number }[] }) {
+    const res = await apiClient.post(`/tasks/${taskId}/assets:initiate`, payload);
+    return res.data as { uploads: { asset_key: string, filename: string, object_key: string, put_url: string }[] };
+  },
+  async completeTaskAssets(taskId: string, payload: { assets: { asset_key: string, filename: string, object_key: string, size_bytes: number, content_type: string }[] }) {
+    const res = await apiClient.post(`/tasks/${taskId}/assets/complete`, payload);
+    return res.data as TaskAsset[];
   },
   async createEvaluationSet(taskId: string, payload: any) {
     const res = await apiClient.post(`/tasks/${taskId}/evaluation-sets`, payload);
@@ -544,4 +627,3 @@ export const api = {
     return res.data as Ticket;
   },
 };
-

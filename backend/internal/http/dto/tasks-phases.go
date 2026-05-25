@@ -10,6 +10,8 @@ import (
 
 // --- Tasks ---
 
+var DefaultSubmissionSchema = json.RawMessage(`{"non_final":{"description":"Upload output artifact theo yêu cầu đề bài","examples":["submission.zip","adversarial_images.zip","predictions.jsonl"],"max_files":10},"final":{"description":"Upload checkpoint/code inference theo yêu cầu đề bài","examples":["final_submission.zip"],"max_files":10,"inference_entrypoint":"infer.py"},"task_assets":{"required_assets":["judge.py"],"description":"BTC uploads the shared task-level judge entrypoint once."},"evaluation":{"required_assets":["ground_truth","inputs"],"description":"BTC uploads task-specific ground_truth and inputs assets for each public/private evaluation set. The concrete file formats are defined by BTC and consumed by judge.py/infer.py."}}`)
+
 type CreateTaskRequest struct {
 	Slug                string           `json:"slug" validate:"required,min=2,max=120"`
 	Title               string           `json:"title" validate:"required,min=2,max=500"`
@@ -21,27 +23,60 @@ type CreateTaskRequest struct {
 	SortOrder           int32            `json:"sort_order"`
 }
 
+type UpdateTaskRequest struct {
+	Title               *string          `json:"title,omitempty" validate:"omitempty,min=2,max=500"`
+	Description         *string          `json:"description,omitempty"`
+	ProblemStatementURL *string          `json:"problem_statement_url,omitempty"`
+	SubmissionSchema    *json.RawMessage `json:"submission_schema,omitempty"`
+	ScoreLabel          *string          `json:"score_label,omitempty" validate:"omitempty,max=120"`
+	HigherIsBetter      *bool            `json:"higher_is_better,omitempty"`
+	SortOrder           *int32           `json:"sort_order,omitempty"`
+}
+
 type TaskResponse struct {
-	ID                  uuid.UUID       `json:"id"`
-	ContestID           uuid.UUID       `json:"contest_id"`
-	Slug                string          `json:"slug"`
-	Title               string          `json:"title"`
-	Description         *string         `json:"description,omitempty"`
-	ProblemStatementURL *string         `json:"problem_statement_url,omitempty"`
-	SubmissionSchema    json.RawMessage `json:"submission_schema"`
-	ScoreLabel          string          `json:"score_label"`
-	HigherIsBetter      bool            `json:"higher_is_better"`
-	SortOrder           int32           `json:"sort_order"`
-	CreatedAt           time.Time       `json:"created_at"`
+	ID                  uuid.UUID           `json:"id"`
+	ContestID           uuid.UUID           `json:"contest_id"`
+	Slug                string              `json:"slug"`
+	Title               string              `json:"title"`
+	Description         *string             `json:"description,omitempty"`
+	ProblemStatementURL *string             `json:"problem_statement_url,omitempty"`
+	SubmissionSchema    json.RawMessage     `json:"submission_schema"`
+	Assets              []TaskAssetResponse `json:"assets"`
+	AssetKeys           []string            `json:"asset_keys"`
+	RequiredAssets      []string            `json:"required_assets"`
+	ScoreLabel          string              `json:"score_label"`
+	HigherIsBetter      bool                `json:"higher_is_better"`
+	SortOrder           int32               `json:"sort_order"`
+	CreatedAt           time.Time           `json:"created_at"`
+}
+
+type TaskAssetResponse struct {
+	ID          uuid.UUID `json:"id"`
+	TaskID      uuid.UUID `json:"task_id"`
+	AssetKey    string    `json:"asset_key"`
+	Filename    string    `json:"filename"`
+	ObjectKey   string    `json:"object_key"`
+	SizeBytes   int64     `json:"size_bytes"`
+	ContentType *string   `json:"content_type,omitempty"`
+	SHA256      *string   `json:"sha256,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 func TaskToResponse(t db.Task) TaskResponse {
 	return TaskResponse{
 		ID: t.ID, ContestID: t.ContestID, Slug: t.Slug, Title: t.Title,
 		Description: t.Description, ProblemStatementURL: t.ProblemStatementUrl,
-		SubmissionSchema: t.SubmissionSchema, ScoreLabel: t.ScoreLabel,
+		SubmissionSchema: t.SubmissionSchema, Assets: nil, AssetKeys: nil, RequiredAssets: []string{"judge.py"}, ScoreLabel: t.ScoreLabel,
 		HigherIsBetter: t.HigherIsBetter, SortOrder: t.SortOrder,
 		CreatedAt: PgTimeVal(t.CreatedAt),
+	}
+}
+
+func TaskAssetToResponse(a db.TaskAsset) TaskAssetResponse {
+	return TaskAssetResponse{
+		ID: a.ID, TaskID: a.TaskID, AssetKey: a.AssetKey,
+		Filename: a.OriginalFilename, ObjectKey: a.StoragePath, SizeBytes: a.FileSize,
+		ContentType: a.ContentType, SHA256: a.HashSha256, CreatedAt: PgTimeVal(a.CreatedAt),
 	}
 }
 
@@ -116,7 +151,7 @@ func PhaseToResponse(p db.Phase) PhaseResponse {
 	return PhaseResponse{
 		ID: p.ID, TaskID: p.TaskID, ContestPhaseDefID: p.ContestPhaseDefID,
 		EvaluationSetID: p.EvaluationSetID,
-		Slug: p.Slug, Title: p.Title, Description: p.Description,
+		Slug:            p.Slug, Title: p.Title, Description: p.Description,
 		OpenTime: PgTimeVal(p.OpenTime), CloseTime: PgTimeVal(p.CloseTime),
 		JudgeKey: p.JudgeKey, SubmissionLimit: p.SubmissionLimit,
 		LeaderboardMode:     string(p.LeaderboardMode),
@@ -134,21 +169,25 @@ type CreateEvaluationSetRequest struct {
 }
 
 type EvaluationSetResponse struct {
-	ID             uuid.UUID `json:"id"`
-	TaskID         uuid.UUID `json:"task_id"`
-	Key            string    `json:"key"`
-	Title          string    `json:"title"`
-	Description    *string   `json:"description,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	HasJudgeScript bool      `json:"has_judge_script"`
-	HasGroundTruth bool      `json:"has_ground_truth"`
-	HasInputs      bool      `json:"has_inputs"`
+	ID             uuid.UUID                    `json:"id"`
+	TaskID         uuid.UUID                    `json:"task_id"`
+	Key            string                       `json:"key"`
+	Title          string                       `json:"title"`
+	Description    *string                      `json:"description,omitempty"`
+	CreatedAt      time.Time                    `json:"created_at"`
+	Assets         []EvaluationSetAssetResponse `json:"assets"`
+	AssetKeys      []string                     `json:"asset_keys"`
+	RequiredAssets []string                     `json:"required_assets"`
+	HasJudgeScript bool                         `json:"has_judge_script"`
+	HasGroundTruth bool                         `json:"has_ground_truth"`
+	HasInputs      bool                         `json:"has_inputs"`
 }
 
 func EvaluationSetToResponse(s db.TaskEvaluationSet) EvaluationSetResponse {
 	return EvaluationSetResponse{
 		ID: s.ID, TaskID: s.TaskID, Key: string(s.Key), Title: s.Title,
 		Description: s.Description, CreatedAt: PgTimeVal(s.CreatedAt),
+		Assets: nil, AssetKeys: nil, RequiredAssets: []string{"ground_truth", "inputs"},
 		HasJudgeScript: false, HasGroundTruth: false, HasInputs: false,
 	}
 }

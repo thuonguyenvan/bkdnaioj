@@ -1,0 +1,30 @@
+{
+  "non_final": {
+    "description": "Upload a ZIP containing generated adversarial image artifacts and manifest.json. The ZIP must contain adversarial_images/<case_id>.png for every case in reference.json.",
+    "examples": [
+      "non_final_submission.zip"
+    ],
+    "max_files": 1
+  },
+  "final": {
+    "description": "Upload a ZIP containing infer.py plus any checkpoint/config files. The platform runs infer.py to generate adversarial_images/ before judging.",
+    "examples": [
+      "final_submission.zip"
+    ],
+    "max_files": 1,
+    "inference_entrypoint": "infer.py"
+  },
+  "evaluation": {
+    "required_assets": [
+      "ground_truth",
+      "inputs"
+    ],
+    "description": "BTC upload task-specific ground_truth and inputs assets for each public/private evaluation set. This demo uses JSON files internally, but the asset keys stay generic so real contests can use CSV, ZIP, images, parquet, or folders."
+  },
+  "task_assets": {
+    "required_assets": [
+      "judge.py"
+    ],
+    "description": "BTC upload the shared task-level judge.py once. Public/private and normal/final phases all use this judge."
+  }
+}

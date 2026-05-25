@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -18,6 +19,12 @@ import (
 	"github.com/mank1/olpai-backend/internal/storage"
 )
 
+type submissionSchemaEval struct {
+	Evaluation struct {
+		RequiredAssets []string `json:"required_assets"`
+	} `json:"evaluation"`
+}
+
 type EvaluationSetHandler struct {
 	q   db.Querier
 	s3  *storage.S3
@@ -33,15 +40,26 @@ func (h *EvaluationSetHandler) populateAssetFlags(ctx context.Context, resp *dto
 	if err != nil {
 		return
 	}
+	if task, err := h.q.GetTaskByID(ctx, resp.TaskID); err == nil {
+		var schema submissionSchemaEval
+		if err := json.Unmarshal(task.SubmissionSchema, &schema); err == nil && len(schema.Evaluation.RequiredAssets) > 0 {
+			resp.RequiredAssets = schema.Evaluation.RequiredAssets
+		}
+	}
+	resp.Assets = make([]dto.EvaluationSetAssetResponse, 0, len(assets))
+	resp.AssetKeys = make([]string, 0, len(assets))
 	for _, a := range assets {
+		resp.Assets = append(resp.Assets, dto.EvaluationSetAssetToResponse(a))
+		resp.AssetKeys = append(resp.AssetKeys, a.AssetKey)
+		for _, required := range resp.RequiredAssets {
+			if a.AssetKey == required {
+				if required == "judge.py" || required == "judge_script" {
+					resp.HasJudgeScript = true
+				}
+			}
+		}
 		if a.AssetKey == "judge.py" || a.AssetKey == "judge_script" {
 			resp.HasJudgeScript = true
-		}
-		if a.AssetKey == "ground_truth.csv" || a.AssetKey == "public_ground_truth.csv" {
-			resp.HasGroundTruth = true
-		}
-		if a.AssetKey == "inputs.csv" || a.AssetKey == "public_inputs.csv" {
-			resp.HasInputs = true
 		}
 	}
 }
@@ -200,6 +218,100 @@ func (h *EvaluationSetHandler) ListAssets(c echo.Context) error {
 	resp := make([]dto.EvaluationSetAssetResponse, len(assets))
 	for i, a := range assets {
 		resp[i] = dto.EvaluationSetAssetToResponse(a)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *EvaluationSetHandler) InitiateTaskAssets(c echo.Context) error {
+	if h.s3 == nil {
+		return mw.ErrInternal("storage unavailable")
+	}
+	taskID, err := uuid.Parse(c.Param("task_id"))
+	if err != nil {
+		return mw.ErrBadRequest("invalid task id")
+	}
+	var req dto.InitiateEvaluationSetAssetsRequest
+	if err := c.Bind(&req); err != nil {
+		return mw.ErrBadRequest("invalid request body")
+	}
+	if err := h.val.Struct(req); err != nil {
+		return mw.ErrBadRequest(err.Error())
+	}
+	ctx := c.Request().Context()
+	if _, err := h.q.GetTaskByID(ctx, taskID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("task not found")
+		}
+		return mw.ErrInternal("fetch task failed")
+	}
+
+	uploads := make([]dto.InitiateEvaluationSetAssetResponse, 0, len(req.Assets))
+	for _, a := range req.Assets {
+		objectKey := "tasks/" + taskID.String() + "/" + a.AssetKey + "/" + a.Filename
+		putURL, err := h.s3.PresignPut(ctx, objectKey, 15*time.Minute)
+		if err != nil {
+			return mw.ErrInternal("presign failed")
+		}
+		uploads = append(uploads, dto.InitiateEvaluationSetAssetResponse{AssetKey: a.AssetKey, Filename: a.Filename, ObjectKey: objectKey, PutURL: putURL})
+	}
+	return c.JSON(http.StatusOK, dto.InitiateEvaluationSetAssetsResponse{Uploads: uploads})
+}
+
+func (h *EvaluationSetHandler) CompleteTaskAssets(c echo.Context) error {
+	taskID, err := uuid.Parse(c.Param("task_id"))
+	if err != nil {
+		return mw.ErrBadRequest("invalid task id")
+	}
+	var req dto.CompleteEvaluationSetAssetsRequest
+	if err := c.Bind(&req); err != nil {
+		return mw.ErrBadRequest("invalid request body")
+	}
+	if err := h.val.Struct(req); err != nil {
+		return mw.ErrBadRequest(err.Error())
+	}
+	ctx := c.Request().Context()
+	if _, err := h.q.GetTaskByID(ctx, taskID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("task not found")
+		}
+		return mw.ErrInternal("fetch task failed")
+	}
+
+	resp := make([]dto.TaskAssetResponse, 0, len(req.Assets))
+	for _, a := range req.Assets {
+		prefix := "tasks/" + taskID.String() + "/" + a.AssetKey + "/"
+		if !strings.HasPrefix(a.ObjectKey, prefix) {
+			return mw.ErrBadRequest("invalid object_key")
+		}
+		asset, err := h.q.UpsertTaskAsset(ctx, db.UpsertTaskAssetParams{
+			TaskID:           taskID,
+			AssetKey:         a.AssetKey,
+			OriginalFilename: a.Filename,
+			StoragePath:      a.ObjectKey,
+			FileSize:         a.SizeBytes,
+			ContentType:      &a.ContentType,
+			HashSha256:       a.SHA256,
+		})
+		if err != nil {
+			return mw.ErrInternal("upsert task asset failed")
+		}
+		resp = append(resp, dto.TaskAssetToResponse(asset))
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *EvaluationSetHandler) ListTaskAssets(c echo.Context) error {
+	taskID, err := uuid.Parse(c.Param("task_id"))
+	if err != nil {
+		return mw.ErrBadRequest("invalid task id")
+	}
+	assets, err := h.q.ListTaskAssets(c.Request().Context(), taskID)
+	if err != nil {
+		return mw.ErrInternal("list task assets failed")
+	}
+	resp := make([]dto.TaskAssetResponse, len(assets))
+	for i, a := range assets {
+		resp[i] = dto.TaskAssetToResponse(a)
 	}
 	return c.JSON(http.StatusOK, resp)
 }

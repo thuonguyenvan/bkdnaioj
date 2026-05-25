@@ -7,9 +7,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSubmissionHandler_Create_Unsupported(t *testing.T) {
@@ -71,6 +73,42 @@ func TestSubmissionHandler_ListByEntry_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestSubmissionHandler_CompleteUpload_PreservesGenericFilename(t *testing.T) {
+	subID := uuid.New()
+	var captured db.CreateSubmissionFileParams
+	mock := &db.MockQuerier{
+		GetSubmissionByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Submission, error) {
+			return db.Submission{ID: subID}, nil
+		},
+		CreateSubmissionFileFunc: func(ctx context.Context, arg db.CreateSubmissionFileParams) (db.SubmissionFile, error) {
+			captured = arg
+			return db.SubmissionFile{}, nil
+		},
+		MarkSubmissionQueuedFunc: func(ctx context.Context, arg db.MarkSubmissionQueuedParams) (db.Submission, error) {
+			return db.Submission{
+				ID:             subID,
+				FileCount:      arg.FileCount,
+				TotalSizeBytes: arg.TotalSizeBytes,
+				Status:         db.SubmissionStatusQueued,
+				RawScore:       pgtype.Numeric{},
+				DisplayScore:   pgtype.Numeric{},
+			}, nil
+		},
+	}
+	h := NewSubmissionHandler(mock, nil, nil)
+	body := `{"files":[{"filename":"adversarial_images.zip","object_key":"submissions/` + subID.String() + `/adversarial_images.zip","size_bytes":2048,"content_type":"application/zip"}]}`
+	c, rec := newTestContext("POST", "/api/v1/submissions/"+subID.String()+"/complete", body)
+	c.SetParamNames("id")
+	c.SetParamValues(subID.String())
+
+	err := h.CompleteUpload(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "adversarial_images.zip", captured.OriginalFilename)
+	assert.Equal(t, "submissions/"+subID.String()+"/adversarial_images.zip", captured.StoragePath)
+	assert.Equal(t, int64(2048), captured.FileSize)
+}
+
 func TestSubmissionHandler_MarkFinal_Success(t *testing.T) {
 	subID := uuid.New()
 	mock := &db.MockQuerier{
@@ -109,4 +147,3 @@ func TestSubmissionHandler_MarkFinal_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, http.StatusNotFound, err.(*mw.AppError).Status)
 }
-

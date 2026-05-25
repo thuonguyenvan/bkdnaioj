@@ -54,6 +54,16 @@ Thuộc tính chính:
 
 **Yêu cầu UX:** Không có bước “Initialize / Missing phase defs”. Phase defs phải luôn tồn tại (auto-seed ở backend).
 
+**Ý nghĩa nghiệp vụ của 4 phase:**
+- `public_test`: chạy trên **public test dataset**. Thí sinh nộp output artifact trực tiếp để được chấm nhanh, xem mô hình đang tốt hay chưa trên tập public, rồi dùng kết quả đó để cải thiện quá trình training.
+- `final_public`: cũng chạy trên **public test dataset**, nhưng thí sinh nộp checkpoint/code inference theo cấu trúc BTC yêu cầu. Hệ thống tự chạy inference để sinh output rồi dùng output đó để chấm. Phase này dùng để lưu lại checkpoint cuối và đảm bảo kết quả public là minh bạch, tái lập được từ artifact thí sinh nộp.
+- `private_test`: chạy trên **private test dataset**. Về cơ chế giống `public_test`: thí sinh nộp output artifact trực tiếp để chấm nhanh trên tập private nếu phase này được mở/cho phép hiển thị.
+- `final_private`: chạy trên **private test dataset**. Về cơ chế giống `final_public`: thí sinh nộp checkpoint/code inference theo cấu trúc BTC yêu cầu, hệ thống tự sinh output và chấm. Đây là phase dùng cho kết quả cuối trên tập private.
+
+**Quy tắc train/final:** Sau khi các phase public đóng, thí sinh không được tiếp tục training theo dữ liệu/feedback public nữa. Các phase `final_*` đại diện cho checkpoint/artifact đã chốt; hệ thống chạy inference từ artifact đó để sinh output và chấm, thay vì tin vào output do thí sinh tự upload.
+
+**Submission contract:** Hệ thống không hardcode định dạng bài nộp là CSV, image, ZIP hay bất kỳ loại file cụ thể nào. BTC định nghĩa cấu trúc artifact cần nộp trong đề bài/task schema để `judge.py` hoặc pipeline inference có thể chạy được. Thí sinh có trách nhiệm nộp đúng cấu trúc đó. Ví dụ output có thể là CSV, JSONL, thư mục ảnh, file mask, audio, ZIP nhiều file, hoặc artifact đặc thù cho bài adversarial attack.
+
 ### 2.3 Task
 - Thuộc contest.
 - Có `title`, `slug`, `description`, `problem_statement_url`.
@@ -66,8 +76,9 @@ Thuộc tính chính:
 
 ### 2.5 Evaluation set assets
 - Asset bắt buộc để contest có thể judge được:
-  - `judge.py`
-  - `ground_truth.csv`
+  - judge entrypoint do BTC cung cấp, ví dụ `judge.py`
+  - evaluation data/assets theo yêu cầu của task, ví dụ ground truth, ảnh, mask, metadata, archive, public/private input set...
+- Không mặc định ground truth hay input bắt buộc phải là CSV. `judge.py`/judge entrypoint chịu trách nhiệm đọc và validate đúng cấu trúc assets của BTC.
 
 ### 2.6 Phase (per Task)
 - Mỗi task có đúng 4 phases (records thật), mỗi phase:
@@ -82,6 +93,10 @@ Thuộc tính chính:
 - `private_test` → eval set `private`, `is_final=false`
 - `final_public` → eval set `public`, `is_final=true`
 - `final_private` → eval set `private`, `is_final=true`
+
+**Quy ước artifact:**
+- `is_final=false` (`public_test`, `private_test`): submission là output artifact đã sinh sẵn theo contract của task, ưu tiên chấm nhanh để phản hồi cho thí sinh.
+- `is_final=true` (`final_public`, `final_private`): submission là checkpoint/code inference theo contract của task; worker phải chạy inference để sinh output artifact, rồi mới chạy judge trên output đó.
 
 ### 2.7 Entry
 - Đại diện cho “đơn vị tham gia” của user/team trong contest.
@@ -101,8 +116,9 @@ Thuộc tính chính:
 - Chạy judge, ghi kết quả vào DB, cập nhật leaderboard.
 
 **Artifact requirements theo phase:**
-- Non-final: `predictions.csv`
-- Final: `.zip` chứa `infer.py` + `model.txt` (script tạo predictions), sau đó judge chấm.
+- Non-final (`public_test`, `private_test`): output artifact theo submission contract của task. Không mặc định bắt buộc là `predictions.csv`.
+- Final (`final_public`, `final_private`): checkpoint/code inference theo submission contract của task. Worker chạy inference để tạo output artifact, sau đó `judge.py` chấm output đó.
+- `judge.py` do BTC cung cấp phải là nguồn quyết định cách đọc, validate và chấm artifact. Platform chỉ cần lưu artifact, truyền đúng đường dẫn/metadata vào worker, ghi nhận kết quả trả về.
 
 ### 2.10 Standings/Leaderboards
 - Contest-phase leaderboard (theo phase def):
@@ -227,14 +243,15 @@ Thuộc tính chính:
 ### 6.3 Publish gating (must)
 Chỉ cho publish khi:
 - Mỗi task có đủ 2 eval sets.
-- Mỗi eval set có đủ assets bắt buộc:
-  - `judge.py`
-  - `ground_truth.csv`
+- Mỗi eval set có đủ assets bắt buộc theo evaluation contract của task:
+  - judge entrypoint, ví dụ `judge.py`
+  - evaluation data/assets mà judge cần để chạy
+- Evaluation contract không hardcode `ground_truth.csv`; đó chỉ là một ví dụ cho bài toán tabular/classic prediction.
 
 UI cần:
 - Một bảng checklist theo task:
-  - Public eval set: judge ✓/✗, ground_truth ✓/✗
-  - Private eval set: judge ✓/✗, ground_truth ✓/✗
+  - Public eval set: judge entrypoint ✓/✗, required assets ✓/✗
+  - Private eval set: judge entrypoint ✓/✗, required assets ✓/✗
 - Action “Upload” ngay tại chỗ thiếu.
 
 ---
@@ -350,8 +367,8 @@ Mục tiêu: “vào là hiểu làm gì” + CTA rõ.
 - Phase locked by URL.
 - Entry selector + create entry CTA.
 - File picker:
-  - Non-final: show requirement `predictions.csv`
-  - Final: show requirement zip (`infer.py` + `model.txt`)
+  - Non-final: show submission contract của task/phase, ví dụ file CSV, JSONL, thư mục ảnh, ZIP nhiều file, mask/image artifact...
+  - Final: show inference/checkpoint contract của task/phase, ví dụ script inference + checkpoint/model/assets theo yêu cầu BTC.
 - Submit action chạy presigned flow:
   - initiate → PUT → complete
 - UI phải hiển thị:
@@ -384,8 +401,8 @@ Nội dung:
 
 2) Evaluation assets section (per task, per eval set)
 - Checklist bắt buộc:
-  - judge.py
-  - ground_truth.csv
+  - judge entrypoint, ví dụ `judge.py`
+  - required evaluation assets theo contract của task
 - Action upload (presigned) ngay tại dòng thiếu.
 
 3) Publish gating summary

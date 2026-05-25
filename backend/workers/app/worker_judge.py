@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import tempfile
+import zipfile
 
 import structlog
 
@@ -32,11 +35,12 @@ class JudgeWorker:
                 sub = self._db.get_submission(conn, sub_id)
                 submission_files = self._db.list_submission_files(conn, sub_id)
                 phase_assets = self._db.list_evaluation_set_assets(conn, sub.evaluation_set_id)
+                task_assets = self._db.list_task_assets(conn, sub.task_id)
                 self._db.mark_running(conn, sub_id)
 
         try:
             with tempfile.TemporaryDirectory(prefix=f"olpai-sub-{sub_id}-") as td:
-                result = self._run_with_artifacts(td, sub.is_final, submission_files, phase_assets)
+                result = self._run_with_artifacts(td, sub, submission_files, phase_assets, task_assets)
             payload_json = self._runner.payload_json(result.get("payload"))
             with self._db.connect() as conn:
                 with conn.transaction():
@@ -52,39 +56,129 @@ class JudgeWorker:
             self.mark_failed(env, str(e))
             raise
 
-    def _run_with_artifacts(self, work_dir: str, is_final: bool, submission_files: list, phase_assets: list) -> dict:
-        sub_paths = {}
+    def _run_with_artifacts(self, work_dir: str, sub, submission_files: list, phase_assets: list, task_assets: list) -> dict:
+        submission_dir = os.path.join(work_dir, "submission")
+        assets_dir = os.path.join(work_dir, "assets")
+        output_dir = os.path.join(work_dir, "output")
+        generated_dir = os.path.join(work_dir, "generated")
+        os.makedirs(submission_dir, exist_ok=True)
+        os.makedirs(assets_dir, exist_ok=True)
+
+        submission_paths = []
         asset_paths = {}
 
         for f in submission_files:
-            dest = os.path.join(work_dir, "submission", f.original_filename)
-            sub_paths[f.original_filename] = self._store.download(f.storage_path, dest)
+            dest = self._safe_dest(submission_dir, f.original_filename)
+            submission_paths.append(self._store.download(f.storage_path, dest))
 
-        for a in phase_assets:
-            dest = os.path.join(work_dir, "phase", a.original_filename)
+        for a in phase_assets + task_assets:
+            dest = self._safe_dest(assets_dir, a.original_filename)
             downloaded = self._store.download(a.storage_path, dest)
+            key_dest = self._safe_dest(assets_dir, a.asset_key)
+            if os.path.abspath(key_dest) != os.path.abspath(downloaded):
+                shutil.copyfile(downloaded, key_dest)
             asset_paths[a.asset_key] = downloaded
             asset_paths[a.original_filename] = downloaded
 
-        judge = asset_paths.get("judge.py") or asset_paths.get("judge_script")
-        gt = asset_paths.get("ground_truth.csv") or asset_paths.get("public_ground_truth.csv")
-        inputs_dir = os.path.dirname(gt) if gt else None
+        schema = self._load_schema(sub.submission_schema)
+        context_path = os.path.join(work_dir, "context.json")
+        with open(context_path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "submission_id": sub.id,
+                    "contest_id": sub.contest_id,
+                    "contest_entry_id": sub.contest_entry_id,
+                    "task_id": sub.task_id,
+                    "phase_id": sub.phase_id,
+                    "contest_phase_def_id": sub.contest_phase_def_id,
+                    "evaluation_set_id": sub.evaluation_set_id,
+                    "is_final": sub.is_final,
+                    "judge_key": sub.judge_key,
+                    "submission_schema": schema,
+                },
+                fh,
+            )
 
-        if not judge:
-            raise RuntimeError("missing phase asset: judge.py")
-        if not gt:
-            raise RuntimeError("missing phase asset: ground_truth.csv")
+        judge = self._resolve_judge(sub.judge_key, asset_paths, assets_dir)
+        if sub.is_final:
+            self._extract_final_archives(submission_paths, submission_dir)
+            inference = self._resolve_inference_entrypoint(schema, submission_dir)
+            return self._runner.run_final(
+                inference_entrypoint=inference,
+                judge=judge,
+                submission_dir=submission_dir,
+                assets_dir=assets_dir,
+                generated_dir=generated_dir,
+                output_dir=output_dir,
+                context_path=context_path,
+            )
 
-        if is_final:
-            submission_zip = next((p for name, p in sub_paths.items() if name.endswith(".zip")), None)
-            if not submission_zip:
-                raise RuntimeError("missing final submission zip")
-            return self._runner.run_final(judge=judge, submission_zip=submission_zip, inputs_dir=inputs_dir, gt=gt)
+        return self._runner.run_non_final(
+            judge=judge,
+            submission_dir=submission_dir,
+            assets_dir=assets_dir,
+            output_dir=output_dir,
+            context_path=context_path,
+        )
 
-        pred = sub_paths.get("predictions.csv")
-        if not pred:
-            raise RuntimeError("missing public predictions.csv")
-        return self._runner.run_public(judge=judge, pred=pred, gt=gt)
+    def _resolve_judge(self, judge_key: str, asset_paths: dict, assets_dir: str) -> str:
+        candidates = [
+            judge_key,
+            "judge.py",
+            "judge_script",
+        ]
+        for key in candidates:
+            if key and key in asset_paths:
+                return asset_paths[key]
+            if key:
+                path = os.path.join(assets_dir, key)
+                if os.path.isfile(path):
+                    return path
+        raise RuntimeError(f"missing judge entrypoint {judge_key or 'judge.py'}")
+
+    def _resolve_inference_entrypoint(self, schema: dict, submission_dir: str) -> str:
+        final_schema = schema.get("final") if isinstance(schema, dict) else {}
+        configured = None
+        if isinstance(final_schema, dict):
+            configured = final_schema.get("inference_entrypoint")
+        candidates = [configured, "infer.py"]
+        for name in candidates:
+            if not name:
+                continue
+            path = os.path.join(submission_dir, name)
+            if os.path.isfile(path):
+                return path
+        raise RuntimeError(f"inference entrypoint not found ({configured or 'infer.py'})")
+
+    def _extract_final_archives(self, paths: list[str], submission_dir: str) -> None:
+        for path in paths:
+            if not zipfile.is_zipfile(path):
+                continue
+            with zipfile.ZipFile(path) as zf:
+                for info in zf.infolist():
+                    dest = os.path.abspath(os.path.join(submission_dir, info.filename))
+                    root = os.path.abspath(submission_dir)
+                    if dest != root and not dest.startswith(root + os.sep):
+                        raise RuntimeError("unsafe zip entry in final submission")
+                zf.extractall(submission_dir)
+
+    def _load_schema(self, raw: str) -> dict:
+        try:
+            loaded = json.loads(raw or "{}")
+            return loaded if isinstance(loaded, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def _safe_dest(self, root: str, name: str) -> str:
+        cleaned = os.path.normpath(name).lstrip(os.sep)
+        if cleaned.startswith(".."):
+            cleaned = os.path.basename(cleaned)
+        dest = os.path.abspath(os.path.join(root, cleaned))
+        abs_root = os.path.abspath(root)
+        if dest != abs_root and not dest.startswith(abs_root + os.sep):
+            raise RuntimeError(f"unsafe artifact path: {name}")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        return dest
 
     def mark_failed(self, env: dict, error_message: str) -> None:
         sub_id = env.get("submission_id")

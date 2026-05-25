@@ -25,6 +25,13 @@ const formatParticipantName = (row: { display_name: string; entry_type: string; 
   return row.display_name;
 };
 
+const artifactContentType = (file: File) => file.type || 'application/octet-stream';
+
+const contractForPhase = (task: Task | undefined, isFinal: boolean) => {
+  const schema = task?.submission_schema || {};
+  return isFinal ? schema.final : schema.non_final;
+};
+
 export const PhaseHubPage: React.FC = () => {
   const { contestId, phaseKey } = useParams<{ contestId: string, phaseKey: string }>();
   const { user, isAdmin, isJury } = useAuth();
@@ -261,7 +268,8 @@ export const PhaseHubPage: React.FC = () => {
       if (!userEntry) throw new Error('No active entry');
       setUploadProgress('initiating');
 
-      const uploadFilename = activePhase?.is_final ? file.name : 'predictions.csv';
+      const uploadFilename = file.name;
+      const contentType = artifactContentType(file);
 
       // 1. Initiate
       const initRes = await api.initiateSubmission(userEntry.id, {
@@ -269,7 +277,7 @@ export const PhaseHubPage: React.FC = () => {
         phase_id: phaseId,
         files: [{
           filename: uploadFilename,
-          content_type: file.type || 'text/csv',
+          content_type: contentType,
           size_bytes: file.size,
         }]
       });
@@ -280,7 +288,7 @@ export const PhaseHubPage: React.FC = () => {
       // 2. Upload to S3
       await axios.put(uploadInfo.put_url, file, {
         headers: {
-          'Content-Type': file.type || 'text/csv',
+          'Content-Type': contentType,
         }
       });
 
@@ -292,7 +300,7 @@ export const PhaseHubPage: React.FC = () => {
           filename: uploadFilename,
           object_key: uploadInfo.object_key,
           size_bytes: file.size,
-          content_type: file.type || 'text/csv',
+          content_type: contentType,
         }]
       });
 
@@ -546,7 +554,7 @@ export const PhaseHubPage: React.FC = () => {
             <hr style={{ margin: '1rem 0', borderColor: 'hsl(var(--border))' }} />
             <h3>System Policies</h3>
             <ul>
-              <li>Submissions must be format-compliant CSV predictions or scripts, according to task descriptions.</li>
+              <li>Submissions must match the artifact contract defined by each task.</li>
               <li>Each submission is automatically run against the evaluation containers.</li>
               <li>Standings show ranks based on your selected <strong>Final</strong> submission. You can mark any successful run as your final candidate.</li>
               <li>WebSockets/polling updates status in real-time.</li>
@@ -701,8 +709,23 @@ export const PhaseHubPage: React.FC = () => {
                   return (
                     <div>
                       <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
-                        {activePhase.is_final ? 'Submit Inference Bundle' : 'Submit Predictions'}
+                        {activePhase.is_final ? 'Submit Final Artifact' : 'Submit Output Artifact'}
                       </h3>
+                      {(() => {
+                        const contract = contractForPhase(selectedTask, activePhase.is_final);
+                        const examples = contract?.examples || [];
+                        return (
+                          <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+                            <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Submission contract</div>
+                            <div>{contract?.description || (activePhase.is_final ? 'Upload checkpoint/code inference artifact required by the task.' : 'Upload output artifact required by the task.')}</div>
+                            {examples.length > 0 && (
+                              <div style={{ marginTop: '0.4rem', fontSize: '0.85rem' }}>
+                                Examples: <span className="font-mono">{examples.join(', ')}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {uploadError && (
                         <div className="alert alert-danger flex items-center gap-2">
                           <AlertCircle size={18} />
@@ -713,16 +736,15 @@ export const PhaseHubPage: React.FC = () => {
                       <div className="dropzone" onClick={() => fileInputRef.current?.click()}>
                         <UploadCloud size={36} className="text-muted" style={{ margin: '0 auto 1rem auto', display: 'block' }} />
                         <p style={{ fontWeight: 600 }}>
-                          {activePhase.is_final ? 'Click to select your code/model ZIP archive' : 'Click to select your prediction file'}
+                          Click to select your submission artifact
                         </p>
                         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          {activePhase.is_final ? 'ZIP archive up to 100MB' : 'CSV or TSV files up to 50MB'}
+                          Any file type accepted when it matches the task contract
                         </p>
                         <input
                           type="file"
                           ref={fileInputRef}
                           style={{ display: 'none' }}
-                          accept={activePhase.is_final ? '.zip' : '.csv,.tsv'}
                           onChange={handleFileChange}
                         />
                       </div>

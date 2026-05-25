@@ -68,6 +68,7 @@ type MockQuerier struct {
 	ListPhasesByTaskFunc                  func(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
 	ListSubmissionFilesBySubmissionFunc   func(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntryFunc            func(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
+	ListTaskAssetsFunc                    func(ctx context.Context, taskID uuid.UUID) ([]TaskAsset, error)
 	ListTasksByContestFunc                func(ctx context.Context, contestID uuid.UUID) ([]Task, error)
 	ListTeamMembersFunc                   func(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error)
 	ListTeamsByUserFunc                   func(ctx context.Context, userID uuid.UUID) ([]Team, error)
@@ -95,6 +96,7 @@ type MockQuerier struct {
 	UpdateUserRoleFunc                    func(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
 	UpsertContestPhaseLeaderboardFunc     func(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
 	UpsertEvaluationSetAssetFunc          func(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
+	UpsertTaskAssetFunc                   func(ctx context.Context, arg UpsertTaskAssetParams) (TaskAsset, error)
 	UpsertTaskPhaseLeaderboardFunc        func(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
 	RecomputeTaskPhaseLeaderboardFunc     func(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
 	RecomputeContestPhaseLeaderboardFunc  func(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
@@ -508,6 +510,13 @@ func (m *MockQuerier) ListSubmissionsByEntry(ctx context.Context, arg ListSubmis
 	return nil, nil
 }
 
+func (m *MockQuerier) ListTaskAssets(ctx context.Context, taskID uuid.UUID) ([]TaskAsset, error) {
+	if m.ListTaskAssetsFunc != nil {
+		return m.ListTaskAssetsFunc(ctx, taskID)
+	}
+	return nil, nil
+}
+
 func (m *MockQuerier) ListTasksByContest(ctx context.Context, contestID uuid.UUID) ([]Task, error) {
 	if m.ListTasksByContestFunc != nil {
 		return m.ListTasksByContestFunc(ctx, contestID)
@@ -695,6 +704,13 @@ func (m *MockQuerier) UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEv
 		return m.UpsertEvaluationSetAssetFunc(ctx, arg)
 	}
 	return EvaluationSetAsset{}, nil
+}
+
+func (m *MockQuerier) UpsertTaskAsset(ctx context.Context, arg UpsertTaskAssetParams) (TaskAsset, error) {
+	if m.UpsertTaskAssetFunc != nil {
+		return m.UpsertTaskAssetFunc(ctx, arg)
+	}
+	return TaskAsset{}, nil
 }
 
 func (m *MockQuerier) UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error) {

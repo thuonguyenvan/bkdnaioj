@@ -1,0 +1,17 @@
+{
+  "dataset": "private",
+  "cases": [
+    {
+      "id": "img_101",
+      "expected_marker": "attack-private-101"
+    },
+    {
+      "id": "img_102",
+      "expected_marker": "attack-private-102"
+    },
+    {
+      "id": "img_103",
+      "expected_marker": "attack-private-103"
+    }
+  ]
+}

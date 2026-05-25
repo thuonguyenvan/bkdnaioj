@@ -75,6 +75,7 @@ type Querier interface {
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
 	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
+	ListTaskAssets(ctx context.Context, taskID uuid.UUID) ([]TaskAsset, error)
 	ListTasksByContest(ctx context.Context, contestID uuid.UUID) ([]Task, error)
 	ListTeamMembers(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error)
 	ListTeamsByUser(ctx context.Context, userID uuid.UUID) ([]Team, error)
@@ -104,6 +105,7 @@ type Querier interface {
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
 	UpsertContestPhaseLeaderboard(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
 	UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
+	UpsertTaskAsset(ctx context.Context, arg UpsertTaskAssetParams) (TaskAsset, error)
 	UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
 }
 

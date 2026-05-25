@@ -1,0 +1,5 @@
+{
+  "mode": "demo_attack",
+  "note": "infer.py reads reference.json and writes generated adversarial image artifacts."
+}
+

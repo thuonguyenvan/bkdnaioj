@@ -122,17 +122,21 @@ func registerTasks(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) 
 	api.GET("/tasks/:id", h.Get)
 	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	admin.POST("/contests/:id/tasks", h.Create)
+	admin.PATCH("/tasks/:id", h.Update)
 	admin.DELETE("/tasks/:id", h.Delete)
 }
 
 func registerEvaluationSets(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, s3 *storage.S3) {
 	h := handlers.NewEvaluationSetHandler(q, s3)
 	api.GET("/tasks/:task_id/evaluation-sets", h.ListByTask)
+	api.GET("/tasks/:task_id/assets", h.ListTaskAssets)
 	api.GET("/evaluation-sets/:id", h.Get)
 	api.GET("/evaluation-sets/:id/assets", h.ListAssets)
 	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	admin.POST("/tasks/:task_id/evaluation-sets", h.Create)
 	jury := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin", "jury"))
+	jury.POST("/tasks/:task_id/assets:initiate", h.InitiateTaskAssets)
+	jury.POST("/tasks/:task_id/assets/complete", h.CompleteTaskAssets)
 	jury.POST("/evaluation-sets/:id/assets:initiate", h.InitiateAssets)
 	jury.POST("/evaluation-sets/:id/assets/complete", h.CompleteAssets)
 }

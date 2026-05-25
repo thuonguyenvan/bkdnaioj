@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,9 +16,32 @@ import (
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
 )
 
+type submissionSchemaTaskAssets struct {
+	TaskAssets struct {
+		RequiredAssets []string `json:"required_assets"`
+	} `json:"task_assets"`
+}
+
 type TaskHandler struct {
 	q   db.Querier
 	val *validator.Validate
+}
+
+func (h *TaskHandler) populateTaskAssets(ctx context.Context, resp *dto.TaskResponse) {
+	assets, err := h.q.ListTaskAssets(ctx, resp.ID)
+	if err != nil {
+		return
+	}
+	var schema submissionSchemaTaskAssets
+	if err := json.Unmarshal(resp.SubmissionSchema, &schema); err == nil && len(schema.TaskAssets.RequiredAssets) > 0 {
+		resp.RequiredAssets = schema.TaskAssets.RequiredAssets
+	}
+	resp.Assets = make([]dto.TaskAssetResponse, 0, len(assets))
+	resp.AssetKeys = make([]string, 0, len(assets))
+	for _, a := range assets {
+		resp.Assets = append(resp.Assets, dto.TaskAssetToResponse(a))
+		resp.AssetKeys = append(resp.AssetKeys, a.AssetKey)
+	}
 }
 
 func NewTaskHandler(q db.Querier) *TaskHandler {
@@ -37,7 +61,7 @@ func (h *TaskHandler) Create(c echo.Context) error {
 	if err := h.val.Struct(req); err != nil {
 		return mw.ErrBadRequest(err.Error())
 	}
-	schema := json.RawMessage("{}")
+	schema := dto.DefaultSubmissionSchema
 	if req.SubmissionSchema != nil {
 		schema = *req.SubmissionSchema
 	}
@@ -59,7 +83,24 @@ func (h *TaskHandler) Create(c echo.Context) error {
 		}
 		return mw.ErrInternal("create task failed")
 	}
-	return c.JSON(http.StatusCreated, dto.TaskToResponse(task))
+	for _, set := range []struct {
+		key   db.EvaluationSetKey
+		title string
+	}{
+		{key: db.EvaluationSetKeyPublic, title: "Public Evaluation Set"},
+		{key: db.EvaluationSetKeyPrivate, title: "Private Evaluation Set"},
+	} {
+		if _, err := h.q.CreateEvaluationSet(c.Request().Context(), db.CreateEvaluationSetParams{
+			TaskID: task.ID,
+			Key:    set.key,
+			Title:  set.title,
+		}); err != nil {
+			return mw.ErrInternal("create evaluation sets failed")
+		}
+	}
+	resp := dto.TaskToResponse(task)
+	h.populateTaskAssets(c.Request().Context(), &resp)
+	return c.JSON(http.StatusCreated, resp)
 }
 
 // GET /api/v1/contests/:id/tasks
@@ -75,6 +116,7 @@ func (h *TaskHandler) ListByContest(c echo.Context) error {
 	resp := make([]dto.TaskResponse, len(tasks))
 	for i, t := range tasks {
 		resp[i] = dto.TaskToResponse(t)
+		h.populateTaskAssets(c.Request().Context(), &resp[i])
 	}
 	return c.JSON(http.StatusOK, resp)
 }
@@ -92,7 +134,48 @@ func (h *TaskHandler) Get(c echo.Context) error {
 		}
 		return mw.ErrInternal("fetch task failed")
 	}
-	return c.JSON(http.StatusOK, dto.TaskToResponse(task))
+	resp := dto.TaskToResponse(task)
+	h.populateTaskAssets(c.Request().Context(), &resp)
+	return c.JSON(http.StatusOK, resp)
+}
+
+// PATCH /api/v1/tasks/:id
+func (h *TaskHandler) Update(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return mw.ErrBadRequest("invalid task id")
+	}
+	var req dto.UpdateTaskRequest
+	if err := c.Bind(&req); err != nil {
+		return mw.ErrBadRequest("invalid request body")
+	}
+	if err := h.val.Struct(req); err != nil {
+		return mw.ErrBadRequest(err.Error())
+	}
+	var schema *string
+	if req.SubmissionSchema != nil {
+		s := string(*req.SubmissionSchema)
+		schema = &s
+	}
+	task, err := h.q.UpdateTask(c.Request().Context(), db.UpdateTaskParams{
+		ID:                  id,
+		Title:               req.Title,
+		Description:         req.Description,
+		ProblemStatementUrl: req.ProblemStatementURL,
+		SubmissionSchema:    schema,
+		ScoreLabel:          req.ScoreLabel,
+		HigherIsBetter:      req.HigherIsBetter,
+		SortOrder:           req.SortOrder,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("task not found")
+		}
+		return mw.ErrInternal("update task failed")
+	}
+	resp := dto.TaskToResponse(task)
+	h.populateTaskAssets(c.Request().Context(), &resp)
+	return c.JSON(http.StatusOK, resp)
 }
 
 // DELETE /api/v1/tasks/:id

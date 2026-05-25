@@ -101,12 +101,16 @@ This makes the model much cleaner for:
 
 Each contest can contain multiple tasks, and each task can contain multiple phases. This supports workflows such as:
 
-- public test,
-- private test,
-- final public,
-- final private.
+- `public_test`: quick scoring on the public test dataset from contestant-provided outputs,
+- `private_test`: quick scoring on the private test dataset from contestant-provided outputs,
+- `final_public`: reproducible scoring on the public test dataset by running the submitted inference artifact,
+- `final_private`: reproducible scoring on the private test dataset by running the submitted inference artifact.
 
 Each phase can have its own judging logic, submission limit, leaderboard visibility, and availability for official/virtual/practice modes.
+
+The public/private distinction identifies which evaluation dataset is used. The final/non-final distinction identifies how the output is produced. Non-final phases are optimized for fast feedback during model development: contestants upload task-specific output artifacts directly. Final phases are optimized for transparency and reproducibility: contestants upload checkpoint/inference artifacts, and the platform runs inference to produce task-specific output artifacts before judging them. After the public phases close, contestants are expected to stop training from public feedback; the final phases represent the locked artifacts used for reproducible scoring.
+
+The platform must not hardcode a universal submission format such as CSV. Each task defines its own submission contract, and the organizer-provided judge/inference pipeline is responsible for validating and processing that contract. Depending on the AI task, artifacts may be CSV, JSONL, images, masks, audio files, folders, ZIP archives, adversarial attack outputs, or another structure required by the problem.
 
 ### 3.3. One Final Score Per Submission in V1
 
@@ -284,6 +288,23 @@ This table is the source of truth for logical phase identities used consistently
 
 For V1, each contest is expected to define exactly these four logical phase definitions. This completeness rule is best enforced in application or service-layer logic when creating or publishing the contest.
 
+**Meaning of the four logical phases:**
+
+| Phase key | Dataset | Submission artifact | Purpose |
+|---|---|---|---|
+| `public_test` | Public test dataset | Precomputed output artifact defined by the task contract | Fast feedback so contestants can evaluate and improve model training against public feedback. |
+| `final_public` | Public test dataset | Checkpoint/inference artifact | The platform runs inference to regenerate output and score it, making the public result reproducible and transparent from the locked artifact. |
+| `private_test` | Private test dataset | Precomputed output artifact defined by the task contract | Fast scoring on the private dataset when the contest rules allow this phase to open or display feedback. |
+| `final_private` | Private test dataset | Checkpoint/inference artifact | The platform runs inference and scores the regenerated output on the private dataset. This phase is intended for final private evaluation. |
+
+The dataset axis and artifact axis are intentionally separate:
+
+- `public_test` and `final_public` use the same public evaluation set.
+- `private_test` and `final_private` use the same private evaluation set.
+- `public_test` and `private_test` are non-final phases where contestants provide output directly.
+- `final_public` and `final_private` are final phases where the platform derives output by running inference.
+- The concrete file layout is task-specific and should be described in `tasks.submission_schema`, task statements, and/or evaluation-set metadata. The judge must consume that declared layout rather than assuming a fixed filename.
+
 ### 5.7. Table 7: phases
 
 **Purpose:** stores real task-specific phases. Each phase belongs to one task and maps to one logical contest phase definition.
@@ -319,6 +340,17 @@ For V1, each contest is expected to define exactly these four logical phase defi
 
 **V1 rule:**
 Each task is expected to instantiate exactly one phase for each contest-wide phase definition. In other words, if a contest defines `public_test`, `private_test`, `final_public`, and `final_private`, then every task should have exactly four corresponding rows in `phases`. The uniqueness constraint above prevents duplicates, while the completeness rule is best enforced in application or service-layer logic.
+
+**V1 phase mapping rule:**
+
+- `public_test` maps to the task's public evaluation set and uses `is_final = false`.
+- `final_public` maps to the task's public evaluation set and uses `is_final = true`.
+- `private_test` maps to the task's private evaluation set and uses `is_final = false`.
+- `final_private` maps to the task's private evaluation set and uses `is_final = true`.
+
+For `is_final = false`, the submission should contain a precomputed output artifact accepted by the task schema. For `is_final = true`, the submission should contain the locked checkpoint/inference artifact; the worker runs inference to generate the task-specific output artifact and then judges that generated output.
+
+The same flexibility applies to both normal and final phases. The organizer defines what files must be submitted and how they are interpreted. The contestant submits artifacts matching that contract. The platform stores those artifacts and passes them to the judge pipeline without imposing a global format.
 
 **Interpretation of judge_key:**
 This is not a metric. It is the identifier of the judging script for that task-specific phase. For example:
@@ -465,6 +497,7 @@ For V1, one submission stores one final score. This is intentional and sufficien
 
 - In V1, this table is intentionally minimal and can be used simply for the main uploaded artifact.
 - It does not need to store every extracted file inside a ZIP archive.
+- Submission files are intentionally generic. They may represent predictions, images, archives, checkpoints, scripts, generated outputs, or any other files required by the task submission contract.
 
 ### 5.12. Table 12: evaluation_jobs
 
@@ -744,9 +777,11 @@ The following indexes are recommended for performance:
 1. A contestant uploads a submission, creating a row in `submissions`.
 2. Uploaded artifacts are recorded in `submission_files`.
 3. Validation and judging jobs are added to `evaluation_jobs`.
-4. After judging, score fields in `submissions` are updated.
-5. Task-level leaderboard rows in `task_phase_leaderboard_entries` are recomputed or updated.
-6. Contest-level leaderboard rows in `contest_phase_leaderboard_entries` are recomputed or updated.
+4. For non-final phases (`public_test`, `private_test`), the worker judges the uploaded output artifact directly according to the task submission contract.
+5. For final phases (`final_public`, `final_private`), the worker runs the uploaded checkpoint/inference artifact to generate output according to the task submission contract, then judges that generated output.
+6. After judging, score fields in `submissions` are updated.
+7. Task-level leaderboard rows in `task_phase_leaderboard_entries` are recomputed or updated.
+8. Contest-level leaderboard rows in `contest_phase_leaderboard_entries` are recomputed or updated.
 
 ### 9.3. Communication During Contest
 
