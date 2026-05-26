@@ -1,24 +1,51 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Contest, type Announcement } from '../lib/api-client';
-import { Volume2, Megaphone, Clock, Award, ShieldAlert } from 'lucide-react';
+import { useAuth } from '../contexts/auth-context';
+import { Volume2, Megaphone, Clock, Award, ShieldAlert, Trash2 } from 'lucide-react';
 
 interface RichAnnouncement extends Announcement {
   contestTitle: string;
+  isSystem: boolean;
 }
 
 export const NewsfeedPage: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { isAdmin, isJury } = useAuth();
+  const isStaff = isAdmin || isJury;
+
+  // Creation form states
+  const [annTitle, setAnnTitle] = useState('');
+  const [annContent, setAnnContent] = useState('');
+  const [annIsPinned, setAnnIsPinned] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
+
   // Query all contests
   const { data: contests = [], isLoading: loadingContests, error: contestsError } = useQuery<Contest[]>({
     queryKey: ['contests'],
     queryFn: api.getContests,
   });
 
-  // Query announcements from all contests in parallel
+  // Query announcements from all contests + system announcements
   const { data: announcements = [], isLoading: loadingAnnouncements } = useQuery<RichAnnouncement[]>({
     queryKey: ['global-announcements', contests.map(c => c.id).join(',')],
     queryFn: async () => {
-      if (contests.length === 0) return [];
+      // 1. Fetch system-wide announcements
+      let systemList: Announcement[] = [];
+      try {
+        systemList = await api.getSystemAnnouncements();
+      } catch (e) {
+        console.error("Failed to load system announcements", e);
+      }
+      const richSystemList = systemList.map(item => ({
+        ...item,
+        contestTitle: 'Hệ thống',
+        isSystem: true
+      }));
+
+      // 2. Fetch contest announcements
+      if (contests.length === 0) return richSystemList;
       const results = await Promise.all(
         contests.map(async (contest) => {
           try {
@@ -26,6 +53,7 @@ export const NewsfeedPage: React.FC = () => {
             return list.map(item => ({
               ...item,
               contestTitle: contest.title,
+              isSystem: false
             }));
           } catch (e) {
             console.error(`Failed to load announcements for contest ${contest.id}`, e);
@@ -33,16 +61,67 @@ export const NewsfeedPage: React.FC = () => {
           }
         })
       );
-      return results.flat().sort((a, b) => {
+
+      const allList = [...richSystemList, ...results.flat()];
+      
+      // Sort: pinned first, then by created_at DESC
+      return allList.sort((a, b) => {
         if (a.is_pinned && !b.is_pinned) return -1;
         if (!a.is_pinned && b.is_pinned) return 1;
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
     },
-    enabled: contests.length > 0,
   });
 
-  const isLoading = loadingContests || (contests.length > 0 && loadingAnnouncements);
+  // Mutation to create system announcement
+  const createMutation = useMutation({
+    mutationFn: api.createSystemAnnouncement,
+    onSuccess: () => {
+      setAnnTitle('');
+      setAnnContent('');
+      setAnnIsPinned(false);
+      setFormSuccess('Đăng thông báo hệ thống thành công!');
+      queryClient.invalidateQueries({ queryKey: ['global-announcements'] });
+      setTimeout(() => setFormSuccess(null), 3000);
+    },
+    onError: (err: any) => {
+      setFormError(err?.response?.data?.message || 'Có lỗi xảy ra khi đăng thông báo.');
+    }
+  });
+
+  // Mutation to delete announcement
+  const deleteMutation = useMutation({
+    mutationFn: api.deleteAnnouncement,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['global-announcements'] });
+    },
+    onError: (err: any) => {
+      alert(err?.response?.data?.message || 'Có lỗi xảy ra khi xóa thông báo.');
+    }
+  });
+
+  const handleCreateAnnouncement = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setFormSuccess(null);
+    if (!annTitle.trim() || !annContent.trim()) {
+      setFormError('Tiêu đề và nội dung là bắt buộc.');
+      return;
+    }
+    createMutation.mutate({
+      title: annTitle,
+      content: annContent,
+      is_pinned: annIsPinned
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Bạn có chắc chắn muốn xóa thông báo này?')) {
+      deleteMutation.mutate(id);
+    }
+  };
+
+  const isLoading = loadingContests || loadingAnnouncements;
 
   const formatDateTime = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -76,7 +155,7 @@ export const NewsfeedPage: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.2fr', gap: '2rem' }}>
         
         {/* Main Feed Column */}
         <div>
@@ -110,7 +189,7 @@ export const NewsfeedPage: React.FC = () => {
                   key={ann.id} 
                   className="panel"
                   style={{
-                    borderLeft: ann.is_pinned ? '4px solid #2563eb' : '1px solid #e2e8f0',
+                    borderLeft: ann.is_pinned ? '4px solid #2563eb' : (ann.isSystem ? '4px solid #dc2626' : '1px solid #e2e8f0'),
                     transition: 'all 0.2s ease',
                     boxShadow: ann.is_pinned ? '0 4px 12px rgba(37, 99, 235, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
                   }}
@@ -121,8 +200,9 @@ export const NewsfeedPage: React.FC = () => {
                         <span 
                           style={{ 
                             fontSize: '0.75rem', 
-                            backgroundColor: '#eff6ff', 
-                            color: '#2563eb', 
+                            backgroundColor: ann.isSystem ? '#fef2f2' : '#eff6ff', 
+                            color: ann.isSystem ? '#dc2626' : '#2563eb', 
+                            border: ann.isSystem ? '1px solid #fca5a5' : 'none',
                             padding: '0.2rem 0.6rem', 
                             borderRadius: '4px',
                             fontWeight: 600
@@ -151,6 +231,26 @@ export const NewsfeedPage: React.FC = () => {
                     <div className="flex items-center gap-1.5 text-muted font-mono" style={{ fontSize: '0.8rem' }}>
                       <Clock size={14} style={{ color: '#94a3b8' }} />
                       {formatDateTime(ann.created_at)}
+                      {isStaff && (
+                        <button
+                          onClick={() => handleDelete(ann.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#94a3b8',
+                            padding: '0.2rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            marginLeft: '0.5rem'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+                          title="Xóa thông báo"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -171,8 +271,60 @@ export const NewsfeedPage: React.FC = () => {
           )}
         </div>
 
-        {/* Sidebar Info Column */}
+        {/* Sidebar Column */}
         <div>
+          {/* Admin Posting Section */}
+          {isStaff && (
+            <div className="panel" style={{ padding: '1.5rem', marginBottom: '1.5rem', border: '1px solid #fca5a5', backgroundColor: '#fffdfd' }}>
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626' }}>
+                <Megaphone size={18} />
+                Đăng Tin Hệ Thống
+              </h3>
+              {formError && <div className="alert alert-danger" style={{ fontSize: '0.8rem', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.75rem' }}>{formError}</div>}
+              {formSuccess && <div className="alert alert-success" style={{ fontSize: '0.8rem', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.75rem' }}>{formSuccess}</div>}
+              <form onSubmit={handleCreateAnnouncement}>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', color: '#475569' }}>Tiêu đề</label>
+                  <input
+                    type="text"
+                    value={annTitle}
+                    onChange={(e) => setAnnTitle(e.target.value)}
+                    placeholder="Ví dụ: Lịch bảo trì hệ thống..."
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem' }}
+                  />
+                </div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', color: '#475569' }}>Nội dung</label>
+                  <textarea
+                    value={annContent}
+                    onChange={(e) => setAnnContent(e.target.value)}
+                    placeholder="Nhập nội dung thông báo chi tiết..."
+                    rows={4}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', resize: 'vertical' }}
+                  />
+                </div>
+                <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    id="is_pinned"
+                    checked={annIsPinned}
+                    onChange={(e) => setAnnIsPinned(e.target.checked)}
+                  />
+                  <label htmlFor="is_pinned" style={{ fontSize: '0.8rem', color: '#475569', cursor: 'pointer' }}>Ghim lên đầu bảng tin</label>
+                </div>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: '0.5rem', fontSize: '0.875rem', backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                  disabled={createMutation.isPending}
+                >
+                  {createMutation.isPending ? 'Đang gửi...' : 'Đăng thông báo'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Platform Info Section */}
           <div className="panel" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
             <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Award size={18} style={{ color: '#2563eb' }} />

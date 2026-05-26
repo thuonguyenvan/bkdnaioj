@@ -55,7 +55,7 @@ RETURNING id, contest_id, task_id, title, content, is_pinned, is_public, created
 `
 
 type CreateAnnouncementParams struct {
-	ContestID uuid.UUID   `json:"contest_id"`
+	ContestID pgtype.UUID `json:"contest_id"`
 	TaskID    pgtype.UUID `json:"task_id"`
 	Title     string      `json:"title"`
 	Content   string      `json:"content"`
@@ -221,7 +221,7 @@ const listAnnouncementsByContest = `-- name: ListAnnouncementsByContest :many
 SELECT id, contest_id, task_id, title, content, is_pinned, is_public, created_by, created_at, updated_at FROM announcements WHERE contest_id = $1 ORDER BY is_pinned DESC, created_at DESC
 `
 
-func (q *Queries) ListAnnouncementsByContest(ctx context.Context, contestID uuid.UUID) ([]Announcement, error) {
+func (q *Queries) ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error) {
 	rows, err := q.db.Query(ctx, listAnnouncementsByContest, contestID)
 	if err != nil {
 		return nil, err
@@ -286,6 +286,41 @@ func (q *Queries) ListClarificationsByContest(ctx context.Context, arg ListClari
 			&i.AskedBy,
 			&i.AnsweredBy,
 			&i.AnsweredAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSystemAnnouncements = `-- name: ListSystemAnnouncements :many
+SELECT id, contest_id, task_id, title, content, is_pinned, is_public, created_by, created_at, updated_at FROM announcements WHERE contest_id IS NULL ORDER BY is_pinned DESC, created_at DESC
+`
+
+func (q *Queries) ListSystemAnnouncements(ctx context.Context) ([]Announcement, error) {
+	rows, err := q.db.Query(ctx, listSystemAnnouncements)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Announcement
+	for rows.Next() {
+		var i Announcement
+		if err := rows.Scan(
+			&i.ID,
+			&i.ContestID,
+			&i.TaskID,
+			&i.Title,
+			&i.Content,
+			&i.IsPinned,
+			&i.IsPublic,
+			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

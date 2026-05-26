@@ -189,9 +189,6 @@ export const HomePage: React.FC = () => {
   const homeTasksSource = realTasks.length > 0 ? realTasks : globalTasks;
   const exercisesToRender = homeTasksSource.slice(0, 5).map((task, index) => {
     const letter = String.fromCharCode(65 + index);
-    let difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium';
-    if (index === 0) difficulty = 'Easy';
-    if (index > 3) difficulty = 'Hard';
 
     const stats = taskStatsByTaskId.get(task.id);
     const solvedCount = stats?.solved_entries ?? 0;
@@ -201,7 +198,6 @@ export const HomePage: React.FC = () => {
       id: task.id,
       letter,
       title: task.title,
-      difficulty,
       solvedCount,
       successRate,
       link: `/contests/${task.contest_id}`,
@@ -488,12 +484,6 @@ export const HomePage: React.FC = () => {
             {exercisesToRender.length === 0 ? (
               <div style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>Chưa có bài tập.</div>
             ) : exercisesToRender.map((exercise) => {
-              const diffColor = exercise.difficulty === 'Easy'
-                ? { bg: '#f0fdf4', text: '#16a34a' }
-                : exercise.difficulty === 'Medium'
-                  ? { bg: '#fffbeb', text: '#d97706' }
-                  : { bg: '#fef2f2', text: '#dc2626' };
-
               return (
                 <div key={exercise.id} className="exercise-row">
                   <div className="exercise-name-col">
@@ -503,22 +493,6 @@ export const HomePage: React.FC = () => {
                     ) : (
                       <Link to={exercise.link} className="exercise-title-link">{exercise.title}</Link>
                     )}
-                  </div>
-
-                  <div style={{ textAlign: 'center' }}>
-                    <span
-                      style={{
-                        backgroundColor: diffColor.bg,
-                        color: diffColor.text,
-                        borderRadius: '4px',
-                        padding: '0.2rem 0.5rem',
-                        fontSize: '0.725rem',
-                        fontWeight: 600,
-                        display: 'inline-block'
-                      }}
-                    >
-                      {exercise.difficulty}
-                    </span>
                   </div>
 
                   <div className="exercise-stats-col">

@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -64,7 +65,7 @@ type Querier interface {
 	GetTeamBySlug(ctx context.Context, slug string) (Team, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
-	ListAnnouncementsByContest(ctx context.Context, contestID uuid.UUID) ([]Announcement, error)
+	ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
 	ListContestEntries(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
 	ListContests(ctx context.Context, arg ListContestsParams) ([]Contest, error)
@@ -75,6 +76,7 @@ type Querier interface {
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
 	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
+	ListSystemAnnouncements(ctx context.Context) ([]Announcement, error)
 	ListTaskAssets(ctx context.Context, taskID uuid.UUID) ([]TaskAsset, error)
 	ListTasksByContest(ctx context.Context, contestID uuid.UUID) ([]Task, error)
 	ListTeamMembers(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error)

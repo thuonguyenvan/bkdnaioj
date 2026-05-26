@@ -55,20 +55,6 @@ export const ProblemsPage: React.FC = () => {
     return m;
   }, [taskStats]);
 
-  const getDifficulty = (index: number) => {
-    if (index % 3 === 0) return 'Easy';
-    if (index % 3 === 1) return 'Medium';
-    return 'Hard';
-  };
-
-  const getDiffColor = (difficulty: 'Easy' | 'Medium' | 'Hard') => {
-    switch (difficulty) {
-      case 'Easy': return { bg: '#f0fdf4', text: '#16a34a' };
-      case 'Medium': return { bg: '#fffbeb', text: '#d97706' };
-      case 'Hard': return { bg: '#fef2f2', text: '#dc2626' };
-    }
-  };
-
   // Filter tasks by search term
   const filteredTasks = tasks.filter(t => 
     t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -156,17 +142,13 @@ export const ProblemsPage: React.FC = () => {
                 <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                   <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem' }}>MÃ/TÊN BÀI TẬP</th>
                   <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem' }}>KÌ THI</th>
-                  <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', textAlign: 'center' }}>ĐỘ KHÓ</th>
                   <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem' }}>CHỈ TIÊU ĐÁNH GIÁ</th>
                   <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', textAlign: 'center' }}>THỐNG KÊ</th>
                   <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', textAlign: 'right' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredTasks.map((task, index) => {
-                  const diff = getDifficulty(index);
-                  const diffColor = getDiffColor(diff);
-                  
+                {filteredTasks.map((task) => {
                   const stats = taskStatsByTaskId.get(task.id);
                   const solvedCount = stats?.solved_entries ?? 0;
                   const successRate = `${Math.round(stats?.success_rate ?? 0)}%`;
@@ -187,21 +169,6 @@ export const ProblemsPage: React.FC = () => {
                       </td>
                       <td style={{ padding: '1.25rem 1.5rem', color: '#475569', fontSize: '0.9rem' }}>
                         {task.contestTitle}
-                      </td>
-                      <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
-                        <span 
-                          style={{
-                            backgroundColor: diffColor.bg,
-                            color: diffColor.text,
-                            borderRadius: '4px',
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            display: 'inline-block'
-                          }}
-                        >
-                          {diff}
-                        </span>
                       </td>
                       <td style={{ padding: '1.25rem 1.5rem' }}>
                         <span style={{ fontSize: '0.85rem', backgroundColor: '#f1f5f9', color: '#475569', padding: '0.2rem 0.5rem', borderRadius: '4px', fontFamily: 'monospace' }}>

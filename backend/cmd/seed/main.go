@@ -307,7 +307,7 @@ func main() {
 		for ai := 1; ai <= *announcementsPerCont; ai++ {
 			pinned := ai%7 == 0
 			_, err := q.CreateAnnouncement(ctx, db.CreateAnnouncementParams{
-				ContestID: c.ID,
+				ContestID: pgtype.UUID{Bytes: c.ID, Valid: true},
 				TaskID:    pgtype.UUID{Valid: false},
 				Title:     fmt.Sprintf("Announcement %02d", ai),
 				Content:   fmt.Sprintf("Update %02d for %s", ai, c.Title),
@@ -325,8 +325,18 @@ func main() {
 	// Entries + submissions
 	for contestID, defs := range allPhasesByContest {
 		_ = defs
+		// Shuffle contestants for this contest to select without replacement
+		shuffled := make([]db.User, len(contestants))
+		copy(shuffled, contestants)
+		rand.Shuffle(len(shuffled), func(i, j int) {
+			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+		})
+
 		for ei := 0; ei < *entriesPerContest; ei++ {
-			u := contestants[rand.IntN(len(contestants))]
+			if ei >= len(shuffled) {
+				break
+			}
+			u := shuffled[ei]
 			displayName := u.FullName
 
 			entry, err := q.CreateContestEntry(ctx, db.CreateContestEntryParams{

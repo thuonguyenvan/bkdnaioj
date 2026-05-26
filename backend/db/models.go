@@ -1033,7 +1033,7 @@ func (e UserRole) Valid() bool {
 
 type Announcement struct {
 	ID        uuid.UUID          `json:"id"`
-	ContestID uuid.UUID          `json:"contest_id"`
+	ContestID pgtype.UUID        `json:"contest_id"`
 	TaskID    pgtype.UUID        `json:"task_id"`
 	Title     string             `json:"title"`
 	Content   string             `json:"content"`

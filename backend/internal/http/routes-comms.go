@@ -25,8 +25,10 @@ func registerSubmissions(api *echo.Group, q *db.Queries, jwtMgr *security.JWTMan
 func registerAnnouncements(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {
 	h := handlers.NewAnnouncementHandler(q)
 	api.GET("/contests/:id/announcements", h.List)
+	api.GET("/announcements", h.ListSystem)
 	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	admin.POST("/contests/:id/announcements", h.Create)
+	admin.POST("/announcements", h.CreateSystem)
 	admin.PATCH("/announcements/:id", h.Update)
 	admin.DELETE("/announcements/:id", h.Delete)
 }

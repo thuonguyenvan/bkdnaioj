@@ -19,7 +19,7 @@ type CreateAnnouncementRequest struct {
 
 type AnnouncementResponse struct {
 	ID        uuid.UUID  `json:"id"`
-	ContestID uuid.UUID  `json:"contest_id"`
+	ContestID *uuid.UUID `json:"contest_id,omitempty"`
 	TaskID    *uuid.UUID `json:"task_id,omitempty"`
 	Title     string     `json:"title"`
 	Content   string     `json:"content"`
@@ -31,9 +31,13 @@ type AnnouncementResponse struct {
 
 func AnnouncementToResponse(a db.Announcement) AnnouncementResponse {
 	r := AnnouncementResponse{
-		ID: a.ID, ContestID: a.ContestID, Title: a.Title,
+		ID: a.ID, Title: a.Title,
 		Content: a.Content, IsPinned: a.IsPinned, IsPublic: a.IsPublic,
 		CreatedBy: a.CreatedBy, CreatedAt: PgTimeVal(a.CreatedAt),
+	}
+	if a.ContestID.Valid {
+		cid := uuid.UUID(a.ContestID.Bytes)
+		r.ContestID = &cid
 	}
 	if a.TaskID.Valid {
 		tid := uuid.UUID(a.TaskID.Bytes)

@@ -74,3 +74,24 @@ Hướng dẫn này giúp bạn kiểm thử chức năng **Cài đặt cuộc t
    ```
    File `infer.py` của thí sinh sẽ đọc file `inputs.csv` từ `<inputs_dir>`, thực hiện dự báo rồi lưu kết quả dự báo ra file `predictions.csv` ở `<output_dir>`. Sau đó hệ thống sẽ dùng `judge.py` để so khớp file dự báo đó với `ground_truth.csv` của BTC để chấm điểm.
 4. Chờ trạng thái hoàn tất và đối chiếu điểm số trên bảng xếp hạng (bài perfect sẽ đạt điểm `1.00000`, bài poor đạt điểm thấp hơn).
+
+---
+
+## 🛡️ Hướng dẫn Kiểm thử Bài toán Tấn công Đối kháng Hình ảnh (Image Adversarial Attack)
+
+Các dữ liệu mẫu được lưu trong thư mục `draft/adversarial_attack/`.
+
+### 1. BTC Cấu hình Đề bài
+1. Tải lên file Python chấm điểm: Chọn `draft/adversarial_attack/btc_upload/judge.py` làm **Judge Script**.
+2. Tải lên file đáp án đúng: Chọn `draft/adversarial_attack/btc_upload/ground_truth.csv` làm **Ground Truth**.
+3. Tải lên file dữ liệu đầu vào: Chọn `draft/adversarial_attack/btc_upload/inputs.zip` làm **Public/Private Inputs**.
+4. Tải lên file trọng số model: Chọn `draft/adversarial_attack/btc_upload/model_weights.json` làm **Task Asset** (đặt asset key là `model_weights.json`).
+5. Lưu lại cấu hình bộ chấm.
+
+### 2. Thí sinh Nộp bài
+* **Nộp File kết quả trực tiếp (Phân đoạn không chạy code - Non-final phase)**:
+  * Thí sinh nộp file ZIP `draft/adversarial_attack/contestant_upload/perfect_adversarial_images.zip`. Kết quả chấm sẽ đạt khoảng **93.33%**.
+  * Thí sinh nộp file ZIP `draft/adversarial_attack/contestant_upload/poor_adversarial_images.zip`. Kết quả chấm sẽ đạt **0.0%**.
+* **Nộp Code/Script chạy trong Sandbox (Phân đoạn chạy code - Final phase)**:
+  * Thí sinh nộp file ZIP `draft/adversarial_attack/contestant_upload/submission_perfect.zip` (chứa file `infer.py` thực hiện tấn công FGSM). Kết quả chạy sandbox và chấm điểm đạt khoảng **93.33%**.
+  * Thí sinh nộp file ZIP `draft/adversarial_attack/contestant_upload/submission_poor.zip` (chứa file `infer.py` chỉ copy lại ảnh gốc không tấn công). Kết quả chạy sandbox và chấm điểm đạt **0.0%**.

@@ -37,9 +37,9 @@ class JudgeWorker:
                 phase_assets = self._db.list_evaluation_set_assets(conn, sub.evaluation_set_id)
                 task_assets = self._db.list_task_assets(conn, sub.task_id)
                 self._db.mark_running(conn, sub_id)
-
+        temp_dir = "/app/shared-temp" if os.path.isdir("/app/shared-temp") else None
         try:
-            with tempfile.TemporaryDirectory(prefix=f"olpai-sub-{sub_id}-") as td:
+            with tempfile.TemporaryDirectory(prefix=f"olpai-sub-{sub_id}-", dir=temp_dir) as td:
                 result = self._run_with_artifacts(td, sub, submission_files, phase_assets, task_assets)
             payload_json = self._runner.payload_json(result.get("payload"))
             with self._db.connect() as conn:

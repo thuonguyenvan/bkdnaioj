@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ func TestAnnouncementHandler_Create_Success(t *testing.T) {
 	userID := uuid.New()
 	mock := &db.MockQuerier{
 		CreateAnnouncementFunc: func(ctx context.Context, arg db.CreateAnnouncementParams) (db.Announcement, error) {
-			return db.Announcement{ID: uuid.New(), ContestID: contestID, Title: "Test", Content: "body", CreatedBy: userID}, nil
+			return db.Announcement{ID: uuid.New(), ContestID: pgtype.UUID{Bytes: contestID, Valid: true}, Title: "Test", Content: "body", CreatedBy: userID}, nil
 		},
 	}
 	h := NewAnnouncementHandler(mock)
@@ -50,8 +51,8 @@ func TestAnnouncementHandler_Create_ValidationError(t *testing.T) {
 func TestAnnouncementHandler_List_Success(t *testing.T) {
 	contestID := uuid.New()
 	mock := &db.MockQuerier{
-		ListAnnouncementsByContestFunc: func(ctx context.Context, id uuid.UUID) ([]db.Announcement, error) {
-			return []db.Announcement{{ID: uuid.New(), ContestID: contestID, Title: "A"}}, nil
+		ListAnnouncementsByContestFunc: func(ctx context.Context, id pgtype.UUID) ([]db.Announcement, error) {
+			return []db.Announcement{{ID: uuid.New(), ContestID: pgtype.UUID{Bytes: contestID, Valid: true}, Title: "A"}}, nil
 		},
 	}
 	h := NewAnnouncementHandler(mock)

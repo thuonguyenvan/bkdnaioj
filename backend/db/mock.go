@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // MockQuerier implements Querier for unit tests.
@@ -57,7 +58,8 @@ type MockQuerier struct {
 	GetTeamBySlugFunc                     func(ctx context.Context, slug string) (Team, error)
 	GetUserByEmailFunc                    func(ctx context.Context, email string) (User, error)
 	GetUserByIDFunc                       func(ctx context.Context, id uuid.UUID) (User, error)
-	ListAnnouncementsByContestFunc        func(ctx context.Context, contestID uuid.UUID) ([]Announcement, error)
+	ListAnnouncementsByContestFunc        func(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
+	ListSystemAnnouncementsFunc           func(ctx context.Context) ([]Announcement, error)
 	ListClarificationsByContestFunc       func(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
 	ListContestEntriesFunc                func(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
 	ListContestsFunc                      func(ctx context.Context, arg ListContestsParams) ([]Contest, error)
@@ -433,9 +435,16 @@ func (m *MockQuerier) GetUserByID(ctx context.Context, id uuid.UUID) (User, erro
 	return User{}, nil
 }
 
-func (m *MockQuerier) ListAnnouncementsByContest(ctx context.Context, contestID uuid.UUID) ([]Announcement, error) {
+func (m *MockQuerier) ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error) {
 	if m.ListAnnouncementsByContestFunc != nil {
 		return m.ListAnnouncementsByContestFunc(ctx, contestID)
+	}
+	return nil, nil
+}
+
+func (m *MockQuerier) ListSystemAnnouncements(ctx context.Context) ([]Announcement, error) {
+	if m.ListSystemAnnouncementsFunc != nil {
+		return m.ListSystemAnnouncementsFunc(ctx)
 	}
 	return nil, nil
 }

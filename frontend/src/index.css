@@ -791,7 +791,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .exercise-row {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding: 0.85rem 1.25rem;
   border-bottom: 1px solid hsl(var(--border));

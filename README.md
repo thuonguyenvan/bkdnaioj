@@ -1,65 +1,117 @@
 # OLPAI — AI Contest Platform
 
-Online Judge for AI competitions, virtual replays, and post-contest practice.
+Nền tảng Online Judge dành cho các cuộc thi Trí tuệ Nhân tạo (AI Competitions), chạy thử nghiệm (virtual replays) và luyện tập sau cuộc thi.
 
 ---
 
-## Repository Structure
+## 📂 Repository Structure
 
 ```
-├── backend/            # Go API server (Echo + sqlc + pgx)
-│   ├── cmd/api/        # HTTP entrypoint
-│   ├── internal/       # config, http, security, repo, queue
-│   ├── db/             # sqlc generated code
-│   ├── migrations/     # goose SQL (17 tables)
-│   ├── queries/        # sqlc input
-│   ├── Makefile        # build/run/test/migrate
-│   ├── Dockerfile
+├── backend/            # Go API Server + Python Workers
+│   ├── cmd/api/        # HTTP API entrypoint
+│   ├── cmd/seed/       # Seeder tạo tài khoản & cuộc thi mẫu
+│   ├── internal/       # Config, HTTP, Security, Repo, Queue
+│   ├── db/             # Code truy vấn DB được sinh bởi sqlc
+│   ├── migrations/     # Goose SQL migrations (bảng DB)
+│   ├── workers/        # Python worker chạy chấm bài & sandbox Docker
+│   ├── Makefile        # Scripts khởi động nhanh
+│   ├── Dockerfile      # Dockerfile cho API Server
 │   └── docker-compose.yml
-├── supabase/           # Supabase config + migrations
-├── plans/              # Implementation plans & reports
-├── ai-contest-database-design-specification.md
-├── idea.md
-└── README.md           # (this file)
+├── frontend/           # React App (React 19, Vite, TypeScript)
+│   ├── src/            # Mã nguồn giao diện & logic API client
+│   ├── package.json
+│   └── vite.config.ts
+├── draft/              # Thư mục chứa dữ liệu test mẫu (Tabular & Adversarial Attack)
+│   ├── btc_upload/     # File BTC cấu hình đề bài mẫu
+│   ├── contestant_submissions/ # File nộp mẫu của thí sinh
+│   ├── adversarial_attack/     # Dữ liệu hình ảnh kiểm thử tấn công đối kháng
+│   └── E2E_TESTING_GUIDE.md    # Hướng dẫn chi tiết kiểm thử E2E
 ```
 
 ---
 
-## Quick Start
+## 🛠️ Yêu cầu Hệ thống (Prerequisites)
 
+Trước khi chạy dự án, hãy đảm bảo máy tính của bạn đã cài đặt và khởi động:
+* **Docker & Docker Desktop** (Để chạy toàn bộ backend stack trong container và khởi động sandbox chấm bài của thí sinh).
+* **Go 1.22+** (Để chạy migrations và seed dữ liệu từ máy host).
+* **Node.js 18+ & npm** (Để chạy giao diện frontend React).
+
+---
+
+## 🚀 Hướng dẫn Chạy Backend Stack
+
+Backend được quản lý hoàn toàn bằng Docker Compose, bao gồm: Go API, Postgres DB, Redis Queue, MinIO S3 Storage và Python Worker.
+
+### Bước 1: Khởi động Docker containers
+Di chuyển vào thư mục `backend` và chạy Docker Compose:
 ```bash
 cd backend
-cp .env.example .env    # edit DATABASE_URL
-make tools              # install goose, sqlc, air
-make migrate-up         # apply 17-table schema
-make sqlc               # generate type-safe DB code
-make run                # http://localhost:8080/healthz
+docker compose up -d --build
+```
+*Lưu ý: Hãy đảm bảo Docker Desktop đang chạy trước khi thực hiện lệnh.*
+
+### Bước 2: Chạy Migrations tạo cấu trúc Database
+Chạy lệnh sau để Goose tự động tạo cấu trúc bảng trong PostgreSQL:
+Nếu máy của bạn đã cài sẵn `goose`:
+```bash
+make migrate-up
+```
+Hoặc nếu không muốn cài đặt `goose`, bạn chạy trực tiếp qua lệnh Go:
+```bash
+go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "postgres://olpai:olpai@localhost:5432/olpai?sslmode=disable" up
 ```
 
----
-
-## Stack
-
-| Layer | Tech |
-|---|---|
-| API | Go 1.22 + Echo v4 |
-| DB | PostgreSQL 17 (Supabase) |
-| DB access | sqlc + pgx/v5 |
-| Auth | JWT (HS256) |
-| Workers | Python 3.11 (planned) |
-| Queue | Redis Streams (planned) |
-| Storage | MinIO / S3 (planned) |
+### Bước 3: Seed dữ liệu mẫu (Khuyên dùng)
+Để có sẵn các tài khoản Admin, Thí sinh và một cuộc thi mẫu nhằm dễ dàng kiểm thử E2E:
+```bash
+make seed
+```
+Lệnh này sẽ tạo các tài khoản test với mật khẩu mặc định là `password`:
+* **Admin (BTC)**: `admin@local.com`
+* **Jury (Giám khảo)**: `jury@local.com`
+* **Thí sinh**: `dev@local.com`, `bob@local.com`, `charlie@local.com`, `david@local.com`
 
 ---
 
-## Documentation
+## 💻 Hướng dẫn Chạy Frontend (Giao diện)
 
-- **Spec:** `ai-contest-database-design-specification.md`
-- **Plans:** `plans/260415-1507-olpai-backend-design/`
-- **Reports:** `plans/reports/`
+Di chuyển vào thư mục `frontend`, cài đặt thư viện và khởi động dev server:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Sau khi chạy xong, mở trình duyệt truy cập: **`http://localhost:5173`**
+* Trang web sẽ tự động kết nối với API backend tại `http://localhost:8080/api/v1`.
 
 ---
 
-## License
+## 🛑 Cách Dừng / Tắt Toàn Bộ Hệ Thống
 
-TBD.
+Khi muốn dừng kiểm thử hoặc tắt hệ thống:
+
+1. **Dừng Frontend**:
+   * Nhấn tổ hợp phím `Ctrl + C` tại cửa sổ Terminal đang chạy lệnh `npm run dev`.
+
+2. **Dừng Backend**:
+   * Di chuyển vào thư mục `backend` và hạ các container Docker xuống:
+     ```bash
+     cd backend
+     docker compose down
+     ```
+
+---
+
+## 🧪 Hướng dẫn Kiểm thử Toàn trình (E2E Testing)
+
+Sau khi khởi động thành công cả Frontend và Backend, bạn có thể tham khảo file hướng dẫn chi tiết tại:
+👉 **[E2E_TESTING_GUIDE.md](file:///Users/quangsang/Documents/personal/bkdnaioj/draft/E2E_TESTING_GUIDE.md)**
+
+Hướng dẫn này sẽ hướng dẫn bạn các bước:
+1. Đăng nhập Admin và cấu hình bài toán.
+2. Nộp bài mẫu của thí sinh (bao gồm bài nộp dạng CSV thông thường và bài nộp dạng Code chạy trong Sandbox).
+3. Cách thử nghiệm bài toán **Tấn công đối kháng hình ảnh (Image Adversarial Attack)** mới tạo trong thư mục `draft/adversarial_attack/`.
+4. Theo dõi và kiểm tra tính cập nhật tự động của bảng xếp hạng (Leaderboard).

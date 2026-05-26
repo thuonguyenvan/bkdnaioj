@@ -27,22 +27,68 @@ class PhaseRunner:
         context_path: str,
     ) -> dict:
         os.makedirs(generated_dir, exist_ok=True)
-        subprocess.run(
-            [
-                "python",
-                inference_entrypoint,
-                "--submission-dir",
-                submission_dir,
-                "--assets-dir",
-                assets_dir,
-                "--output-dir",
-                generated_dir,
-                "--context",
-                context_path,
-            ],
-            check=True,
-            timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
-        )
+        is_docker_env = os.path.isdir("/app/shared-temp") and os.path.exists("/var/run/docker.sock")
+        if is_docker_env:
+            import docker
+            client = docker.from_env()
+            timeout = int(os.getenv("SANDBOX_TIMEOUT_S", "300"))
+            image_name = "python:3.11-slim"
+            try:
+                client.images.get(image_name)
+            except docker.errors.ImageNotFound:
+                client.images.pull("python", tag="3.11-slim")
+
+            volume_name = os.getenv("SHARED_TEMP_VOLUME_NAME", "olpai_shared_temp")
+            container = client.containers.create(
+                image=image_name,
+                command=[
+                    "python",
+                    inference_entrypoint,
+                    "--submission-dir", submission_dir,
+                    "--assets-dir", assets_dir,
+                    "--output-dir", generated_dir,
+                    "--context", context_path,
+                ],
+                volumes={volume_name: {"bind": "/app/shared-temp", "mode": "rw"}},
+                network_mode="none",
+                mem_limit="512m",
+                nano_cpus=1000000000,
+            )
+            container.start()
+            try:
+                result = container.wait(timeout=timeout)
+                exit_code = result.get("StatusCode", 0)
+                if exit_code != 0:
+                    logs = container.logs().decode("utf-8")
+                    raise RuntimeError(f"Sandbox container failed (exit {exit_code}): {logs}")
+            except Exception as e:
+                try:
+                    container.kill()
+                except Exception:
+                    pass
+                raise RuntimeError(f"Sandbox execution failed or timed out: {str(e)}") from e
+            finally:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+        else:
+            subprocess.run(
+                [
+                    "python",
+                    inference_entrypoint,
+                    "--submission-dir",
+                    submission_dir,
+                    "--assets-dir",
+                    assets_dir,
+                    "--output-dir",
+                    generated_dir,
+                    "--context",
+                    context_path,
+                ],
+                check=True,
+                timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
+            )
         return self._run_judge(
             judge=judge,
             submission_dir=generated_dir,

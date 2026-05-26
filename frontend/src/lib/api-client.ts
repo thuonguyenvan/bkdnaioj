@@ -194,7 +194,7 @@ export interface Submission {
 
 export interface Announcement {
   id: string;
-  contest_id: string;
+  contest_id: string | null;
   task_id: string | null;
   title: string;
   content: string;
@@ -491,8 +491,16 @@ export const api = {
     const res = await apiClient.get(`/contests/${contestId}/announcements`);
     return res.data as Announcement[];
   },
+  async getSystemAnnouncements() {
+    const res = await apiClient.get('/announcements');
+    return res.data as Announcement[];
+  },
   async createAnnouncement(contestId: string, payload: { title: string; content: string; is_pinned: boolean }) {
     const res = await apiClient.post(`/contests/${contestId}/announcements`, payload);
+    return res.data as Announcement;
+  },
+  async createSystemAnnouncement(payload: { title: string; content: string; is_pinned: boolean }) {
+    const res = await apiClient.post('/announcements', payload);
     return res.data as Announcement;
   },
 

@@ -8,6 +8,9 @@ RETURNING *;
 -- name: ListAnnouncementsByContest :many
 SELECT * FROM announcements WHERE contest_id = $1 ORDER BY is_pinned DESC, created_at DESC;
 
+-- name: ListSystemAnnouncements :many
+SELECT * FROM announcements WHERE contest_id IS NULL ORDER BY is_pinned DESC, created_at DESC;
+
 -- name: UpdateAnnouncement :one
 UPDATE announcements SET
   title = COALESCE(sqlc.narg('title'), title),
