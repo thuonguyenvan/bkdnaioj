@@ -15,7 +15,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -39,6 +38,7 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET: "dev-secret-change-me-to-a-32-char-minimum"
       S3_ENDPOINT: "http://minio:9000"
+      S3_PUBLIC_ENDPOINT: "http://localhost:9000"
       S3_BUCKET: "submissions"
       S3_ACCESS_KEY: "minioadmin"
       S3_SECRET_KEY: "minioadmin"
@@ -48,6 +48,26 @@ services:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_started }
+
+  worker-judge:
+    build: ./workers
+    environment:
+      DATABASE_URL: "postgres://olpai:olpai@db:5432/olpai?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      WORKER_ROLE: "judge"
+      WORKER_GROUP: "cg:judge-worker"
+      WORKER_CONSUMER: "worker-judge-1"
+      STREAM_JUDGE: "jobs:judge"
+      STREAM_RESULTS: "jobs:results"
+      SANDBOX_TIMEOUT_S: "300"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_BUCKET: "submissions"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_SECURE: "false"
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
 volumes:
   pgdata: {}

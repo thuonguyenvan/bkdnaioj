@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Submit — Task 1: Image Classification</title>
+<!-- Google Fonts & Icons -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Theme Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed": "#e2dfff",
+                    "on-error-container": "#ffdad6",
+                    "outline-variant": "#464555",
+                    "secondary-fixed-dim": "#4cd7f6",
+                    "surface-container": "#1f1f28",
+                    "primary-container": "#4f46e5",
+                    "on-primary-container": "#dad7ff",
+                    "tertiary-container": "#a44100",
+                    "surface-bright": "#393842",
+                    "secondary": "#4cd7f6",
+                    "tertiary-fixed-dim": "#ffb695",
+                    "surface-variant": "#35343e",
+                    "surface-container-low": "#1b1b24",
+                    "on-background": "#e4e1ee",
+                    "on-secondary-fixed-variant": "#004e5c",
+                    "on-surface": "#e4e1ee",
+                    "on-secondary-container": "#00424e",
+                    "on-secondary-fixed": "#001f26",
+                    "error-container": "#93000a",
+                    "tertiary-fixed": "#ffdbcc",
+                    "on-tertiary": "#571f00",
+                    "surface": "#13121b",
+                    "surface-container-highest": "#35343e",
+                    "inverse-primary": "#4d44e3",
+                    "primary-fixed-dim": "#c3c0ff",
+                    "background": "#13121b",
+                    "on-primary-fixed-variant": "#3323cc",
+                    "on-tertiary-fixed-variant": "#7b2f00",
+                    "outline": "#918fa1",
+                    "on-tertiary-container": "#ffd2be",
+                    "surface-container-high": "#2a2933",
+                    "on-secondary": "#003640",
+                    "secondary-container": "#03b5d3",
+                    "surface-dim": "#13121b",
+                    "secondary-fixed": "#acedff",
+                    "on-tertiary-fixed": "#351000",
+                    "primary": "#c3c0ff",
+                    "inverse-surface": "#e4e1ee",
+                    "surface-tint": "#c3c0ff",
+                    "on-surface-variant": "#c7c4d8",
+                    "on-primary": "#1d00a5",
+                    "inverse-on-surface": "#302f39",
+                    "error": "#ffb4ab",
+                    "surface-container-lowest": "#0e0d16",
+                    "on-primary-fixed": "#0f0069",
+                    "on-error": "#690005",
+                    "tertiary": "#ffb695"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "sm": "8px",
+                    "xxl": "48px",
+                    "xs": "4px",
+                    "lg": "24px",
+                    "xl": "32px",
+                    "md": "16px"
+            },
+            "fontFamily": {
+                    "data-mono": ["JetBrains Mono"],
+                    "label-caps": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "body-base": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "data-lg": ["JetBrains Mono"]
+            },
+            "fontSize": {
+                    "data-mono": ["14px", {"lineHeight": "1.4", "letterSpacing": "-0.01em", "fontWeight": "500"}],
+                    "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                    "body-base": ["16px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                    "display-lg": ["48px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "data-lg": ["20px", {"lineHeight": "1.2", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        /* Custom Utilities for specifically requested UI effects */
+        .glow-active { box-shadow: 0px 0px 20px -5px rgba(76, 215, 246, 0.4); } /* Secondary color glow */
+        .glow-primary { box-shadow: 0px 10px 30px -5px rgba(79, 70, 229, 0.3); } /* Primary container glow */
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-base min-h-screen flex flex-col">
+<!-- TopNavBar (Shared Component) -->
+<nav class="fixed top-0 w-full z-50 bg-surface dark:bg-surface border-b border-outline-variant shadow-sm">
+<div class="flex justify-between items-center h-16 px-lg max-w-[1440px] mx-auto">
+<!-- Brand -->
+<div class="flex items-center gap-md">
+<span class="font-display-lg text-display-lg text-primary italic font-black tracking-tight">OLPAI</span>
+</div>
+<!-- Navigation Links -->
+<div class="hidden md:flex items-center gap-xl">
+<a class="font-body-base text-body-base text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Home</a>
+<!-- Active Tab: Contests -->
+<a class="font-body-base text-body-base text-primary font-bold border-b-2 border-primary pb-1 hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Contests</a>
+<a class="font-body-base text-body-base text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Leaderboard</a>
+<a class="font-body-base text-body-base text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Docs</a>
+</div>
+<!-- Actions -->
+<div class="flex items-center gap-sm">
+<button class="font-body-sm text-body-sm text-on-surface-variant px-md py-sm rounded hover:text-on-surface transition-colors">Sign In</button>
+<button class="font-label-caps text-label-caps bg-surface-container border border-outline-variant text-secondary px-md py-sm rounded-lg hover:bg-surface-variant transition-colors">Join Contest</button>
+<div class="w-8 h-8 rounded-full bg-surface-variant border border-outline-variant ml-sm overflow-hidden flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant" style="font-size: 20px;">person</span>
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 pt-[88px] px-md md:px-lg pb-xxl max-w-[1440px] w-full mx-auto">
+<!-- Header -->
+<header class="mb-xl">
+<h1 class="font-headline-md text-headline-md text-on-surface mb-xs">Submit — Task 1: Image Classification</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Phase 1 Public Test · Ensure your predictions match the required schema.</p>
+</header>
+<!-- Status Pipeline -->
+<div class="w-full bg-surface-container border border-outline-variant rounded-xl p-md mb-lg overflow-x-auto">
+<div class="min-w-[600px] flex items-center justify-between relative">
+<!-- Background track -->
+<div class="absolute left-[5%] right-[5%] top-1/2 -translate-y-1/2 h-[2px] bg-surface-variant z-0"></div>
+<!-- Active track -->
+<div class="absolute left-[5%] w-[50%] top-1/2 -translate-y-1/2 h-[2px] bg-secondary z-0"></div>
+<!-- Steps -->
+<div class="relative z-10 flex flex-col items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-secondary text-background flex items-center justify-center border-2 border-surface-container">
+<span class="material-symbols-outlined" style="font-size: 16px; font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface">Uploaded</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-secondary text-background flex items-center justify-center border-2 border-surface-container">
+<span class="material-symbols-outlined" style="font-size: 16px; font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface">Validating</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-secondary text-background flex items-center justify-center border-2 border-surface-container">
+<span class="material-symbols-outlined" style="font-size: 16px; font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface">Queued</span>
+</div>
+<!-- Active Step -->
+<div class="relative z-10 flex flex-col items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container border-[3px] border-tertiary flex items-center justify-center glow-active">
+<div class="w-3 h-3 rounded-full bg-tertiary"></div>
+</div>
+<span class="font-label-caps text-label-caps text-tertiary">Running</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container border-2 border-outline-variant flex items-center justify-center">
+<div class="w-2 h-2 rounded-full bg-outline-variant"></div>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">Scoring</span>
+</div>
+<div class="relative z-10 flex flex-col items-center gap-xs">
+<div class="w-8 h-8 rounded-full bg-surface-container border-2 border-outline-variant flex items-center justify-center">
+<div class="w-2 h-2 rounded-full bg-outline-variant"></div>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">Finished</span>
+</div>
+</div>
+</div>
+<!-- Two Column Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-lg">
+<!-- Main Column (Left) -->
+<div class="lg:col-span-8 flex flex-col gap-lg">
+<!-- Task Info Card -->
+<div class="bg-surface-container-low border border-outline-variant rounded-xl p-md flex flex-col md:flex-row justify-between items-start md:items-center gap-md">
+<div>
+<h3 class="font-body-base text-body-base font-semibold text-on-surface mb-xs">Evaluation Metric</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Submissions are evaluated on the macro F1-Score between the predicted and actual labels.</p>
+</div>
+<div class="bg-surface border border-outline-variant rounded-lg px-md py-sm flex items-center gap-sm shrink-0">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-data-mono text-data-mono text-secondary">F1-Score (Macro)</span>
+</div>
+</div>
+<!-- Drag & Drop Upload Zone -->
+<div class="bg-[#101017] border-2 border-dashed border-outline-variant hover:border-primary transition-colors rounded-xl p-xxl flex flex-col items-center justify-center text-center cursor-pointer min-h-[240px]">
+<div class="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center mb-md">
+<span class="material-symbols-outlined text-primary" style="font-size: 32px;">upload_file</span>
+</div>
+<h3 class="font-body-base text-body-base font-semibold text-on-surface mb-xs">Drag &amp; drop your submission file</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-md">or click to browse from your computer</p>
+<div class="flex items-center gap-sm">
+<span class="font-label-caps text-label-caps text-on-surface-variant bg-surface-container-high px-sm py-[2px] rounded border border-outline-variant">.CSV</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant bg-surface-container-high px-sm py-[2px] rounded border border-outline-variant">MAX 50MB</span>
+</div>
+</div>
+<!-- Optional Notes -->
+<div class="flex flex-col gap-xs">
+<label class="font-label-caps text-label-caps text-on-surface-variant ml-xs">Submission Notes (Optional)</label>
+<textarea class="w-full bg-[#101017] border border-outline-variant rounded-lg p-md font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none h-24" placeholder="Add any details about this specific run or model architecture..."></textarea>
+</div>
+<!-- Submit Action Area -->
+<div class="bg-surface-container border border-outline-variant rounded-xl p-md flex flex-col sm:flex-row justify-between items-center gap-md mt-sm">
+<div class="flex items-center gap-md">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Daily Quota</span>
+<div class="flex items-end gap-xs mt-xs">
+<span class="font-data-lg text-data-lg text-on-surface">5</span>
+<span class="font-data-mono text-data-mono text-on-surface-variant mb-[2px]">/ 10 used</span>
+</div>
+</div>
+<div class="w-[1px] h-10 bg-outline-variant mx-sm hidden sm:block"></div>
+<div class="flex flex-col hidden sm:flex">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Next Reset</span>
+<span class="font-data-mono text-data-mono text-on-surface mt-xs">14:22:05</span>
+</div>
+</div>
+<button class="w-full sm:w-auto bg-primary-container text-on-primary-container font-label-caps text-label-caps px-xl py-md rounded-lg flex items-center justify-center gap-sm hover:bg-inverse-primary transition-colors glow-primary">
+<span class="material-symbols-outlined" style="font-size: 20px;">send</span>
+                        Submit Now
+                    </button>
+</div>
+</div>
+<!-- Sidebar (Right) -->
+<div class="lg:col-span-4">
+<div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden h-full flex flex-col">
+<div class="p-md border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+<h3 class="font-body-base text-body-base font-semibold text-on-surface">Recent Submissions</h3>
+<button class="font-label-caps text-label-caps text-secondary hover:text-primary transition-colors">View All</button>
+</div>
+<div class="flex-1 overflow-y-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant">
+<th class="font-label-caps text-label-caps text-on-surface-variant p-sm pl-md font-normal">#</th>
+<th class="font-label-caps text-label-caps text-on-surface-variant p-sm font-normal">Status</th>
+<th class="font-label-caps text-label-caps text-on-surface-variant p-sm font-normal">Score</th>
+<th class="font-label-caps text-label-caps text-on-surface-variant p-sm pr-md font-normal text-right">Time</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm">
+<!-- Row 1: Running -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-variant transition-colors group">
+<td class="p-sm pl-md font-data-mono text-data-mono text-on-surface-variant">104</td>
+<td class="p-sm">
+<div class="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-tertiary-container/20 border border-tertiary/30">
+<div class="w-1.5 h-1.5 rounded-full bg-tertiary"></div>
+<span class="font-label-caps text-label-caps text-tertiary" style="font-size: 10px;">Running</span>
+</div>
+</td>
+<td class="p-sm font-data-mono text-data-mono text-outline">--</td>
+<td class="p-sm pr-md font-data-mono text-data-mono text-on-surface-variant text-right">Just now</td>
+</tr>
+<!-- Row 2: Finished -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-variant transition-colors group">
+<td class="p-sm pl-md font-data-mono text-data-mono text-on-surface-variant">103</td>
+<td class="p-sm">
+<div class="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-secondary/10 border border-secondary/30">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary"></div>
+<span class="font-label-caps text-label-caps text-secondary" style="font-size: 10px;">Finished</span>
+</div>
+</td>
+<td class="p-sm font-data-mono text-data-mono text-on-surface">0.8942</td>
+<td class="p-sm pr-md font-data-mono text-data-mono text-on-surface-variant text-right">2h ago</td>
+</tr>
+<!-- Row 3: Finished -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-variant transition-colors group">
+<td class="p-sm pl-md font-data-mono text-data-mono text-on-surface-variant">102</td>
+<td class="p-sm">
+<div class="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-secondary/10 border border-secondary/30">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary"></div>
+<span class="font-label-caps text-label-caps text-secondary" style="font-size: 10px;">Finished</span>
+</div>
+</td>
+<td class="p-sm font-data-mono text-data-mono text-on-surface">0.8810</td>
+<td class="p-sm pr-md font-data-mono text-data-mono text-on-surface-variant text-right">5h ago</td>
+</tr>
+<!-- Row 4: Failed -->
+<tr class="hover:bg-surface-variant transition-colors group">
+<td class="p-sm pl-md font-data-mono text-data-mono text-on-surface-variant">101</td>
+<td class="p-sm">
+<div class="inline-flex items-center gap-xs px-xs py-[2px] rounded bg-error-container/20 border border-error/30">
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+<span class="font-label-caps text-label-caps text-error" style="font-size: 10px;">Failed</span>
+</div>
+</td>
+<td class="p-sm font-data-mono text-data-mono text-outline">--</td>
+<td class="p-sm pr-md font-data-mono text-data-mono text-on-surface-variant text-right">1d ago</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

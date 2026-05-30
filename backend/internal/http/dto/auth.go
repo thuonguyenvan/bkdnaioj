@@ -37,3 +37,8 @@ type UserResponse struct {
 	CreatedAt time.Time  `json:"created_at"`
 	LastVisit *time.Time `json:"last_visit,omitempty"`
 }
+
+type AuthResponse struct {
+	User  UserResponse  `json:"user"`
+	Token TokenResponse `json:"token"`
+}

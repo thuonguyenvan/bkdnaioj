@@ -45,9 +45,9 @@ func AnnouncementToResponse(a db.Announcement) AnnouncementResponse {
 // --- Clarifications ---
 
 type CreateClarificationRequest struct {
-	TaskID  *uuid.UUID `json:"task_id,omitempty"`
-	PhaseID *uuid.UUID `json:"phase_id,omitempty"`
-	Question string    `json:"question" validate:"required"`
+	TaskID   *uuid.UUID `json:"task_id,omitempty"`
+	PhaseID  *uuid.UUID `json:"phase_id,omitempty"`
+	Question string     `json:"question" validate:"required"`
 }
 
 type AnswerClarificationRequest struct {
@@ -78,13 +78,16 @@ func ClarificationToResponse(c db.Clarification) ClarificationResponse {
 		AnsweredAt: PgTime(c.AnsweredAt), CreatedAt: PgTimeVal(c.CreatedAt),
 	}
 	if c.TaskID.Valid {
-		v := uuid.UUID(c.TaskID.Bytes); r.TaskID = &v
+		v := uuid.UUID(c.TaskID.Bytes)
+		r.TaskID = &v
 	}
 	if c.PhaseID.Valid {
-		v := uuid.UUID(c.PhaseID.Bytes); r.PhaseID = &v
+		v := uuid.UUID(c.PhaseID.Bytes)
+		r.PhaseID = &v
 	}
 	if c.AnsweredBy.Valid {
-		v := uuid.UUID(c.AnsweredBy.Bytes); r.AnsweredBy = &v
+		v := uuid.UUID(c.AnsweredBy.Bytes)
+		r.AnsweredBy = &v
 	}
 	return r
 }
@@ -123,10 +126,12 @@ func TicketToResponse(t db.Ticket) TicketResponse {
 		CreatedAt: PgTimeVal(t.CreatedAt), ResolvedAt: PgTime(t.ResolvedAt),
 	}
 	if t.SubmissionID.Valid {
-		v := uuid.UUID(t.SubmissionID.Bytes); r.SubmissionID = &v
+		v := uuid.UUID(t.SubmissionID.Bytes)
+		r.SubmissionID = &v
 	}
 	if t.AssignedTo.Valid {
-		v := uuid.UUID(t.AssignedTo.Bytes); r.AssignedTo = &v
+		v := uuid.UUID(t.AssignedTo.Bytes)
+		r.AssignedTo = &v
 	}
 	return r
 }

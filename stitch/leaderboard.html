@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OLPAI - Leaderboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#e2dfff",
+                        "on-error-container": "#ffdad6",
+                        "outline-variant": "#464555",
+                        "secondary-fixed-dim": "#4cd7f6",
+                        "surface-container": "#1f1f28",
+                        "primary-container": "#4f46e5",
+                        "on-primary-container": "#dad7ff",
+                        "tertiary-container": "#a44100",
+                        "surface-bright": "#393842",
+                        "secondary": "#4cd7f6",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "surface-variant": "#35343e",
+                        "surface-container-low": "#1b1b24",
+                        "on-background": "#e4e1ee",
+                        "on-secondary-fixed-variant": "#004e5c",
+                        "on-surface": "#e4e1ee",
+                        "on-secondary-container": "#00424e",
+                        "on-secondary-fixed": "#001f26",
+                        "error-container": "#93000a",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-tertiary": "#571f00",
+                        "surface": "#13121b",
+                        "surface-container-highest": "#35343e",
+                        "inverse-primary": "#4d44e3",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "background": "#13121b",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "outline": "#918fa1",
+                        "on-tertiary-container": "#ffd2be",
+                        "surface-container-high": "#2a2933",
+                        "on-secondary": "#003640",
+                        "secondary-container": "#03b5d3",
+                        "surface-dim": "#13121b",
+                        "secondary-fixed": "#acedff",
+                        "on-tertiary-fixed": "#351000",
+                        "primary": "#c3c0ff",
+                        "inverse-surface": "#e4e1ee",
+                        "surface-tint": "#c3c0ff",
+                        "on-surface-variant": "#c7c4d8",
+                        "on-primary": "#1d00a5",
+                        "inverse-on-surface": "#302f39",
+                        "error": "#ffb4ab",
+                        "surface-container-lowest": "#0e0d16",
+                        "on-primary-fixed": "#0f0069",
+                        "on-error": "#690005",
+                        "tertiary": "#ffb695"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "xxl": "48px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "xl": "32px",
+                        "md": "16px"
+                    },
+                    "fontFamily": {
+                        "data-mono": ["JetBrains Mono"],
+                        "label-caps": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-base": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "data-lg": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "data-mono": ["14px", { "lineHeight": "1.4", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "body-base": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "data-lg": ["20px", { "lineHeight": "1.2", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .rank-gold { color: #F59E0B; }
+        .rank-silver { color: #9CA3AF; }
+        .rank-bronze { color: #B45309; }
+        .row-gold { border-left: 2px solid #F59E0B; background-color: rgba(245, 158, 11, 0.05); }
+        .row-silver { border-left: 2px solid #9CA3AF; background-color: rgba(156, 163, 175, 0.05); }
+        .row-bronze { border-left: 2px solid #B45309; background-color: rgba(180, 83, 9, 0.05); }
+        .row-highlight { background-color: rgba(79, 70, 229, 0.1); border-left: 2px solid #4F46E5; }
+        .table-striped tbody tr:nth-child(even):not(.row-gold):not(.row-silver):not(.row-bronze):not(.row-highlight) { background-color: #1b1b24; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-base antialiased">
+<!-- TopNavBar -->
+<nav class="bg-surface dark:bg-surface font-body-base text-body-base fixed top-0 w-full z-50 border-b border-outline-variant shadow-sm flex justify-between items-center h-16 px-lg max-w-[1440px] mx-auto left-0 right-0">
+<div class="flex items-center gap-xl">
+<span class="font-display-lg text-display-lg text-primary italic font-black">OLPAI</span>
+<div class="hidden md:flex gap-lg">
+<a class="text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Home</a>
+<a class="text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Contests</a>
+<a class="text-primary font-bold border-b-2 border-primary pb-1 hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Leaderboard</a>
+<a class="text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95" href="#">Docs</a>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="px-md py-sm rounded-DEFAULT border border-outline-variant text-secondary font-label-caps text-label-caps hover:bg-surface-variant transition-colors">Join Contest</button>
+<button class="px-md py-sm rounded-DEFAULT bg-primary-container text-on-primary-container font-label-caps text-label-caps hover:shadow-[0_0_15px_rgba(79,70,229,0.4)] transition-shadow">Sign In</button>
+<img alt="User Avatar" class="w-8 h-8 rounded-full border border-outline-variant" data-alt="A small circular avatar placeholder image showing a generic user profile picture in a dark theme context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBK2TQHJ4BM_mY0PthssvVPiCYjODP4ZBI4k-mAkwdf2PVOPtcmHogGeBRGJX_tPkbhNS-cuymoZT4337lX0lvNgZxVeSjukYZgotSg4jMumKj2c-Pb6BuyMT6xaLsEmKnuCTliZviY61jjy8YXolWg07sciQMKaGrbj3j-9nyV8uqJfTEeoHFc5Zv6vx04f3CdSr9r_NlVwHE8jEOefNLkUQRWo4qu-1JIDgilCeYld3z2-B5yHrnEkt5VW4_kuElV8x7T6F6TNDA"/>
+</div>
+</nav>
+<main class="max-w-[1440px] mx-auto pt-24 px-lg pb-xxl">
+<!-- Header Section -->
+<header class="mb-xl flex flex-col md:flex-row md:items-end justify-between gap-md border-b border-outline-variant pb-md">
+<div>
+<div class="flex items-center gap-sm mb-sm">
+<span class="bg-secondary-container bg-opacity-10 text-secondary-container px-sm py-xs rounded-DEFAULT font-label-caps text-label-caps flex items-center gap-xs">
+<span class="w-[6px] h-[6px] rounded-full bg-secondary-container"></span>
+                        Public Leaderboard
+                    </span>
+<span class="text-on-surface-variant font-body-sm text-body-sm">Updated 2m ago</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-on-surface">Leaderboard — OLPAI 2026 Round 1</h1>
+</div>
+<div class="flex gap-sm">
+<button class="bg-surface-variant text-on-surface px-md py-sm rounded-DEFAULT font-label-caps text-label-caps border border-outline-variant hover:bg-surface-container-high transition-colors">Overall</button>
+<button class="bg-surface text-on-surface-variant px-md py-sm rounded-DEFAULT font-label-caps text-label-caps border border-transparent hover:text-on-surface transition-colors">Task A</button>
+<button class="bg-surface text-on-surface-variant px-md py-sm rounded-DEFAULT font-label-caps text-label-caps border border-transparent hover:text-on-surface transition-colors">Task B</button>
+<button class="bg-surface text-on-surface-variant px-md py-sm rounded-DEFAULT font-label-caps text-label-caps border border-transparent hover:text-on-surface transition-colors">Task C</button>
+</div>
+</header>
+<!-- Filter Bar -->
+<div class="bg-surface-container-low border border-outline-variant rounded-lg p-md mb-lg flex flex-wrap gap-lg items-center justify-between">
+<div class="flex items-center gap-md">
+<div class="flex items-center gap-sm bg-surface rounded-DEFAULT border border-outline-variant p-xs">
+<button class="px-md py-xs bg-primary-container text-on-primary-container rounded-sm font-label-caps text-label-caps">Phase 1</button>
+<button class="px-md py-xs text-on-surface-variant hover:text-on-surface rounded-sm font-label-caps text-label-caps">Phase 2</button>
+</div>
+<div class="h-6 w-px bg-outline-variant mx-xs"></div>
+<div class="flex items-center gap-sm bg-surface rounded-DEFAULT border border-outline-variant p-xs">
+<button class="px-md py-xs bg-surface-variant text-on-surface rounded-sm font-label-caps text-label-caps">Individual</button>
+<button class="px-md py-xs text-on-surface-variant hover:text-on-surface rounded-sm font-label-caps text-label-caps">Team</button>
+</div>
+</div>
+<div class="flex items-center gap-sm">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]" data-icon="search">search</span>
+<input class="bg-surface border border-outline-variant rounded-DEFAULT pl-xl pr-md py-sm text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none w-64 placeholder:text-outline" placeholder="Search team or user..." type="text"/>
+</div>
+</div>
+</div>
+<!-- Leaderboard Table -->
+<div class="bg-surface-container rounded-lg border border-outline-variant overflow-x-auto">
+<table class="w-full text-left border-collapse table-striped">
+<thead>
+<tr class="bg-surface-container-highest border-b border-outline-variant">
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-right w-16">#</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant">Team / User</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-center w-24">A</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-center w-24">B</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-center w-24">C</th>
+<th class="p-md font-label-caps text-label-caps text-primary text-right w-32">Total Score</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-right w-24">Best Time</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-right w-24">Subs</th>
+<th class="p-md font-label-caps text-label-caps text-on-surface-variant text-right w-32">Last Sub</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono">
+<!-- Rank 1 -->
+<tr class="row-gold border-b border-outline-variant hover:bg-surface-variant transition-colors">
+<td class="p-md text-right rank-gold font-bold">1</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="font-body-sm font-semibold text-on-surface">NeuralKnights</span>
+<span class="text-[10px] uppercase tracking-wider bg-surface px-1 py-0.5 rounded text-on-surface-variant border border-outline-variant">MIT</span>
+</div>
+</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-right font-bold text-on-surface">300.00</td>
+<td class="p-md text-right text-on-surface-variant">0.12s</td>
+<td class="p-md text-right text-on-surface-variant">3</td>
+<td class="p-md text-right text-on-surface-variant text-[12px]">10:42:15</td>
+</tr>
+<!-- Rank 2 -->
+<tr class="row-silver border-b border-outline-variant hover:bg-surface-variant transition-colors">
+<td class="p-md text-right rank-silver font-bold">2</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="font-body-sm font-semibold text-on-surface">TensorFlowers</span>
+<span class="text-[10px] uppercase tracking-wider bg-surface px-1 py-0.5 rounded text-on-surface-variant border border-outline-variant">STANFORD</span>
+</div>
+</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-on-surface-variant">85.50</td>
+<td class="p-md text-right font-bold text-on-surface">285.50</td>
+<td class="p-md text-right text-on-surface-variant">0.15s</td>
+<td class="p-md text-right text-on-surface-variant">5</td>
+<td class="p-md text-right text-on-surface-variant text-[12px]">11:05:22</td>
+</tr>
+<!-- Rank 3 -->
+<tr class="row-bronze border-b border-outline-variant hover:bg-surface-variant transition-colors">
+<td class="p-md text-right rank-bronze font-bold">3</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="font-body-sm font-semibold text-on-surface">GradientDescenders</span>
+<span class="text-[10px] uppercase tracking-wider bg-surface px-1 py-0.5 rounded text-on-surface-variant border border-outline-variant">CMU</span>
+</div>
+</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-on-surface-variant">90.25</td>
+<td class="p-md text-center text-on-surface-variant">80.00</td>
+<td class="p-md text-right font-bold text-on-surface">270.25</td>
+<td class="p-md text-right text-on-surface-variant">0.22s</td>
+<td class="p-md text-right text-on-surface-variant">8</td>
+<td class="p-md text-right text-on-surface-variant text-[12px]">09:15:00</td>
+</tr>
+<!-- Rank 4 -->
+<tr class="border-b border-outline-variant hover:bg-surface-variant transition-colors">
+<td class="p-md text-right text-on-surface-variant">4</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="font-body-sm text-on-surface">DataMiners</span>
+<span class="text-[10px] uppercase tracking-wider bg-surface px-1 py-0.5 rounded text-on-surface-variant border border-outline-variant">BERKELEY</span>
+</div>
+</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-on-surface-variant">85.00</td>
+<td class="p-md text-center text-on-surface-variant">75.50</td>
+<td class="p-md text-right font-bold text-on-surface">260.50</td>
+<td class="p-md text-right text-on-surface-variant">0.18s</td>
+<td class="p-md text-right text-on-surface-variant">4</td>
+<td class="p-md text-right text-on-surface-variant text-[12px]">10:01:44</td>
+</tr>
+<!-- User Highlights -->
+<tr class="row-highlight border-b border-outline-variant hover:bg-surface-variant transition-colors">
+<td class="p-md text-right text-primary font-bold">42</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="font-body-sm font-semibold text-primary">YourTeamName</span>
+<span class="text-[10px] uppercase tracking-wider bg-primary-container text-on-primary-container px-1 py-0.5 rounded border border-primary">YOU</span>
+</div>
+</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-on-surface-variant">45.00</td>
+<td class="p-md text-center text-outline-variant">0.00</td>
+<td class="p-md text-right font-bold text-primary">145.00</td>
+<td class="p-md text-right text-on-surface-variant">0.45s</td>
+<td class="p-md text-right text-on-surface-variant">12</td>
+<td class="p-md text-right text-on-surface-variant text-[12px]">12:30:11</td>
+</tr>
+<!-- Rank 5 -->
+<tr class="border-b border-outline-variant hover:bg-surface-variant transition-colors">
+<td class="p-md text-right text-on-surface-variant">43</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="font-body-sm text-on-surface">ArrayOfLight</span>
+</div>
+</td>
+<td class="p-md text-center text-secondary">100.00</td>
+<td class="p-md text-center text-on-surface-variant">40.00</td>
+<td class="p-md text-center text-outline-variant">0.00</td>
+<td class="p-md text-right font-bold text-on-surface">140.00</td>
+<td class="p-md text-right text-on-surface-variant">0.51s</td>
+<td class="p-md text-right text-on-surface-variant">6</td>
+<td class="p-md text-right text-on-surface-variant text-[12px]">08:22:10</td>
+</tr>
+</tbody>
+</table>
+<div class="p-md flex justify-between items-center bg-surface-container-highest border-t border-outline-variant">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Showing 1-100 of 5,234 entries</span>
+<div class="flex gap-xs">
+<button class="w-8 h-8 flex items-center justify-center rounded bg-surface border border-outline-variant text-on-surface-variant hover:bg-surface-variant disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-primary-container text-on-primary-container font-data-mono text-[14px]">1</button>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-surface border border-outline-variant text-on-surface hover:bg-surface-variant font-data-mono text-[14px]">2</button>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-surface border border-outline-variant text-on-surface hover:bg-surface-variant font-data-mono text-[14px]">3</button>
+<span class="w-8 h-8 flex items-center justify-center text-on-surface-variant">...</span>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-surface border border-outline-variant text-on-surface hover:bg-surface-variant font-data-mono text-[14px]">53</button>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-surface border border-outline-variant text-on-surface hover:bg-surface-variant">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

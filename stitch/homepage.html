@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OLPAI - Olympic AI Platform</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "primary-fixed": "#e2dfff",
+                      "on-error-container": "#ffdad6",
+                      "outline-variant": "#464555",
+                      "secondary-fixed-dim": "#4cd7f6",
+                      "surface-container": "#1f1f28",
+                      "primary-container": "#4f46e5",
+                      "on-primary-container": "#dad7ff",
+                      "tertiary-container": "#a44100",
+                      "surface-bright": "#393842",
+                      "secondary": "#4cd7f6",
+                      "tertiary-fixed-dim": "#ffb695",
+                      "surface-variant": "#35343e",
+                      "surface-container-low": "#1b1b24",
+                      "on-background": "#e4e1ee",
+                      "on-secondary-fixed-variant": "#004e5c",
+                      "on-surface": "#e4e1ee",
+                      "on-secondary-container": "#00424e",
+                      "on-secondary-fixed": "#001f26",
+                      "error-container": "#93000a",
+                      "tertiary-fixed": "#ffdbcc",
+                      "on-tertiary": "#571f00",
+                      "surface": "#13121b",
+                      "surface-container-highest": "#35343e",
+                      "inverse-primary": "#4d44e3",
+                      "primary-fixed-dim": "#c3c0ff",
+                      "background": "#13121b",
+                      "on-primary-fixed-variant": "#3323cc",
+                      "on-tertiary-fixed-variant": "#7b2f00",
+                      "outline": "#918fa1",
+                      "on-tertiary-container": "#ffd2be",
+                      "surface-container-high": "#2a2933",
+                      "on-secondary": "#003640",
+                      "secondary-container": "#03b5d3",
+                      "surface-dim": "#13121b",
+                      "secondary-fixed": "#acedff",
+                      "on-tertiary-fixed": "#351000",
+                      "primary": "#c3c0ff",
+                      "inverse-surface": "#e4e1ee",
+                      "surface-tint": "#c3c0ff",
+                      "on-surface-variant": "#c7c4d8",
+                      "on-primary": "#1d00a5",
+                      "inverse-on-surface": "#302f39",
+                      "error": "#ffb4ab",
+                      "surface-container-lowest": "#0e0d16",
+                      "on-primary-fixed": "#0f0069",
+                      "on-error": "#690005",
+                      "tertiary": "#ffb695"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "xxl": "48px",
+                      "xs": "4px",
+                      "lg": "24px",
+                      "xl": "32px",
+                      "md": "16px"
+              },
+              "fontFamily": {
+                      "data-mono": [
+                              "JetBrains Mono"
+                      ],
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "body-base": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ],
+                      "data-lg": [
+                              "JetBrains Mono"
+                      ]
+              },
+              "fontSize": {
+                      "data-mono": [
+                              "14px",
+                              {
+                                      "lineHeight": "1.4",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "1",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "1.5",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "1.4",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-base": [
+                              "16px",
+                              {
+                                      "lineHeight": "1.6",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "data-lg": [
+                              "20px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        body { background-color: #0F0F1A; }
+        .glow-effect {
+            box-shadow: 0px 10px 30px -5px rgba(79, 70, 229, 0.4);
+        }
+        .hero-bg {
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.15) 0%, transparent 40%),
+                        radial-gradient(circle at bottom right, rgba(76, 215, 246, 0.1) 0%, transparent 40%);
+        }
+    </style>
+</head>
+<body class="text-on-surface antialiased font-body-base bg-background min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<nav class="bg-surface dark:bg-surface font-body-base text-body-base fixed top-0 w-full z-50 border-b border-outline-variant shadow-sm flex justify-between items-center h-16 px-lg max-w-[1440px] mx-auto">
+<div class="flex items-center gap-xl">
+<span class="font-display-lg text-display-lg text-primary italic font-black">OLPAI</span>
+<div class="hidden md:flex gap-lg items-center pt-xs">
+<a class="text-primary font-bold border-b-2 border-primary pb-1 cursor-pointer active:scale-95 hover:text-secondary transition-colors" href="#">Home</a>
+<a class="text-on-surface-variant font-medium cursor-pointer active:scale-95 hover:text-secondary transition-colors" href="#">Contests</a>
+<a class="text-on-surface-variant font-medium cursor-pointer active:scale-95 hover:text-secondary transition-colors" href="#">Leaderboard</a>
+<a class="text-on-surface-variant font-medium cursor-pointer active:scale-95 hover:text-secondary transition-colors" href="#">Docs</a>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant font-medium hover:text-secondary transition-colors cursor-pointer active:scale-95">Sign In</button>
+<button class="bg-primary-container text-on-primary-container px-md py-sm rounded-DEFAULT glow-effect font-bold cursor-pointer active:scale-95 hover:bg-inverse-primary transition-colors">Join Contest</button>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow pt-[80px] w-full max-w-[1440px] mx-auto px-lg hero-bg">
+<!-- Hero Section -->
+<section class="py-xxl flex flex-col items-center text-center max-w-4xl mx-auto space-y-lg mt-xl">
+<h1 class="font-display-lg text-display-lg text-on-surface">Olympic AI Platform</h1>
+<p class="font-headline-md text-headline-md text-on-surface-variant max-w-2xl">Organize, compete, and practice AI challenges — automated judging, real-time leaderboards</p>
+</section>
+<!-- Stats Row -->
+<section class="grid grid-cols-2 md:grid-cols-4 gap-md mb-xxl">
+<div class="bg-surface-container-low border border-surface-container-high p-lg rounded-lg text-center shadow-sm">
+<div class="font-data-lg text-data-lg text-secondary mb-xs">1,200+</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant uppercase">Submissions</div>
+</div>
+<div class="bg-surface-container-low border border-surface-container-high p-lg rounded-lg text-center shadow-sm">
+<div class="font-data-lg text-data-lg text-primary mb-xs">150+</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant uppercase">Teams</div>
+</div>
+<div class="bg-surface-container-low border border-surface-container-high p-lg rounded-lg text-center shadow-sm">
+<div class="font-data-lg text-data-lg text-secondary mb-xs">45</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant uppercase">Tasks</div>
+</div>
+<div class="bg-surface-container-low border border-surface-container-high p-lg rounded-lg text-center shadow-sm">
+<div class="font-data-lg text-data-lg text-primary mb-xs">12</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant uppercase">Active Contests</div>
+</div>
+</section>
+<!-- Live Contest Banner -->
+<section class="mb-xxl">
+<div class="bg-surface-container relative overflow-hidden border border-outline-variant rounded-xl p-xl flex flex-col md:flex-row justify-between items-center gap-lg">
+<div class="absolute inset-0 bg-gradient-to-r from-primary-container/10 to-transparent pointer-events-none"></div>
+<div class="z-10 flex flex-col gap-sm">
+<div class="flex items-center gap-sm">
+<span class="flex h-3 w-3 relative">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-error"></span>
+</span>
+<span class="font-label-caps text-label-caps text-error tracking-wider">LIVE</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface">OLPAI 2026 — Round 1</h2>
+<p class="font-body-base text-body-base text-on-surface-variant">The main event is currently running. Submit your models before the deadline.</p>
+</div>
+<div class="z-10 flex flex-col items-end gap-md">
+<div class="font-data-mono text-data-mono text-secondary bg-surface-container-high px-md py-sm rounded-lg border border-outline-variant">
+                        04:12:35:59
+                    </div>
+<button class="bg-primary-container text-on-primary-container px-lg py-md rounded-DEFAULT glow-effect font-bold hover:bg-inverse-primary transition-colors w-full md:w-auto">Join Now</button>
+</div>
+</div>
+</section>
+<!-- Contests Grid -->
+<section class="mb-xxl">
+<div class="flex justify-between items-end mb-lg">
+<h3 class="font-headline-md text-headline-md text-on-surface border-b-2 border-outline-variant pb-xs">Upcoming &amp; Recent Contests</h3>
+<a class="font-body-sm text-body-sm text-secondary hover:text-primary transition-colors flex items-center gap-xs" href="#">
+                    View All <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-lg">
+<!-- Card 1 -->
+<div class="bg-surface-container-low border border-surface-container-high rounded-xl p-md flex flex-col gap-md hover:border-outline-variant transition-colors group">
+<div class="flex justify-between items-start">
+<h4 class="font-body-base text-body-base font-bold text-on-surface group-hover:text-primary transition-colors">Practice Sprint Alpha</h4>
+<span class="bg-secondary/10 text-secondary font-label-caps text-label-caps px-sm py-xs rounded-full border border-secondary/20 flex items-center gap-xs">
+<span class="h-1.5 w-1.5 rounded-full bg-secondary"></span>UPCOMING
+                        </span>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">calendar_month</span> Oct 15 - Oct 20, 2026
+                    </div>
+<div class="mt-auto pt-md border-t border-surface-container-high flex justify-between items-center font-data-mono text-data-mono text-on-surface-variant">
+<div class="flex items-center gap-xs"><span class="material-symbols-outlined text-[16px]">task</span> 5 Tasks</div>
+<div class="flex items-center gap-xs"><span class="material-symbols-outlined text-[16px]">groups</span> 42 Teams</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-low border border-surface-container-high rounded-xl p-md flex flex-col gap-md hover:border-outline-variant transition-colors group">
+<div class="flex justify-between items-start">
+<h4 class="font-body-base text-body-base font-bold text-on-surface group-hover:text-primary transition-colors">Algorithmic Trading Bot Challenge</h4>
+<span class="bg-surface-variant text-on-surface-variant font-label-caps text-label-caps px-sm py-xs rounded-full border border-outline-variant flex items-center gap-xs">
+<span class="h-1.5 w-1.5 rounded-full bg-outline-variant"></span>ENDED
+                        </span>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">calendar_month</span> Sep 01 - Sep 30, 2026
+                    </div>
+<div class="mt-auto pt-md border-t border-surface-container-high flex justify-between items-center font-data-mono text-data-mono text-on-surface-variant">
+<div class="flex items-center gap-xs"><span class="material-symbols-outlined text-[16px]">task</span> 12 Tasks</div>
+<div class="flex items-center gap-xs"><span class="material-symbols-outlined text-[16px]">groups</span> 215 Teams</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container-low border border-surface-container-high rounded-xl p-md flex flex-col gap-md hover:border-outline-variant transition-colors group">
+<div class="flex justify-between items-start">
+<h4 class="font-body-base text-body-base font-bold text-on-surface group-hover:text-primary transition-colors">NLP Hackathon Winter</h4>
+<span class="bg-secondary/10 text-secondary font-label-caps text-label-caps px-sm py-xs rounded-full border border-secondary/20 flex items-center gap-xs">
+<span class="h-1.5 w-1.5 rounded-full bg-secondary"></span>UPCOMING
+                        </span>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">calendar_month</span> Dec 01 - Dec 05, 2026
+                    </div>
+<div class="mt-auto pt-md border-t border-surface-container-high flex justify-between items-center font-data-mono text-data-mono text-on-surface-variant">
+<div class="flex items-center gap-xs"><span class="material-symbols-outlined text-[16px]">task</span> 3 Tasks</div>
+<div class="flex items-center gap-xs"><span class="material-symbols-outlined text-[16px]">groups</span> 0 Teams</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface border-t border-outline-variant mt-auto">
+<div class="max-w-[1440px] mx-auto px-lg py-lg flex flex-col md:flex-row justify-between items-center gap-md">
+<div class="font-body-sm text-body-sm text-on-surface-variant">
+                © 2026 OLPAI. All rights reserved.
+            </div>
+<div class="flex gap-lg font-body-sm text-body-sm text-on-surface-variant">
+<a class="hover:text-primary transition-colors" href="#">Terms</a>
+<a class="hover:text-primary transition-colors" href="#">Privacy</a>
+<a class="hover:text-primary transition-colors" href="#">Contact</a>
+</div>
+</div>
+</footer>
+</body></html>

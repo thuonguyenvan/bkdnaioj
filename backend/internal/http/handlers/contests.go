@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -36,9 +37,11 @@ func (h *ContestHandler) Create(c echo.Context) error {
 	}
 
 	uid := mw.GetUserID(c)
-	rulesJSON := []byte("{}")
 	if req.RulesJSON != nil {
-		rulesJSON = *req.RulesJSON
+		raw := bytes.TrimSpace(*req.RulesJSON)
+		if len(raw) > 0 && string(raw) != "null" && !json.Valid(raw) {
+			return mw.ErrBadRequest("rules_json must be valid JSON")
+		}
 	}
 
 	contest, err := h.q.CreateContest(c.Request().Context(), db.CreateContestParams{
@@ -52,17 +55,17 @@ func (h *ContestHandler) Create(c echo.Context) error {
 		StartTime:         dto.ToPgTimestamptzVal(req.StartTime),
 		EndTime:           dto.ToPgTimestamptzVal(req.EndTime),
 		Visibility:        db.ContestVisibility(req.Visibility),
-		RulesJson:         rulesJSON,
 		CreatedBy:         dto.ToPgUUID(uid),
 		MaxTeamSize:       req.MaxTeamSize,
 		RequireApproval:   req.RequireApproval,
 	})
 	if err != nil {
+		c.Logger().Errorf("create contest failed: %v", err)
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return mw.ErrConflict("contest slug already taken")
 		}
-		return mw.ErrInternal("create contest failed: " + err.Error())
+		return mw.ErrInternal("create contest failed")
 	}
 	return c.JSON(http.StatusCreated, dto.ContestToResponse(contest))
 }
@@ -129,7 +132,15 @@ func (h *ContestHandler) Update(c echo.Context) error {
 
 	var rulesJSON json.RawMessage
 	if req.RulesJSON != nil {
-		rulesJSON = *req.RulesJSON
+		raw := bytes.TrimSpace(*req.RulesJSON)
+		if len(raw) == 0 || string(raw) == "null" {
+			rulesJSON = json.RawMessage("{}")
+		} else {
+			if !json.Valid(raw) {
+				return mw.ErrBadRequest("rules_json must be valid JSON")
+			}
+			rulesJSON = json.RawMessage(raw)
+		}
 	}
 
 	var ep *db.ContestEntryPolicy
@@ -159,6 +170,7 @@ func (h *ContestHandler) Update(c echo.Context) error {
 		RequireApproval:   req.RequireApproval,
 	})
 	if err != nil {
+		c.Logger().Errorf("update contest failed: %v", err)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return mw.ErrNotFound("contest not found")
 		}
@@ -203,4 +215,3 @@ func (h *ContestHandler) setStatus(c echo.Context, s db.ContestStatus) error {
 	}
 	return c.JSON(http.StatusOK, dto.ContestToResponse(contest))
 }
-

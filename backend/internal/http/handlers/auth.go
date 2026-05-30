@@ -62,9 +62,9 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return mw.ErrInternal("token generation failed")
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{
-		"user":  dto.UserToResponse(user),
-		"token": dto.TokenResponse{AccessToken: token, TokenType: "bearer", ExpiresIn: 604800},
+	return c.JSON(http.StatusCreated, dto.AuthResponse{
+		User:  dto.UserToResponse(user),
+		Token: dto.TokenResponse{AccessToken: token, TokenType: "bearer", ExpiresIn: 604800},
 	})
 }
 
@@ -98,9 +98,9 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return mw.ErrInternal("token generation failed")
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{
-		"user":  dto.UserToResponse(user),
-		"token": dto.TokenResponse{AccessToken: token, TokenType: "bearer", ExpiresIn: 604800},
+	return c.JSON(http.StatusOK, dto.AuthResponse{
+		User:  dto.UserToResponse(user),
+		Token: dto.TokenResponse{AccessToken: token, TokenType: "bearer", ExpiresIn: 604800},
 	})
 }
 

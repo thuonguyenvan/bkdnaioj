@@ -10,78 +10,89 @@ import (
 // Each method delegates to its corresponding Func field if non-nil,
 // otherwise returns zero value + nil error.
 type MockQuerier struct {
-	AddEntryMemberFunc                func(ctx context.Context, arg AddEntryMemberParams) error
-	AddTeamMemberFunc                 func(ctx context.Context, arg AddTeamMemberParams) error
-	AnswerClarificationFunc           func(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
-	ApproveContestEntryFunc           func(ctx context.Context, arg ApproveContestEntryParams) (ContestEntry, error)
-	CountActiveEntriesFunc            func(ctx context.Context) (int64, error)
-	CountContestsFunc                 func(ctx context.Context) (int64, error)
-	CountSubmissionsFunc              func(ctx context.Context) (int64, error)
-	CountUsersFunc                    func(ctx context.Context) (int64, error)
-	CreateAnnouncementFunc            func(ctx context.Context, arg CreateAnnouncementParams) (Announcement, error)
-	CreateClarificationFunc           func(ctx context.Context, arg CreateClarificationParams) (Clarification, error)
-	CreateContestFunc                 func(ctx context.Context, arg CreateContestParams) (Contest, error)
-	CreateContestEntryFunc            func(ctx context.Context, arg CreateContestEntryParams) (ContestEntry, error)
-	CreatePhaseFunc                   func(ctx context.Context, arg CreatePhaseParams) (Phase, error)
-	CreatePhaseDefFunc                func(ctx context.Context, arg CreatePhaseDefParams) (ContestPhaseDef, error)
-	CreateSubmissionFunc              func(ctx context.Context, arg CreateSubmissionParams) (Submission, error)
-	CreateTaskFunc                    func(ctx context.Context, arg CreateTaskParams) (Task, error)
-	CreateTeamFunc                    func(ctx context.Context, arg CreateTeamParams) (Team, error)
-	CreateTicketFunc                  func(ctx context.Context, arg CreateTicketParams) (Ticket, error)
-	CreateUserFunc                    func(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteAnnouncementFunc            func(ctx context.Context, id uuid.UUID) error
-	DeleteContestFunc                 func(ctx context.Context, id uuid.UUID) error
-	DeleteContestEntryFunc            func(ctx context.Context, id uuid.UUID) error
-	DeletePhaseFunc                   func(ctx context.Context, id uuid.UUID) error
-	DeletePhaseDefFunc                func(ctx context.Context, id uuid.UUID) error
-	DeleteTaskFunc                    func(ctx context.Context, id uuid.UUID) error
-	DisqualifyContestEntryFunc        func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
-	GetClarificationByIDFunc          func(ctx context.Context, id uuid.UUID) (Clarification, error)
-	GetContestByIDFunc                func(ctx context.Context, id uuid.UUID) (Contest, error)
-	GetContestBySlugFunc              func(ctx context.Context, slug string) (Contest, error)
-	GetContestEntryByIDFunc           func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
-	GetContestPhaseLeaderboardFunc    func(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
-	GetPhaseByIDFunc                  func(ctx context.Context, id uuid.UUID) (Phase, error)
-	GetSubmissionByIDFunc             func(ctx context.Context, id uuid.UUID) (Submission, error)
-	GetTaskByIDFunc                   func(ctx context.Context, id uuid.UUID) (Task, error)
-	GetTaskPhaseLeaderboardFunc       func(ctx context.Context, arg GetTaskPhaseLeaderboardParams) ([]GetTaskPhaseLeaderboardRow, error)
-	GetTeamByIDFunc                   func(ctx context.Context, id uuid.UUID) (Team, error)
-	GetTeamBySlugFunc                 func(ctx context.Context, slug string) (Team, error)
-	GetUserByEmailFunc                func(ctx context.Context, email string) (User, error)
-	GetUserByIDFunc                   func(ctx context.Context, id uuid.UUID) (User, error)
-	ListAnnouncementsByContestFunc    func(ctx context.Context, contestID uuid.UUID) ([]Announcement, error)
-	ListClarificationsByContestFunc   func(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
-	ListContestEntriesFunc            func(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
-	ListContestsFunc                  func(ctx context.Context, arg ListContestsParams) ([]Contest, error)
-	ListEntryMembersFunc              func(ctx context.Context, contestEntryID uuid.UUID) ([]ListEntryMembersRow, error)
-	ListPhaseDefsByContestFunc        func(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
-	ListPhasesByTaskFunc              func(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
-	ListSubmissionsByEntryFunc        func(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
-	ListTasksByContestFunc            func(ctx context.Context, contestID uuid.UUID) ([]Task, error)
-	ListTeamMembersFunc               func(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error)
-	ListTeamsByUserFunc               func(ctx context.Context, userID uuid.UUID) ([]Team, error)
-	ListTicketsAllFunc                func(ctx context.Context, arg ListTicketsAllParams) ([]Ticket, error)
-	ListTicketsByUserFunc             func(ctx context.Context, createdBy uuid.UUID) ([]Ticket, error)
-	ListUsersAdminFunc                func(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error)
-	MarkSubmissionFinalFunc           func(ctx context.Context, id uuid.UUID) (Submission, error)
-	RemoveEntryMemberFunc             func(ctx context.Context, arg RemoveEntryMemberParams) error
-	RemoveTeamMemberFunc              func(ctx context.Context, arg RemoveTeamMemberParams) error
-	ResolveTicketFunc                 func(ctx context.Context, id uuid.UUID) (Ticket, error)
-	SetPhaseFrozenFunc                func(ctx context.Context, arg SetPhaseFrozenParams) (Phase, error)
-	TouchUserLastVisitFunc            func(ctx context.Context, id uuid.UUID) error
-	UpdateAnnouncementFunc            func(ctx context.Context, arg UpdateAnnouncementParams) (Announcement, error)
-	UpdateClarificationStatusFunc     func(ctx context.Context, arg UpdateClarificationStatusParams) (Clarification, error)
-	UpdateContestFunc                 func(ctx context.Context, arg UpdateContestParams) (Contest, error)
-	UpdateContestEntryStatusFunc      func(ctx context.Context, arg UpdateContestEntryStatusParams) (ContestEntry, error)
-	UpdateContestStatusFunc           func(ctx context.Context, arg UpdateContestStatusParams) (Contest, error)
-	UpdatePhaseFunc                   func(ctx context.Context, arg UpdatePhaseParams) (Phase, error)
-	UpdatePhaseDefFunc                func(ctx context.Context, arg UpdatePhaseDefParams) (ContestPhaseDef, error)
-	UpdateTaskFunc                    func(ctx context.Context, arg UpdateTaskParams) (Task, error)
-	UpdateTicketFunc                  func(ctx context.Context, arg UpdateTicketParams) (Ticket, error)
-	UpdateUserProfileFunc             func(ctx context.Context, arg UpdateUserProfileParams) (User, error)
-	UpdateUserRoleFunc                func(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
-	UpsertContestPhaseLeaderboardFunc func(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
-	UpsertTaskPhaseLeaderboardFunc    func(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
+	AddEntryMemberFunc                    func(ctx context.Context, arg AddEntryMemberParams) error
+	AddTeamMemberFunc                     func(ctx context.Context, arg AddTeamMemberParams) error
+	AnswerClarificationFunc               func(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
+	ApproveContestEntryFunc               func(ctx context.Context, arg ApproveContestEntryParams) (ContestEntry, error)
+	CountActiveEntriesFunc                func(ctx context.Context) (int64, error)
+	CountContestsFunc                     func(ctx context.Context) (int64, error)
+	CountSubmissionsFunc                  func(ctx context.Context) (int64, error)
+	CountUsersFunc                        func(ctx context.Context) (int64, error)
+	CreateAnnouncementFunc                func(ctx context.Context, arg CreateAnnouncementParams) (Announcement, error)
+	CreateClarificationFunc               func(ctx context.Context, arg CreateClarificationParams) (Clarification, error)
+	CreateContestFunc                     func(ctx context.Context, arg CreateContestParams) (Contest, error)
+	CreateContestEntryFunc                func(ctx context.Context, arg CreateContestEntryParams) (ContestEntry, error)
+	CreateEvaluationSetFunc               func(ctx context.Context, arg CreateEvaluationSetParams) (TaskEvaluationSet, error)
+	CreatePhaseFunc                       func(ctx context.Context, arg CreatePhaseParams) (Phase, error)
+	CreatePhaseDefFunc                    func(ctx context.Context, arg CreatePhaseDefParams) (ContestPhaseDef, error)
+	CreateSubmissionFunc                  func(ctx context.Context, arg CreateSubmissionParams) (Submission, error)
+	CreateSubmissionFileFunc              func(ctx context.Context, arg CreateSubmissionFileParams) (SubmissionFile, error)
+	CreateTaskFunc                        func(ctx context.Context, arg CreateTaskParams) (Task, error)
+	CreateTeamFunc                        func(ctx context.Context, arg CreateTeamParams) (Team, error)
+	CreateTicketFunc                      func(ctx context.Context, arg CreateTicketParams) (Ticket, error)
+	CreateUserFunc                        func(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteAnnouncementFunc                func(ctx context.Context, id uuid.UUID) error
+	DeleteContestFunc                     func(ctx context.Context, id uuid.UUID) error
+	DeleteContestEntryFunc                func(ctx context.Context, id uuid.UUID) error
+	DeletePhaseFunc                       func(ctx context.Context, id uuid.UUID) error
+	DeletePhaseDefFunc                    func(ctx context.Context, id uuid.UUID) error
+	DeleteSubmissionFilesBySubmissionFunc func(ctx context.Context, submissionID uuid.UUID) error
+	DeleteTaskFunc                        func(ctx context.Context, id uuid.UUID) error
+	DisqualifyContestEntryFunc            func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
+	GetClarificationByIDFunc              func(ctx context.Context, id uuid.UUID) (Clarification, error)
+	GetContestByIDFunc                    func(ctx context.Context, id uuid.UUID) (Contest, error)
+	GetContestBySlugFunc                  func(ctx context.Context, slug string) (Contest, error)
+	GetContestEntryByIDFunc               func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
+	GetContestPhaseLeaderboardFunc        func(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
+	GetEvaluationSetByIDFunc              func(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
+	GetEvaluationSetByTaskAndKeyFunc      func(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
+	GetPhaseByIDFunc                      func(ctx context.Context, id uuid.UUID) (Phase, error)
+	GetPhaseDefByIDFunc                   func(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error)
+	GetSubmissionByIDFunc                 func(ctx context.Context, id uuid.UUID) (Submission, error)
+	GetTaskByIDFunc                       func(ctx context.Context, id uuid.UUID) (Task, error)
+	GetTaskPhaseLeaderboardFunc           func(ctx context.Context, arg GetTaskPhaseLeaderboardParams) ([]GetTaskPhaseLeaderboardRow, error)
+	GetTeamByIDFunc                       func(ctx context.Context, id uuid.UUID) (Team, error)
+	GetTeamBySlugFunc                     func(ctx context.Context, slug string) (Team, error)
+	GetUserByEmailFunc                    func(ctx context.Context, email string) (User, error)
+	GetUserByIDFunc                       func(ctx context.Context, id uuid.UUID) (User, error)
+	ListAnnouncementsByContestFunc        func(ctx context.Context, contestID uuid.UUID) ([]Announcement, error)
+	ListClarificationsByContestFunc       func(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
+	ListContestEntriesFunc                func(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
+	ListContestsFunc                      func(ctx context.Context, arg ListContestsParams) ([]Contest, error)
+	ListEntryMembersFunc                  func(ctx context.Context, contestEntryID uuid.UUID) ([]ListEntryMembersRow, error)
+	ListEvaluationSetAssetsFunc           func(ctx context.Context, evaluationSetID uuid.UUID) ([]EvaluationSetAsset, error)
+	ListEvaluationSetsByTaskFunc          func(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
+	ListPhaseDefsByContestFunc            func(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
+	ListPhasesByTaskFunc                  func(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
+	ListSubmissionFilesBySubmissionFunc   func(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
+	ListSubmissionsByEntryFunc            func(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
+	ListTasksByContestFunc                func(ctx context.Context, contestID uuid.UUID) ([]Task, error)
+	ListTeamMembersFunc                   func(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error)
+	ListTeamsByUserFunc                   func(ctx context.Context, userID uuid.UUID) ([]Team, error)
+	ListTicketsAllFunc                    func(ctx context.Context, arg ListTicketsAllParams) ([]Ticket, error)
+	ListTicketsByUserFunc                 func(ctx context.Context, createdBy uuid.UUID) ([]Ticket, error)
+	ListUsersAdminFunc                    func(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error)
+	MarkSubmissionFinalFunc               func(ctx context.Context, id uuid.UUID) (Submission, error)
+	MarkSubmissionQueuedFunc              func(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
+	RemoveEntryMemberFunc                 func(ctx context.Context, arg RemoveEntryMemberParams) error
+	RemoveTeamMemberFunc                  func(ctx context.Context, arg RemoveTeamMemberParams) error
+	ResolveTicketFunc                     func(ctx context.Context, id uuid.UUID) (Ticket, error)
+	SetPhaseFrozenFunc                    func(ctx context.Context, arg SetPhaseFrozenParams) (Phase, error)
+	TouchUserLastVisitFunc                func(ctx context.Context, id uuid.UUID) error
+	UpdateAnnouncementFunc                func(ctx context.Context, arg UpdateAnnouncementParams) (Announcement, error)
+	UpdateClarificationStatusFunc         func(ctx context.Context, arg UpdateClarificationStatusParams) (Clarification, error)
+	UpdateContestFunc                     func(ctx context.Context, arg UpdateContestParams) (Contest, error)
+	UpdateContestEntryStatusFunc          func(ctx context.Context, arg UpdateContestEntryStatusParams) (ContestEntry, error)
+	UpdateContestStatusFunc               func(ctx context.Context, arg UpdateContestStatusParams) (Contest, error)
+	UpdatePhaseFunc                       func(ctx context.Context, arg UpdatePhaseParams) (Phase, error)
+	UpdatePhaseDefFunc                    func(ctx context.Context, arg UpdatePhaseDefParams) (ContestPhaseDef, error)
+	UpdateTaskFunc                        func(ctx context.Context, arg UpdateTaskParams) (Task, error)
+	UpdateTicketFunc                      func(ctx context.Context, arg UpdateTicketParams) (Ticket, error)
+	UpdateUserProfileFunc                 func(ctx context.Context, arg UpdateUserProfileParams) (User, error)
+	UpdateUserRoleFunc                    func(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
+	UpsertContestPhaseLeaderboardFunc     func(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
+	UpsertEvaluationSetAssetFunc          func(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
+	UpsertTaskPhaseLeaderboardFunc        func(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
 }
 
 var _ Querier = (*MockQuerier)(nil)
@@ -170,6 +181,13 @@ func (m *MockQuerier) CreateContestEntry(ctx context.Context, arg CreateContestE
 	return ContestEntry{}, nil
 }
 
+func (m *MockQuerier) CreateEvaluationSet(ctx context.Context, arg CreateEvaluationSetParams) (TaskEvaluationSet, error) {
+	if m.CreateEvaluationSetFunc != nil {
+		return m.CreateEvaluationSetFunc(ctx, arg)
+	}
+	return TaskEvaluationSet{}, nil
+}
+
 func (m *MockQuerier) CreatePhase(ctx context.Context, arg CreatePhaseParams) (Phase, error) {
 	if m.CreatePhaseFunc != nil {
 		return m.CreatePhaseFunc(ctx, arg)
@@ -189,6 +207,13 @@ func (m *MockQuerier) CreateSubmission(ctx context.Context, arg CreateSubmission
 		return m.CreateSubmissionFunc(ctx, arg)
 	}
 	return Submission{}, nil
+}
+
+func (m *MockQuerier) CreateSubmissionFile(ctx context.Context, arg CreateSubmissionFileParams) (SubmissionFile, error) {
+	if m.CreateSubmissionFileFunc != nil {
+		return m.CreateSubmissionFileFunc(ctx, arg)
+	}
+	return SubmissionFile{}, nil
 }
 
 func (m *MockQuerier) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -254,6 +279,13 @@ func (m *MockQuerier) DeletePhaseDef(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (m *MockQuerier) DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error {
+	if m.DeleteSubmissionFilesBySubmissionFunc != nil {
+		return m.DeleteSubmissionFilesBySubmissionFunc(ctx, submissionID)
+	}
+	return nil
+}
+
 func (m *MockQuerier) DeleteTask(ctx context.Context, id uuid.UUID) error {
 	if m.DeleteTaskFunc != nil {
 		return m.DeleteTaskFunc(ctx, id)
@@ -303,11 +335,32 @@ func (m *MockQuerier) GetContestPhaseLeaderboard(ctx context.Context, arg GetCon
 	return nil, nil
 }
 
+func (m *MockQuerier) GetEvaluationSetByID(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error) {
+	if m.GetEvaluationSetByIDFunc != nil {
+		return m.GetEvaluationSetByIDFunc(ctx, id)
+	}
+	return TaskEvaluationSet{}, nil
+}
+
+func (m *MockQuerier) GetEvaluationSetByTaskAndKey(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error) {
+	if m.GetEvaluationSetByTaskAndKeyFunc != nil {
+		return m.GetEvaluationSetByTaskAndKeyFunc(ctx, arg)
+	}
+	return TaskEvaluationSet{}, nil
+}
+
 func (m *MockQuerier) GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error) {
 	if m.GetPhaseByIDFunc != nil {
 		return m.GetPhaseByIDFunc(ctx, id)
 	}
 	return Phase{}, nil
+}
+
+func (m *MockQuerier) GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error) {
+	if m.GetPhaseDefByIDFunc != nil {
+		return m.GetPhaseDefByIDFunc(ctx, id)
+	}
+	return ContestPhaseDef{}, nil
 }
 
 func (m *MockQuerier) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error) {
@@ -394,6 +447,20 @@ func (m *MockQuerier) ListEntryMembers(ctx context.Context, contestEntryID uuid.
 	return nil, nil
 }
 
+func (m *MockQuerier) ListEvaluationSetAssets(ctx context.Context, evaluationSetID uuid.UUID) ([]EvaluationSetAsset, error) {
+	if m.ListEvaluationSetAssetsFunc != nil {
+		return m.ListEvaluationSetAssetsFunc(ctx, evaluationSetID)
+	}
+	return nil, nil
+}
+
+func (m *MockQuerier) ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error) {
+	if m.ListEvaluationSetsByTaskFunc != nil {
+		return m.ListEvaluationSetsByTaskFunc(ctx, taskID)
+	}
+	return nil, nil
+}
+
 func (m *MockQuerier) ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error) {
 	if m.ListPhaseDefsByContestFunc != nil {
 		return m.ListPhaseDefsByContestFunc(ctx, contestID)
@@ -404,6 +471,13 @@ func (m *MockQuerier) ListPhaseDefsByContest(ctx context.Context, contestID uuid
 func (m *MockQuerier) ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error) {
 	if m.ListPhasesByTaskFunc != nil {
 		return m.ListPhasesByTaskFunc(ctx, taskID)
+	}
+	return nil, nil
+}
+
+func (m *MockQuerier) ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error) {
+	if m.ListSubmissionFilesBySubmissionFunc != nil {
+		return m.ListSubmissionFilesBySubmissionFunc(ctx, submissionID)
 	}
 	return nil, nil
 }
@@ -460,6 +534,13 @@ func (m *MockQuerier) ListUsersAdmin(ctx context.Context, arg ListUsersAdminPara
 func (m *MockQuerier) MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error) {
 	if m.MarkSubmissionFinalFunc != nil {
 		return m.MarkSubmissionFinalFunc(ctx, id)
+	}
+	return Submission{}, nil
+}
+
+func (m *MockQuerier) MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error) {
+	if m.MarkSubmissionQueuedFunc != nil {
+		return m.MarkSubmissionQueuedFunc(ctx, arg)
 	}
 	return Submission{}, nil
 }
@@ -581,6 +662,13 @@ func (m *MockQuerier) UpsertContestPhaseLeaderboard(ctx context.Context, arg Ups
 		return m.UpsertContestPhaseLeaderboardFunc(ctx, arg)
 	}
 	return ContestPhaseLeaderboardEntry{}, nil
+}
+
+func (m *MockQuerier) UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error) {
+	if m.UpsertEvaluationSetAssetFunc != nil {
+		return m.UpsertEvaluationSetAssetFunc(ctx, arg)
+	}
+	return EvaluationSetAsset{}, nil
 }
 
 func (m *MockQuerier) UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error) {

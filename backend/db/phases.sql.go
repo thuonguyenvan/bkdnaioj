@@ -14,17 +14,18 @@ import (
 
 const createPhase = `-- name: CreatePhase :one
 INSERT INTO phases (
-  task_id, contest_phase_def_id, slug, title, description,
+  task_id, contest_phase_def_id, evaluation_set_id, slug, title, description,
   open_time, close_time, judge_key, submission_limit,
   leaderboard_mode, allow_official_submit, allow_virtual_submit,
   allow_practice_submit, display_scores, is_frozen, is_final, sort_order
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-RETURNING id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+RETURNING id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at, evaluation_set_id
 `
 
 type CreatePhaseParams struct {
 	TaskID              uuid.UUID          `json:"task_id"`
 	ContestPhaseDefID   uuid.UUID          `json:"contest_phase_def_id"`
+	EvaluationSetID     uuid.UUID          `json:"evaluation_set_id"`
 	Slug                string             `json:"slug"`
 	Title               string             `json:"title"`
 	Description         *string            `json:"description"`
@@ -46,6 +47,7 @@ func (q *Queries) CreatePhase(ctx context.Context, arg CreatePhaseParams) (Phase
 	row := q.db.QueryRow(ctx, createPhase,
 		arg.TaskID,
 		arg.ContestPhaseDefID,
+		arg.EvaluationSetID,
 		arg.Slug,
 		arg.Title,
 		arg.Description,
@@ -84,6 +86,7 @@ func (q *Queries) CreatePhase(ctx context.Context, arg CreatePhaseParams) (Phase
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EvaluationSetID,
 	)
 	return i, err
 }
@@ -98,7 +101,7 @@ func (q *Queries) DeletePhase(ctx context.Context, id uuid.UUID) error {
 }
 
 const getPhaseByID = `-- name: GetPhaseByID :one
-SELECT id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at FROM phases WHERE id = $1
+SELECT id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at, evaluation_set_id FROM phases WHERE id = $1
 `
 
 func (q *Queries) GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error) {
@@ -125,12 +128,13 @@ func (q *Queries) GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error)
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EvaluationSetID,
 	)
 	return i, err
 }
 
 const listPhasesByTask = `-- name: ListPhasesByTask :many
-SELECT id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at FROM phases WHERE task_id = $1 ORDER BY sort_order
+SELECT id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at, evaluation_set_id FROM phases WHERE task_id = $1 ORDER BY sort_order
 `
 
 func (q *Queries) ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error) {
@@ -163,6 +167,7 @@ func (q *Queries) ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Pha
 			&i.SortOrder,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EvaluationSetID,
 		); err != nil {
 			return nil, err
 		}
@@ -175,7 +180,7 @@ func (q *Queries) ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Pha
 }
 
 const setPhaseFrozen = `-- name: SetPhaseFrozen :one
-UPDATE phases SET is_frozen = $2, updated_at = now() WHERE id = $1 RETURNING id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at
+UPDATE phases SET is_frozen = $2, updated_at = now() WHERE id = $1 RETURNING id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at, evaluation_set_id
 `
 
 type SetPhaseFrozenParams struct {
@@ -207,6 +212,7 @@ func (q *Queries) SetPhaseFrozen(ctx context.Context, arg SetPhaseFrozenParams) 
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EvaluationSetID,
 	)
 	return i, err
 }
@@ -223,7 +229,7 @@ UPDATE phases SET
   is_frozen = COALESCE($9, is_frozen),
   updated_at = now()
 WHERE id = $1
-RETURNING id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at
+RETURNING id, task_id, contest_phase_def_id, slug, title, description, open_time, close_time, judge_key, submission_limit, leaderboard_mode, allow_official_submit, allow_virtual_submit, allow_practice_submit, display_scores, is_frozen, is_final, sort_order, created_at, updated_at, evaluation_set_id
 `
 
 type UpdatePhaseParams struct {
@@ -272,6 +278,7 @@ func (q *Queries) UpdatePhase(ctx context.Context, arg UpdatePhaseParams) (Phase
 		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EvaluationSetID,
 	)
 	return i, err
 }

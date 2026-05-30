@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -13,24 +15,31 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/dto"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/queue"
+	"github.com/mank1/olpai-backend/internal/storage"
 )
 
 type SubmissionHandler struct {
-	q   db.Querier
-	val *validator.Validate
+	q        db.Querier
+	producer *queue.Producer
+	s3       *storage.S3
+	val      *validator.Validate
 }
 
-func NewSubmissionHandler(q db.Querier) *SubmissionHandler {
-	return &SubmissionHandler{q: q, val: validator.New()}
+func NewSubmissionHandler(q db.Querier, producer *queue.Producer, s3 *storage.S3) *SubmissionHandler {
+	return &SubmissionHandler{q: q, producer: producer, s3: s3, val: validator.New()}
 }
 
-// POST /api/v1/entries/:entry_id/submissions — stub (no file upload yet)
-func (h *SubmissionHandler) Create(c echo.Context) error {
+// POST /api/v1/entries/:entry_id/submissions:initiate
+func (h *SubmissionHandler) InitiateUpload(c echo.Context) error {
+	if h.s3 == nil {
+		return mw.ErrInternal("storage unavailable")
+	}
 	entryID, err := uuid.Parse(c.Param("entry_id"))
 	if err != nil {
 		return mw.ErrBadRequest("invalid entry id")
 	}
-	var req dto.CreateSubmissionRequest
+	var req dto.InitiateSubmissionUploadRequest
 	if err := c.Bind(&req); err != nil {
 		return mw.ErrBadRequest("invalid request body")
 	}
@@ -40,7 +49,6 @@ func (h *SubmissionHandler) Create(c echo.Context) error {
 	uid := mw.GetUserID(c)
 	ctx := c.Request().Context()
 
-	// Get entry to resolve contest_id
 	entry, err := h.q.GetContestEntryByID(ctx, entryID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -57,7 +65,7 @@ func (h *SubmissionHandler) Create(c echo.Context) error {
 		TaskID:         req.TaskID,
 		PhaseID:        req.PhaseID,
 		SubmittedBy:    uid,
-		FileCount:      0, // stub — no file upload yet
+		FileCount:      int32(len(req.Files)),
 		TotalSizeBytes: 0,
 		ClientIp:       &ip,
 		UserAgent:      &ua,
@@ -65,7 +73,78 @@ func (h *SubmissionHandler) Create(c echo.Context) error {
 	if err != nil {
 		return mw.ErrInternal("create submission failed: " + err.Error())
 	}
-	return c.JSON(http.StatusCreated, dto.SubmissionToResponse(sub))
+
+	uploads := make([]dto.InitiateUploadFileResponse, 0, len(req.Files))
+	for _, f := range req.Files {
+		objectKey := "submissions/" + sub.ID.String() + "/" + f.Filename
+		putURL, err := h.s3.PresignPut(ctx, objectKey, 15*time.Minute)
+		if err != nil {
+			return mw.ErrInternal("presign failed")
+		}
+		uploads = append(uploads, dto.InitiateUploadFileResponse{Filename: f.Filename, ObjectKey: objectKey, PutURL: putURL})
+	}
+
+	return c.JSON(http.StatusCreated, dto.InitiateSubmissionUploadResponse{SubmissionID: sub.ID, Uploads: uploads})
+}
+
+// POST /api/v1/submissions/:id/complete
+func (h *SubmissionHandler) CompleteUpload(c echo.Context) error {
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return mw.ErrBadRequest("invalid submission id")
+	}
+	var req dto.CompleteSubmissionUploadRequest
+	if err := c.Bind(&req); err != nil {
+		return mw.ErrBadRequest("invalid request body")
+	}
+	if err := h.val.Struct(req); err != nil {
+		return mw.ErrBadRequest(err.Error())
+	}
+	ctx := c.Request().Context()
+
+	_, err = h.q.GetSubmissionByID(ctx, subID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("submission not found")
+		}
+		return mw.ErrInternal("fetch submission failed")
+	}
+
+	total := int64(0)
+	for _, f := range req.Files {
+		prefix := "submissions/" + subID.String() + "/"
+		if !strings.HasPrefix(f.ObjectKey, prefix) {
+			return mw.ErrBadRequest("invalid object_key")
+		}
+		total += f.SizeBytes
+		_, err := h.q.CreateSubmissionFile(ctx, db.CreateSubmissionFileParams{
+			SubmissionID:     subID,
+			OriginalFilename: f.Filename,
+			StoragePath:      f.ObjectKey,
+			FileSize:         f.SizeBytes,
+			ContentType:      &f.ContentType,
+			HashSha256:       f.SHA256,
+		})
+		if err != nil {
+			return mw.ErrInternal("create submission_file failed")
+		}
+	}
+
+	queued, err := h.q.MarkSubmissionQueued(ctx, db.MarkSubmissionQueuedParams{ID: subID, FileCount: int32(len(req.Files)), TotalSizeBytes: total})
+	if err != nil {
+		return mw.ErrInternal("mark queued failed")
+	}
+
+	if h.producer != nil {
+		_ = h.producer.EnqueueJudge(ctx, queued.ID, nil)
+	}
+
+	return c.JSON(http.StatusOK, dto.SubmissionToResponse(queued))
+}
+
+// POST /api/v1/entries/:entry_id/submissions — legacy shortcut (no presign)
+func (h *SubmissionHandler) Create(c echo.Context) error {
+	return mw.ErrBadRequest("use presigned submission upload flow")
 }
 
 // GET /api/v1/submissions/:id

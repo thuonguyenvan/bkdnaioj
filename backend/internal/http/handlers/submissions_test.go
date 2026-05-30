@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -13,54 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSubmissionHandler_Create_Success(t *testing.T) {
-	entryID := uuid.New()
-	contestID := uuid.New()
-	taskID := uuid.New()
-	phaseID := uuid.New()
-	userID := uuid.New()
-
-	mock := &db.MockQuerier{
-		GetContestEntryByIDFunc: func(ctx context.Context, id uuid.UUID) (db.ContestEntry, error) {
-			return db.ContestEntry{ID: entryID, ContestID: contestID}, nil
-		},
-		CreateSubmissionFunc: func(ctx context.Context, arg db.CreateSubmissionParams) (db.Submission, error) {
-			return db.Submission{
-				ID: uuid.New(), ContestID: contestID, ContestEntryID: entryID,
-				TaskID: taskID, PhaseID: phaseID, SubmittedBy: userID,
-			}, nil
-		},
-	}
-	h := NewSubmissionHandler(mock)
-	body := fmt.Sprintf(`{"task_id":"%s","phase_id":"%s"}`, taskID, phaseID)
-	c, rec := newTestContext("POST", "/api/v1/entries/"+entryID.String()+"/submissions", body)
-	c.SetParamNames("entry_id")
-	c.SetParamValues(entryID.String())
-	setAuthContext(c, userID, "contestant")
-
-	err := h.Create(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, rec.Code)
-}
-
-func TestSubmissionHandler_Create_EntryNotFound(t *testing.T) {
-	mock := &db.MockQuerier{
-		GetContestEntryByIDFunc: func(ctx context.Context, id uuid.UUID) (db.ContestEntry, error) {
-			return db.ContestEntry{}, pgx.ErrNoRows
-		},
-	}
-	h := NewSubmissionHandler(mock)
-	taskID := uuid.New()
-	phaseID := uuid.New()
-	body := fmt.Sprintf(`{"task_id":"%s","phase_id":"%s"}`, taskID, phaseID)
-	c, _ := newTestContext("POST", "/api/v1/entries/"+uuid.New().String()+"/submissions", body)
-	c.SetParamNames("entry_id")
-	c.SetParamValues(uuid.New().String())
-	setAuthContext(c, uuid.New(), "contestant")
+func TestSubmissionHandler_Create_Unsupported(t *testing.T) {
+	h := NewSubmissionHandler(&db.MockQuerier{}, nil, nil)
+	c, _ := newTestContext("POST", "/api/v1/entries/"+uuid.New().String()+"/submissions", `{}`)
 
 	err := h.Create(c)
 	assert.Error(t, err)
-	assert.Equal(t, http.StatusNotFound, err.(*mw.AppError).Status)
+	assert.Equal(t, http.StatusBadRequest, err.(*mw.AppError).Status)
 }
 
 func TestSubmissionHandler_Get_Success(t *testing.T) {
@@ -70,7 +28,7 @@ func TestSubmissionHandler_Get_Success(t *testing.T) {
 			return db.Submission{ID: subID}, nil
 		},
 	}
-	h := NewSubmissionHandler(mock)
+	h := NewSubmissionHandler(mock, nil, nil)
 	c, rec := newTestContext("GET", "/api/v1/submissions/"+subID.String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(subID.String())
@@ -86,7 +44,7 @@ func TestSubmissionHandler_Get_NotFound(t *testing.T) {
 			return db.Submission{}, pgx.ErrNoRows
 		},
 	}
-	h := NewSubmissionHandler(mock)
+	h := NewSubmissionHandler(mock, nil, nil)
 	c, _ := newTestContext("GET", "/api/v1/submissions/"+uuid.New().String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(uuid.New().String())
@@ -103,7 +61,7 @@ func TestSubmissionHandler_ListByEntry_Success(t *testing.T) {
 			return []db.Submission{{ID: uuid.New()}}, nil
 		},
 	}
-	h := NewSubmissionHandler(mock)
+	h := NewSubmissionHandler(mock, nil, nil)
 	c, rec := newTestContext("GET", "/api/v1/entries/"+entryID.String()+"/submissions", "")
 	c.SetParamNames("id")
 	c.SetParamValues(entryID.String())
@@ -120,7 +78,7 @@ func TestSubmissionHandler_MarkFinal_Success(t *testing.T) {
 			return db.Submission{ID: subID, IsFinal: true}, nil
 		},
 	}
-	h := NewSubmissionHandler(mock)
+	h := NewSubmissionHandler(mock, nil, nil)
 	c, rec := newTestContext("POST", "/api/v1/submissions/"+subID.String()+"/mark-final", "")
 	c.SetParamNames("id")
 	c.SetParamValues(subID.String())
@@ -136,7 +94,7 @@ func TestSubmissionHandler_MarkFinal_NotFound(t *testing.T) {
 			return db.Submission{}, pgx.ErrNoRows
 		},
 	}
-	h := NewSubmissionHandler(mock)
+	h := NewSubmissionHandler(mock, nil, nil)
 	c, _ := newTestContext("POST", "/api/v1/submissions/"+uuid.New().String()+"/mark-final", "")
 	c.SetParamNames("id")
 	c.SetParamValues(uuid.New().String())

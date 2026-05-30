@@ -102,11 +102,13 @@ func (h *TicketHandler) Update(c echo.Context) error {
 	}
 	var st *db.TicketStatus
 	if body.Status != nil {
-		v := db.TicketStatus(*body.Status); st = &v
+		v := db.TicketStatus(*body.Status)
+		st = &v
 	}
 	var pr *db.TicketPriority
 	if body.Priority != nil {
-		v := db.TicketPriority(*body.Priority); pr = &v
+		v := db.TicketPriority(*body.Priority)
+		pr = &v
 	}
 	t, err := h.q.UpdateTicket(c.Request().Context(), db.UpdateTicketParams{
 		ID: id, Status: st, Priority: pr,

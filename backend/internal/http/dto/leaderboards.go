@@ -31,7 +31,7 @@ func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 		EntriesCount: r.EntriesCount, IsFrozen: r.IsFrozen,
 		IsDisqualified: r.IsDisqualified, DqReason: r.DqReason,
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
-		EntryID: r.ContestEntryID, DisplayName: r.DisplayName,
+		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
 	}
 }
@@ -42,7 +42,7 @@ func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRo
 		EntriesCount: r.EntriesCount, IsFrozen: r.IsFrozen,
 		IsDisqualified: r.IsDisqualified, DqReason: r.DqReason,
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
-		EntryID: r.ContestEntryID, DisplayName: r.DisplayName,
+		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
 	}
 }

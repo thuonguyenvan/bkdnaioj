@@ -12,15 +12,17 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/dto"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/storage"
 )
 
 type PhaseHandler struct {
 	q   db.Querier
+	s3  *storage.S3
 	val *validator.Validate
 }
 
-func NewPhaseHandler(q db.Querier) *PhaseHandler {
-	return &PhaseHandler{q: q, val: validator.New()}
+func NewPhaseHandler(q db.Querier, s3 *storage.S3) *PhaseHandler {
+	return &PhaseHandler{q: q, s3: s3, val: validator.New()}
 }
 
 // POST /api/v1/tasks/:id/phases
@@ -39,6 +41,7 @@ func (h *PhaseHandler) Create(c echo.Context) error {
 	phase, err := h.q.CreatePhase(c.Request().Context(), db.CreatePhaseParams{
 		TaskID:              taskID,
 		ContestPhaseDefID:   req.ContestPhaseDefID,
+		EvaluationSetID:     req.EvaluationSetID,
 		Slug:                req.Slug,
 		Title:               req.Title,
 		Description:         req.Description,

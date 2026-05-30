@@ -601,6 +601,57 @@ func (e EvalJobType) Valid() bool {
 	return false
 }
 
+type EvaluationSetKey string
+
+const (
+	EvaluationSetKeyPublic  EvaluationSetKey = "public"
+	EvaluationSetKeyPrivate EvaluationSetKey = "private"
+)
+
+func (e *EvaluationSetKey) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = EvaluationSetKey(s)
+	case string:
+		*e = EvaluationSetKey(s)
+	default:
+		return fmt.Errorf("unsupported scan type for EvaluationSetKey: %T", src)
+	}
+	return nil
+}
+
+type NullEvaluationSetKey struct {
+	EvaluationSetKey EvaluationSetKey `json:"evaluation_set_key"`
+	Valid            bool             `json:"valid"` // Valid is true if EvaluationSetKey is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullEvaluationSetKey) Scan(value interface{}) error {
+	if value == nil {
+		ns.EvaluationSetKey, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.EvaluationSetKey.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullEvaluationSetKey) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.EvaluationSetKey), nil
+}
+
+func (e EvaluationSetKey) Valid() bool {
+	switch e {
+	case EvaluationSetKeyPublic,
+		EvaluationSetKeyPrivate:
+		return true
+	}
+	return false
+}
+
 type LeaderboardMode string
 
 const (
@@ -1098,6 +1149,19 @@ type EvaluationJob struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
+type EvaluationSetAsset struct {
+	ID               uuid.UUID          `json:"id"`
+	EvaluationSetID  uuid.UUID          `json:"evaluation_set_id"`
+	AssetKey         string             `json:"asset_key"`
+	OriginalFilename string             `json:"original_filename"`
+	StoragePath      string             `json:"storage_path"`
+	FileSize         int64              `json:"file_size"`
+	ContentType      *string            `json:"content_type"`
+	HashSha256       *string            `json:"hash_sha256"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Phase struct {
 	ID                  uuid.UUID          `json:"id"`
 	TaskID              uuid.UUID          `json:"task_id"`
@@ -1119,6 +1183,7 @@ type Phase struct {
 	SortOrder           int32              `json:"sort_order"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	EvaluationSetID     uuid.UUID          `json:"evaluation_set_id"`
 }
 
 type Submission struct {
@@ -1171,6 +1236,16 @@ type Task struct {
 	SortOrder           int32              `json:"sort_order"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TaskEvaluationSet struct {
+	ID          uuid.UUID          `json:"id"`
+	TaskID      uuid.UUID          `json:"task_id"`
+	Key         EvaluationSetKey   `json:"key"`
+	Title       string             `json:"title"`
+	Description *string            `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type TaskPhaseLeaderboardEntry struct {

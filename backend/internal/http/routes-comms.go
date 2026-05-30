@@ -5,12 +5,17 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/handlers"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/queue"
 	"github.com/mank1/olpai-backend/internal/security"
+	"github.com/mank1/olpai-backend/internal/storage"
+	"github.com/redis/go-redis/v9"
 )
 
-func registerSubmissions(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {
-	h := handlers.NewSubmissionHandler(q)
+func registerSubmissions(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, rdb *redis.Client, s3 *storage.S3) {
+	h := handlers.NewSubmissionHandler(q, queue.NewProducer(rdb), s3)
 	auth := mw.JWTAuth(jwtMgr)
+	api.POST("/entries/:entry_id/submissions:initiate", h.InitiateUpload, auth)
+	api.POST("/submissions/:id/complete", h.CompleteUpload, auth)
 	api.POST("/entries/:entry_id/submissions", h.Create, auth)
 	api.GET("/submissions/:id", h.Get, auth)
 	api.GET("/entries/:id/submissions", h.ListByEntry, auth)

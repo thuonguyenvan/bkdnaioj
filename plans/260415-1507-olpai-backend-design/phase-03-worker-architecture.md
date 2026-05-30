@@ -8,19 +8,21 @@
 ## 1. Pipeline
 
 ```
-Go API (producer)               Python Workers (consumers)              Go API
-       │                                  │                               │
-  enqueue jobs:validate ──► validator ──► enqueue jobs:judge              │
-                                          │                               │
-                                  judge ──► enqueue jobs:score            │
-                                          │                               │
-                                  score ──► UPDATE submissions            │
-                                          ──► XADD jobs:results ──────► WS bridge
-                                                                         │
-                                                              recompute leaderboards (in Go)
+Go API (producer) / Orchestrator (ORCH)             Python Judge Worker                    Go API
+                │                                          │                               │
+         enqueue jobs:judge (submission_id) ─────────────► │                               │
+                                                           │ 1) DB: mark running           │
+                                                           │ 2) OS: download artifact      │
+                                                           │ 3) unzip + validate schema     │
+                                                           │ 4) run judge.py (public/private)
+                                                           │    OR run infer.py → judge.py (final)
+                                                           │ 5) DB: write done/failed + score
+                                                           │ 6) XADD jobs:results ───────────────► Leaderboard updater (Go)
+                                                                                               │
+                                                                                     recompute leaderboards (polling UI)
 ```
 
-Phase derived from `submission.phase_id` inside worker. **No `phase_id` on jobs envelope.**
+Worker derives phase context from `submission.phase_id` by querying DB. Queue payload stays minimal (submission_id + trace_id).
 
 ---
 
@@ -49,91 +51,86 @@ workers/
     config.py              # env loader
     db.py                  # psycopg pool
     queue.py               # XREADGROUP wrapper
+    storage.py             # download artifact from object storage
     sandbox/
       docker_runner.py     # Docker exec + limits
       manifest.py          # validate ZIP/files
-    judges/
-      registry.py          # judge_key -> handler
-      accuracy.py f1.py bleu.py psnr.py mae.py cosine.py
-    consumers/
-      validate.py
-      judge.py
-      score.py
-      rejudge.py
-    main.py                # entrypoint: pick consumer by env
+      runner.py            # run infer.py and/or judge.py
+    worker_judge.py        # single judge worker (Lean V1)
+    main.py                # entrypoint
 ```
 
-Each consumer file < 200 LOC.
+Lean V1 uses a single worker role (`judge`). Keep the main worker module small; sandbox helpers can be split out.
 
 ---
 
 ## 4. Consumers
 
-### 4.1 Validator (`jobs:validate`)
+### 4.1 Judge Worker (`jobs:judge`)
+
+Single job = single submission. The worker performs the full lifecycle:
+validate schema, unzip if needed, run contestant inference (final only), run organizer judge script, then write result.
+
+**Queue payload:** `{submission_id, trace_id?, enqueued_at?}`
 
 ```python
 def handle(envelope):
     sub_id = envelope["submission_id"]
-    sub = db.fetch_submission(sub_id)            # JOIN task for submission_schema
-    files = db.fetch_files(sub_id)
-    ok, result = manifest.validate(files, sub.task.submission_schema)
-    db.update_submission_status(sub_id,
-        status="queued" if ok else "failed",
-        validation_result=result,
-    )
-    db.insert_eval_job(sub_id, job_type="validate", status="done" if ok else "failed", output_data=result)
-    if ok:
-        queue.xadd("jobs:judge", envelope)
-    else:
-        queue.xadd("jobs:results", {"submission_id": sub_id, "type": "failed", "stage": "validate"})
-```
 
-### 4.2 Judge (`jobs:judge`)
+    # 1) Load context
+    sub = db.fetch_submission_with_phase_and_task(sub_id)
+    phase = sub.phase
 
-```python
-def handle(envelope):
-    sub_id = envelope["submission_id"]
-    sub = db.fetch_submission_with_phase(sub_id)
-    judge = registry.get(sub.phase.judge_key)
+    # 2) Mark running
     db.update_submission_status(sub_id, status="running")
-    db.insert_eval_job(sub_id, job_type="judge", status="running")
+
+    # 3) Prepare working directory + artifact
+    sub_dir = storage.download_submission_artifact(sub)
+    work_dir = sandbox.prepare_workdir(sub_id)
+    sandbox.unpack_if_needed(sub_dir, work_dir)
+
+    # 4) Validate submission schema (task/phase-defined)
+    ok, validation = manifest.validate(work_dir, phase.submission_schema)
+    db.update_submission_validation(sub_id, validation_result=validation)
+    if not ok:
+        db.update_submission_status(sub_id, status="failed", error_message=validation.get("message"))
+        queue.xadd("jobs:results", {"payload": json.dumps({"submission_id": sub_id, "type": "failed"})})
+        return
+
     try:
-        result = sandbox.run(judge, sub)         # Docker exec, returns JudgeResult
-        db.update_eval_job_done(..., output_data=result.dict(), execution_time_ms=...)
-        envelope["judge_result"] = result.dict()
-        queue.xadd("jobs:score", envelope)
+        # 5) Execute judging logic inside sandbox
+        # - public/private: run organizer judge.py
+        # - final: run contestant infer.py to produce /out, then run organizer judge.py on /out
+        result = sandbox.run_phase_judging(phase=phase, work_dir=work_dir)
+
+        # 6) Persist outcome
+        db.update_submission_score(sub_id,
+            raw_score=result["raw_score"],
+            display_score=result["display_score"],
+            score_payload=result.get("payload"),
+            evaluated_at=now(),
+            status="done",
+        )
+        # Lean V1: no evaluation_jobs table; persist directly on submissions only
+
+        # 7) Notify Go leaderboard bridge to recompute leaderboards (polling UI)
+        queue.xadd("jobs:results", {"payload": json.dumps({
+            "submission_id": sub_id,
+            "type": "done",
+            "raw_score": result["raw_score"],
+            "display_score": result["display_score"],
+        })})
+
     except Exception as e:
         db.update_submission_status(sub_id, status="failed", error_message=str(e))
-        db.update_eval_job_failed(...)
-        queue.xadd("jobs:results", {"submission_id": sub_id, "type": "failed", "stage": "judge"})
+        queue.xadd("jobs:results", {"payload": json.dumps({"submission_id": sub_id, "type": "failed"})})
 ```
 
-### 4.3 Scorer (`jobs:score`)
+Go API listens to `jobs:results` and recomputes both leaderboards. Lean V1 UI uses polling (no WS requirement).
 
-```python
-def handle(envelope):
-    sub_id = envelope["submission_id"]
-    r = envelope["judge_result"]
-    db.update_submission_score(sub_id,
-        raw_score=r["raw_score"],
-        display_score=r["display_score"],
-        score_payload=r.get("payload"),
-        evaluated_at=now(),
-        status="done",
-    )
-    queue.xadd("jobs:results", {
-        "submission_id": sub_id,
-        "type": "done",
-        "raw_score": r["raw_score"],
-        "display_score": r["display_score"],
-    })
-```
+### 4.2 Rejudge
 
-Go API listens to `jobs:results`, recomputes both leaderboards, broadcasts WS.
-
-### 4.4 Rejudge (`jobs:rejudge`)
-
-Same as judge → score, with `db.increment_rejudge_count` first. Reuses judge consumer logic.
+Rejudge is the same `jobs:judge` flow, initiated by an admin action (enqueue submission_id again). In Lean V1, `submissions.rejudge_count` is incremented by Go/API (business action), not by the worker.
 
 ---
 
@@ -142,10 +139,10 @@ Same as judge → score, with `db.increment_rejudge_count` first. Reuses judge c
 | Field/Table | Owner |
 |---|---|
 | submissions (insert + file_count + total_size_bytes + manifest_hash) | **Go** |
-| submissions.status, raw_score, display_score, score_payload, evaluated_at, error_message, validation_result | **Python** |
-| submissions.rejudge_count | Python (on rejudge consumer) |
+| submissions.status, raw_score, display_score, score_payload, evaluated_at, error_message, validation_result | **Python (Judge Worker)** |
+| submissions.rejudge_count | Go/API (admin action) |
 | submissions.is_final | Go (admin-only) |
-| evaluation_jobs (full lifecycle) | Python |
+| evaluation_jobs | **(removed in Lean V1)** |
 | task_phase_leaderboard_entries / contest_phase_leaderboard_entries | Go |
 
 Both connect to same Postgres but never overlap on same column.
@@ -154,7 +151,7 @@ Both connect to same Postgres but never overlap on same column.
 
 ## 6. Sandbox Execution
 
-- Docker image per `judge_key` family (e.g., `olpai-judge-py:latest` with numpy/sklearn pre-installed)
+- Single base Docker image for Lean V1 (e.g., `olpai-runtime-py:latest` with required libs pre-installed); organizer/contestant provide `.py` scripts only
 - Mounts: `/sub` (RO submission dir), `/data` (RO dataset), `/out` (RW output)
 - Limits: `--cpus`, `--memory`, `--network=none`, `--read-only`, `--pids-limit`
 - Wall clock via `signal.alarm` outer + Docker timeout
@@ -162,14 +159,14 @@ Both connect to same Postgres but never overlap on same column.
 
 ---
 
-## 7. Retry & DLQ
+## 7. Retry & DLQ (V2)
 
-- Per-stream consumer group with `XREADGROUP`
-- Failed processing → no XACK → re-claim by sweeper after `idle > 60s`
-- `attempt_count` from `evaluation_jobs.attempt_count`; max 3
-- After max → XADD to `jobs:dlq`, mark submission failed, file ticket auto
+Lean V1 keeps failure handling simple:
 
-Details in Phase 5.
+- Worker errors (schema invalid / infer.py crash / judge.py crash / timeout) → set `submissions.status='failed'` and persist `error_message`.
+- No DB-backed job bookkeeping and no retry policy in V1.
+
+Optional later (V2): XPENDING reclaim + retry backoff + DLQ + auto-ticketing.
 
 ---
 
@@ -180,7 +177,7 @@ REDIS_URL=redis://redis:6379/0
 PG_DSN=postgres://olpai:***@db:5432/olpai
 S3_ENDPOINT=http://minio:9000
 S3_BUCKET=submissions
-WORKER_ROLE=validate|judge|score|rejudge
+WORKER_ROLE=judge
 WORKER_CONCURRENCY=4
 SANDBOX_CPUS=1
 SANDBOX_MEM_MB=2048
@@ -200,35 +197,23 @@ SANDBOX_TIMEOUT_S=300
 ## 10. Worker Startup (Docker Compose snippet)
 
 ```yaml
-worker-validate:
-  build: ./workers
-  environment: { WORKER_ROLE: validate, WORKER_CONCURRENCY: 4, ... }
-  depends_on: [redis, db, minio]
-
 worker-judge:
   build: ./workers
-  environment: { WORKER_ROLE: judge, WORKER_CONCURRENCY: 1, ... }
+  environment: { WORKER_ROLE: judge, WORKER_CONCURRENCY: 2, ... }
+  depends_on: [redis, db, minio]
   privileged: true            # needs Docker-in-Docker for sandbox
-
-worker-score:
-  build: ./workers
-  environment: { WORKER_ROLE: score, WORKER_CONCURRENCY: 4, ... }
-
-worker-rejudge:
-  build: ./workers
-  environment: { WORKER_ROLE: rejudge, WORKER_CONCURRENCY: 2, ... }
 ```
 
 ---
 
 ## 11. Todo
 
-- [ ] redis-py XREADGROUP wrapper + XPENDING reclaim
+- [ ] redis-py XREADGROUP wrapper + XACK (reclaim/XPENDING deferred to V2)
 - [ ] psycopg pool + UPDATE helpers (single-writer columns only)
 - [ ] Manifest validator
 - [ ] Docker sandbox runner with limits
-- [ ] Judge handlers: accuracy, F1, BLEU, cosine, PSNR, MAE
-- [ ] Consumer entrypoints (validate/judge/score/rejudge)
+- [ ] Sandbox runner: run infer.py (final) and judge.py (all phases)
+- [ ] Single judge worker entrypoint
 - [ ] Prometheus + healthz HTTP server
 - [ ] Integration test with seeded Postgres + Redis
 
@@ -236,12 +221,13 @@ worker-rejudge:
 
 ## 12. Success Criteria
 
-1. End-to-end: API enqueue → score on submissions → WS pushed
-2. Throughput ≥ 50 jobs/s (validate+score; judge bound by sandbox)
-3. Sandbox isolation verified (no network leak, OOM-killed cleanly)
-4. Failed jobs land in DLQ + auto-ticket
-5. Rejudge increments counter and reflows
-6. No race with Go (single-writer enforced; verified by load test)
+1. End-to-end: API creates submission (`queued`) and enqueues `submission_id`.
+2. Worker validates schema + runs judge (public/private) and infer→judge (final).
+3. Worker writes `done/failed`, `raw_score/display_score`, `evaluated_at`, `error_message` directly on `submissions`.
+4. Leaderboards update correctly (task-phase + contest-phase) after results.
+5. Frontend polling reflects latest submission status/score/leaderboard.
+6. Rejudge works by Go/API incrementing `rejudge_count`, setting status back to `queued`, and re-enqueuing the same `submission_id`.
+7. Sandbox is safe (no network, timeouts, resource limits) and failures are persisted as `failed`.
 
 ---
 

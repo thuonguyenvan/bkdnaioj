@@ -16,6 +16,7 @@ import (
 	"github.com/mank1/olpai-backend/internal/queue"
 	"github.com/mank1/olpai-backend/internal/repo"
 	"github.com/mank1/olpai-backend/internal/security"
+	"github.com/mank1/olpai-backend/internal/storage"
 	"github.com/mank1/olpai-backend/pkg/logger"
 )
 
@@ -46,14 +47,44 @@ func main() {
 		defer rdb.Close()
 	}
 
+	var s3 *storage.S3
+	if cfg.S3Endpoint != "" && cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
+		s3, err = storage.New(storage.Config{
+			Endpoint:       cfg.S3Endpoint,
+			PublicEndpoint: cfg.S3PublicEndpoint,
+			Region:         cfg.S3Region,
+			Bucket:         cfg.S3Bucket,
+			AccessKey:      cfg.S3AccessKey,
+			SecretKey:      cfg.S3SecretKey,
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("s3 unavailable (artifact upload disabled)")
+		} else if err := s3.EnsureBucket(bootCtx); err != nil {
+			log.Warn().Err(err).Msg("s3 bucket unavailable (artifact upload disabled)")
+			s3 = nil
+		}
+	}
+
 	jwtMgr := security.NewJWTManager(cfg.JWTSecret, cfg.JWTTTL)
 
 	e := olpaihttp.NewRouter(&olpaihttp.Deps{
-		Pool:   pool,
-		Redis:  rdb,
-		Log:    log,
-		JWTMgr: jwtMgr,
+		Pool:    pool,
+		Redis:   rdb,
+		Storage: s3,
+		Log:     log,
+		JWTMgr:  jwtMgr,
 	})
+
+	runCtx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+	if rdb != nil {
+		bridge := queue.NewLeaderboardBridge(rdb, pool, log)
+		go func() {
+			if err := bridge.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Error().Err(err).Msg("leaderboard bridge")
+			}
+		}()
+	}
 
 	go func() {
 		log.Info().Str("addr", cfg.HTTPAddr).Msg("listening")
@@ -67,6 +98,7 @@ func main() {
 	<-stop
 
 	log.Info().Msg("shutting down")
+	runCancel()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {

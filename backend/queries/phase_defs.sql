@@ -3,6 +3,9 @@ INSERT INTO contest_phase_defs (contest_id, key, title, sort_order)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- name: GetPhaseDefByID :one
+SELECT * FROM contest_phase_defs WHERE id = $1;
+
 -- name: ListPhaseDefsByContest :many
 SELECT * FROM contest_phase_defs
 WHERE contest_id = $1

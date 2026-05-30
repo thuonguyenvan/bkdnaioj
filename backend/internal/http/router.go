@@ -14,14 +14,16 @@ import (
 	"github.com/mank1/olpai-backend/internal/http/handlers"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
 	"github.com/mank1/olpai-backend/internal/security"
+	"github.com/mank1/olpai-backend/internal/storage"
 )
 
 // Deps groups shared dependencies injected into handlers.
 type Deps struct {
-	Pool   *pgxpool.Pool
-	Redis  *redis.Client
-	Log    zerolog.Logger
-	JWTMgr *security.JWTManager
+	Pool    *pgxpool.Pool
+	Redis   *redis.Client
+	Storage *storage.S3
+	Log     zerolog.Logger
+	JWTMgr  *security.JWTManager
 }
 
 // NewRouter builds the Echo instance with middlewares and all route groups.
@@ -50,9 +52,10 @@ func NewRouter(d *Deps) *echo.Echo {
 	registerContests(api, q, d.JWTMgr)
 	registerPhaseDefs(api, q, d.JWTMgr)
 	registerTasks(api, q, d.JWTMgr)
-	registerPhases(api, q, d.JWTMgr)
+	registerEvaluationSets(api, q, d.JWTMgr, d.Storage)
+	registerPhases(api, q, d.JWTMgr, d.Storage)
 	registerEntries(api, q, d.JWTMgr)
-	registerSubmissions(api, q, d.JWTMgr)
+	registerSubmissions(api, q, d.JWTMgr, d.Redis, d.Storage)
 	registerAnnouncements(api, q, d.JWTMgr)
 	registerClarifications(api, q, d.JWTMgr)
 	registerTickets(api, q, d.JWTMgr)
@@ -121,8 +124,20 @@ func registerTasks(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) 
 	admin.DELETE("/tasks/:id", h.Delete)
 }
 
-func registerPhases(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {
-	h := handlers.NewPhaseHandler(q)
+func registerEvaluationSets(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, s3 *storage.S3) {
+	h := handlers.NewEvaluationSetHandler(q, s3)
+	api.GET("/tasks/:task_id/evaluation-sets", h.ListByTask)
+	api.GET("/evaluation-sets/:id", h.Get)
+	api.GET("/evaluation-sets/:id/assets", h.ListAssets)
+	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
+	admin.POST("/tasks/:task_id/evaluation-sets", h.Create)
+	jury := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin", "jury"))
+	jury.POST("/evaluation-sets/:id/assets:initiate", h.InitiateAssets)
+	jury.POST("/evaluation-sets/:id/assets/complete", h.CompleteAssets)
+}
+
+func registerPhases(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, s3 *storage.S3) {
+	h := handlers.NewPhaseHandler(q, s3)
 	api.GET("/phases/:id", h.Get)
 	api.GET("/tasks/:id/phases", h.ListByTask)
 	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))

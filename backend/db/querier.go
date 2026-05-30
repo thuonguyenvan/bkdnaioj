@@ -25,9 +25,12 @@ type Querier interface {
 	CreateClarification(ctx context.Context, arg CreateClarificationParams) (Clarification, error)
 	CreateContest(ctx context.Context, arg CreateContestParams) (Contest, error)
 	CreateContestEntry(ctx context.Context, arg CreateContestEntryParams) (ContestEntry, error)
+	CreateEvaluationSet(ctx context.Context, arg CreateEvaluationSetParams) (TaskEvaluationSet, error)
 	CreatePhase(ctx context.Context, arg CreatePhaseParams) (Phase, error)
 	CreatePhaseDef(ctx context.Context, arg CreatePhaseDefParams) (ContestPhaseDef, error)
+	// Creates submission row before file upload completes.
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (Submission, error)
+	CreateSubmissionFile(ctx context.Context, arg CreateSubmissionFileParams) (SubmissionFile, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, error)
 	// Tickets
@@ -38,6 +41,7 @@ type Querier interface {
 	DeleteContestEntry(ctx context.Context, id uuid.UUID) error
 	DeletePhase(ctx context.Context, id uuid.UUID) error
 	DeletePhaseDef(ctx context.Context, id uuid.UUID) error
+	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
 	DeleteTask(ctx context.Context, id uuid.UUID) error
 	DisqualifyContestEntry(ctx context.Context, id uuid.UUID) (ContestEntry, error)
 	GetClarificationByID(ctx context.Context, id uuid.UUID) (Clarification, error)
@@ -46,7 +50,10 @@ type Querier interface {
 	GetContestEntryByID(ctx context.Context, id uuid.UUID) (ContestEntry, error)
 	// Contest-phase leaderboard
 	GetContestPhaseLeaderboard(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
+	GetEvaluationSetByID(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
+	GetEvaluationSetByTaskAndKey(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
 	GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error)
+	GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	// Task-phase leaderboard
@@ -60,8 +67,11 @@ type Querier interface {
 	ListContestEntries(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
 	ListContests(ctx context.Context, arg ListContestsParams) ([]Contest, error)
 	ListEntryMembers(ctx context.Context, contestEntryID uuid.UUID) ([]ListEntryMembersRow, error)
+	ListEvaluationSetAssets(ctx context.Context, evaluationSetID uuid.UUID) ([]EvaluationSetAsset, error)
+	ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
 	ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
+	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
 	ListTasksByContest(ctx context.Context, contestID uuid.UUID) ([]Task, error)
 	ListTeamMembers(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error)
@@ -70,6 +80,7 @@ type Querier interface {
 	ListTicketsByUser(ctx context.Context, createdBy uuid.UUID) ([]Ticket, error)
 	ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error)
 	MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error)
+	MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
 	RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
 	ResolveTicket(ctx context.Context, id uuid.UUID) (Ticket, error)
@@ -87,6 +98,7 @@ type Querier interface {
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
 	UpsertContestPhaseLeaderboard(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
+	UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
 	UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
 }
 

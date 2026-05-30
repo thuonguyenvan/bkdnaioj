@@ -17,6 +17,7 @@ func TestPhaseHandler_Create_Success(t *testing.T) {
 	taskID := uuid.New()
 	phaseDefID := uuid.New()
 	phaseID := uuid.New()
+	evaluationSetID := uuid.New()
 	now := time.Now().UTC().Truncate(time.Second)
 	later := now.Add(24 * time.Hour)
 
@@ -26,6 +27,7 @@ func TestPhaseHandler_Create_Success(t *testing.T) {
 				ID:                  phaseID,
 				TaskID:              taskID,
 				ContestPhaseDefID:   phaseDefID,
+				EvaluationSetID:     evaluationSetID,
 				Slug:                "public-test",
 				Title:               "Public Test",
 				JudgeKey:            "rmse-judge",
@@ -34,10 +36,10 @@ func TestPhaseHandler_Create_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	body := fmt.Sprintf(
-		`{"contest_phase_def_id":"%s","slug":"public-test","title":"Public Test","open_time":"%s","close_time":"%s","judge_key":"rmse-judge","leaderboard_mode":"best","allow_official_submit":true,"allow_virtual_submit":false,"allow_practice_submit":false,"display_scores":true,"is_final":false,"sort_order":1}`,
-		phaseDefID, now.Format(time.RFC3339), later.Format(time.RFC3339),
+		`{"contest_phase_def_id":"%s","evaluation_set_id":"%s","slug":"public-test","title":"Public Test","open_time":"%s","close_time":"%s","judge_key":"rmse-judge","leaderboard_mode":"best","allow_official_submit":true,"allow_virtual_submit":false,"allow_practice_submit":false,"display_scores":true,"is_final":false,"sort_order":1}`,
+		phaseDefID, evaluationSetID, now.Format(time.RFC3339), later.Format(time.RFC3339),
 	)
 	c, rec := newTestContext("POST", "/api/v1/tasks/"+taskID.String()+"/phases", body)
 	c.SetParamNames("id")
@@ -60,7 +62,7 @@ func TestPhaseHandler_Get_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, rec := newTestContext("GET", "/api/v1/phases/"+phaseID.String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(phaseID.String())
@@ -78,7 +80,7 @@ func TestPhaseHandler_Get_NotFound(t *testing.T) {
 			return db.Phase{}, pgx.ErrNoRows
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, _ := newTestContext("GET", "/api/v1/phases/"+phaseID.String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(phaseID.String())
@@ -98,7 +100,7 @@ func TestPhaseHandler_ListByTask_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, rec := newTestContext("GET", "/api/v1/tasks/"+taskID.String()+"/phases", "")
 	c.SetParamNames("id")
 	c.SetParamValues(taskID.String())
@@ -116,7 +118,7 @@ func TestPhaseHandler_Delete_Success(t *testing.T) {
 			return nil
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, rec := newTestContext("DELETE", "/api/v1/phases/"+phaseID.String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(phaseID.String())
@@ -139,7 +141,7 @@ func TestPhaseHandler_Freeze_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, rec := newTestContext("POST", "/api/v1/phases/"+phaseID.String()+"/freeze", "")
 	c.SetParamNames("id")
 	c.SetParamValues(phaseID.String())
@@ -162,7 +164,7 @@ func TestPhaseHandler_Unfreeze_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, rec := newTestContext("POST", "/api/v1/phases/"+phaseID.String()+"/unfreeze", "")
 	c.SetParamNames("id")
 	c.SetParamValues(phaseID.String())
@@ -180,7 +182,7 @@ func TestPhaseHandler_Freeze_NotFound(t *testing.T) {
 			return db.Phase{}, pgx.ErrNoRows
 		},
 	}
-	h := NewPhaseHandler(mock)
+	h := NewPhaseHandler(mock, nil)
 	c, _ := newTestContext("POST", "/api/v1/phases/"+phaseID.String()+"/freeze", "")
 	c.SetParamNames("id")
 	c.SetParamValues(phaseID.String())

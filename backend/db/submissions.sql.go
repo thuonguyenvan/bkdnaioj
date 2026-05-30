@@ -33,6 +33,7 @@ type CreateSubmissionParams struct {
 	UserAgent      *string   `json:"user_agent"`
 }
 
+// Creates submission row before file upload completes.
 func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (Submission, error) {
 	row := q.db.QueryRow(ctx, createSubmission,
 		arg.ContestID,
@@ -183,6 +184,50 @@ UPDATE submissions SET is_final = true, updated_at = now() WHERE id = $1 RETURNI
 
 func (q *Queries) MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error) {
 	row := q.db.QueryRow(ctx, markSubmissionFinal, id)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.ContestEntryID,
+		&i.TaskID,
+		&i.PhaseID,
+		&i.SubmittedBy,
+		&i.Status,
+		&i.SubmittedAt,
+		&i.FileCount,
+		&i.TotalSizeBytes,
+		&i.ManifestHash,
+		&i.ValidationResult,
+		&i.ErrorMessage,
+		&i.RawScore,
+		&i.DisplayScore,
+		&i.ScorePayload,
+		&i.EvaluatedAt,
+		&i.IsFinal,
+		&i.RejudgeCount,
+		&i.ClientIp,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markSubmissionQueued = `-- name: MarkSubmissionQueued :one
+UPDATE submissions
+SET status='queued', file_count=$2, total_size_bytes=$3, updated_at=now(), error_message=NULL
+WHERE id=$1
+RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
+`
+
+type MarkSubmissionQueuedParams struct {
+	ID             uuid.UUID `json:"id"`
+	FileCount      int32     `json:"file_count"`
+	TotalSizeBytes int64     `json:"total_size_bytes"`
+}
+
+func (q *Queries) MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, markSubmissionQueued, arg.ID, arg.FileCount, arg.TotalSizeBytes)
 	var i Submission
 	err := row.Scan(
 		&i.ID,

@@ -13,17 +13,18 @@ import (
 
 // Config holds all runtime settings. Populated from env vars (see .env.example).
 type Config struct {
-	HTTPAddr    string        `mapstructure:"HTTP_ADDR"    validate:"required"`
-	DatabaseURL string        `mapstructure:"DATABASE_URL" validate:"required,url"`
-	RedisURL    string        `mapstructure:"REDIS_URL"`
-	JWTSecret   string        `mapstructure:"JWT_SECRET"   validate:"required,min=16"`
-	JWTTTL      time.Duration `mapstructure:"JWT_TTL"`
-	S3Endpoint  string        `mapstructure:"S3_ENDPOINT"`
-	S3Region    string        `mapstructure:"S3_REGION"`
-	S3Bucket    string        `mapstructure:"S3_BUCKET"`
-	S3AccessKey string        `mapstructure:"S3_ACCESS_KEY"`
-	S3SecretKey string        `mapstructure:"S3_SECRET_KEY"`
-	LogLevel    string        `mapstructure:"LOG_LEVEL"`
+	HTTPAddr         string        `mapstructure:"HTTP_ADDR"    validate:"required"`
+	DatabaseURL      string        `mapstructure:"DATABASE_URL" validate:"required,url"`
+	RedisURL         string        `mapstructure:"REDIS_URL"`
+	JWTSecret        string        `mapstructure:"JWT_SECRET"   validate:"required,min=16"`
+	JWTTTL           time.Duration `mapstructure:"JWT_TTL"`
+	S3Endpoint       string        `mapstructure:"S3_ENDPOINT"`
+	S3PublicEndpoint string        `mapstructure:"S3_PUBLIC_ENDPOINT"`
+	S3Region         string        `mapstructure:"S3_REGION"`
+	S3Bucket         string        `mapstructure:"S3_BUCKET"`
+	S3AccessKey      string        `mapstructure:"S3_ACCESS_KEY"`
+	S3SecretKey      string        `mapstructure:"S3_SECRET_KEY"`
+	LogLevel         string        `mapstructure:"LOG_LEVEL"`
 }
 
 // Load reads .env (if present) + environment and returns a validated Config.
@@ -41,7 +42,7 @@ func Load() (*Config, error) {
 	// viper needs an explicit bind for AutomaticEnv + Unmarshal to populate struct fields
 	for _, k := range []string{
 		"HTTP_ADDR", "DATABASE_URL", "REDIS_URL", "JWT_SECRET", "JWT_TTL",
-		"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY",
+		"S3_ENDPOINT", "S3_PUBLIC_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY",
 		"LOG_LEVEL",
 	} {
 		_ = v.BindEnv(k)

@@ -6,7 +6,7 @@ INSERT INTO contests (
 ) VALUES (
   $1, $2, $3, $4, 'draft', $5,
   $6, $7, $8, $9,
-  $10, $11, $12, $13, $14
+  $10, '{}'::jsonb, $11, $12, $13
 )
 RETURNING *;
 
@@ -33,7 +33,7 @@ UPDATE contests SET
   start_time = COALESCE(sqlc.narg('start_time'), start_time),
   end_time = COALESCE(sqlc.narg('end_time'), end_time),
   visibility = COALESCE(sqlc.narg('visibility')::contest_visibility, visibility),
-  rules_json = COALESCE(sqlc.narg('rules_json'), rules_json),
+  rules_json = COALESCE(sqlc.narg('rules_json')::jsonb, rules_json),
   max_team_size = COALESCE(sqlc.narg('max_team_size'), max_team_size),
   require_approval = COALESCE(sqlc.narg('require_approval'), require_approval),
   updated_at = now()

@@ -41,22 +41,22 @@ type UpdateContestRequest struct {
 }
 
 type ContestResponse struct {
-	ID                uuid.UUID        `json:"id"`
-	Slug              string           `json:"slug"`
-	Title             string           `json:"title"`
-	Description       *string          `json:"description,omitempty"`
-	BannerURL         *string          `json:"banner_url,omitempty"`
-	Status            string           `json:"status"`
-	EntryPolicy       string           `json:"entry_policy"`
-	RegistrationStart *time.Time       `json:"registration_start,omitempty"`
-	RegistrationEnd   *time.Time       `json:"registration_end,omitempty"`
-	StartTime         time.Time        `json:"start_time"`
-	EndTime           time.Time        `json:"end_time"`
-	Visibility        string           `json:"visibility"`
-	RulesJSON         json.RawMessage  `json:"rules_json"`
-	MaxTeamSize       int32            `json:"max_team_size"`
-	RequireApproval   bool             `json:"require_approval"`
-	CreatedAt         time.Time        `json:"created_at"`
+	ID                uuid.UUID       `json:"id"`
+	Slug              string          `json:"slug"`
+	Title             string          `json:"title"`
+	Description       *string         `json:"description,omitempty"`
+	BannerURL         *string         `json:"banner_url,omitempty"`
+	Status            string          `json:"status"`
+	EntryPolicy       string          `json:"entry_policy"`
+	RegistrationStart *time.Time      `json:"registration_start,omitempty"`
+	RegistrationEnd   *time.Time      `json:"registration_end,omitempty"`
+	StartTime         time.Time       `json:"start_time"`
+	EndTime           time.Time       `json:"end_time"`
+	Visibility        string          `json:"visibility"`
+	RulesJSON         json.RawMessage `json:"rules_json"`
+	MaxTeamSize       int32           `json:"max_team_size"`
+	RequireApproval   bool            `json:"require_approval"`
+	CreatedAt         time.Time       `json:"created_at"`
 }
 
 func ContestToResponse(c db.Contest) ContestResponse {

@@ -1,10 +1,10 @@
 -- name: CreatePhase :one
 INSERT INTO phases (
-  task_id, contest_phase_def_id, slug, title, description,
+  task_id, contest_phase_def_id, evaluation_set_id, slug, title, description,
   open_time, close_time, judge_key, submission_limit,
   leaderboard_mode, allow_official_submit, allow_virtual_submit,
   allow_practice_submit, display_scores, is_frozen, is_final, sort_order
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 RETURNING *;
 
 -- name: GetPhaseByID :one

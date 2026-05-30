@@ -51,6 +51,23 @@ func (q *Queries) DeletePhaseDef(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getPhaseDefByID = `-- name: GetPhaseDefByID :one
+SELECT id, contest_id, key, title, sort_order FROM contest_phase_defs WHERE id = $1
+`
+
+func (q *Queries) GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error) {
+	row := q.db.QueryRow(ctx, getPhaseDefByID, id)
+	var i ContestPhaseDef
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.Key,
+		&i.Title,
+		&i.SortOrder,
+	)
+	return i, err
+}
+
 const listPhaseDefsByContest = `-- name: ListPhaseDefsByContest :many
 SELECT id, contest_id, key, title, sort_order FROM contest_phase_defs
 WHERE contest_id = $1
