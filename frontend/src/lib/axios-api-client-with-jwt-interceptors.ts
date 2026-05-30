@@ -5,8 +5,10 @@ import axios from 'axios'
 
 const TOKEN_KEY = 'olpai_token'
 
+const apiURL = import.meta.env.VITE_API_URL || ''
+
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: `${apiURL}/api/v1`,
   timeout: 30_000,
 })
 
