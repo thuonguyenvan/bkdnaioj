@@ -181,7 +181,7 @@ export const AdminSetupPage: React.FC = () => {
   const { data: phaseDefs = [] } = useQuery<PhaseDef[]>({
     queryKey: ['phaseDefs', contestId],
     queryFn: () => api.getPhaseDefs(contestId!),
-    enabled: !!contestId && (subTab === 'phases' || subTab === 'checklist'),
+    enabled: !!contestId,
   });
 
   const { data: taskPhasesMap = {} } = useQuery<{ [taskId: string]: Phase[] }>({
