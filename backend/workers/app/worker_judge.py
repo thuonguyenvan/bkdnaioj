@@ -128,12 +128,15 @@ class JudgeWorker:
             "judge_script",
         ]
         for key in candidates:
-            if key and key in asset_paths:
-                return asset_paths[key]
-            if key:
-                path = os.path.join(assets_dir, key)
-                if os.path.isfile(path):
+            if not key:
+                continue
+            if key in asset_paths:
+                path = asset_paths[key]
+                if path.endswith(".py"):
                     return path
+            path = os.path.join(assets_dir, key)
+            if os.path.isfile(path) and path.endswith(".py"):
+                return path
         raise RuntimeError(f"missing judge entrypoint {judge_key or 'judge.py'}")
 
     def _resolve_inference_entrypoint(self, schema: dict, submission_dir: str) -> str:
