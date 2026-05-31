@@ -49,6 +49,9 @@ export const TopNavbar: React.FC = () => {
             {isAdmin && (
               <Link to="/admin/contests/new" className="navbar-item" style={getLinkStyle('/admin/contests/new')}>Create Contest</Link>
             )}
+            {isAdmin && (
+              <Link to="/admin/workers" className="navbar-item" style={getLinkStyle('/admin/workers')}>Workers</Link>
+            )}
           </nav>
         </div>
 

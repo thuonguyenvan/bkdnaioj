@@ -22,3 +22,6 @@ backend/bin/
 # build
 /tmp/
 /logs/
+
+# local generated datasets and drafts
+draft/

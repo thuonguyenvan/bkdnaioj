@@ -111,6 +111,47 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submissi
 	return i, err
 }
 
+const getSubmissionForWorker = `-- name: GetSubmissionForWorker :one
+SELECT s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id,
+       p.judge_key, p.contest_phase_def_id, p.evaluation_set_id, p.is_final,
+       t.submission_schema::text AS submission_schema
+FROM submissions s
+JOIN phases p ON p.id = s.phase_id
+JOIN tasks  t ON t.id = s.task_id
+WHERE s.id = $1
+`
+
+type GetSubmissionForWorkerRow struct {
+	ID                uuid.UUID `json:"id"`
+	ContestID         uuid.UUID `json:"contest_id"`
+	ContestEntryID    uuid.UUID `json:"contest_entry_id"`
+	TaskID            uuid.UUID `json:"task_id"`
+	PhaseID           uuid.UUID `json:"phase_id"`
+	JudgeKey          string    `json:"judge_key"`
+	ContestPhaseDefID uuid.UUID `json:"contest_phase_def_id"`
+	EvaluationSetID   uuid.UUID `json:"evaluation_set_id"`
+	IsFinal           bool      `json:"is_final"`
+	SubmissionSchema  string    `json:"submission_schema"`
+}
+
+func (q *Queries) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error) {
+	row := q.db.QueryRow(ctx, getSubmissionForWorker, id)
+	var i GetSubmissionForWorkerRow
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.ContestEntryID,
+		&i.TaskID,
+		&i.PhaseID,
+		&i.JudgeKey,
+		&i.ContestPhaseDefID,
+		&i.EvaluationSetID,
+		&i.IsFinal,
+		&i.SubmissionSchema,
+	)
+	return i, err
+}
+
 const listSubmissionsByEntry = `-- name: ListSubmissionsByEntry :many
 SELECT id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at FROM submissions
 WHERE contest_entry_id = $1
@@ -178,6 +219,107 @@ func (q *Queries) ListSubmissionsByEntry(ctx context.Context, arg ListSubmission
 	return items, nil
 }
 
+const markSubmissionDone = `-- name: MarkSubmissionDone :one
+UPDATE submissions
+SET status        = 'done',
+    raw_score     = $2,
+    display_score = $3,
+    score_payload = $4::jsonb,
+    evaluated_at  = now(),
+    updated_at    = now(),
+    error_message = NULL
+WHERE id = $1
+RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
+`
+
+type MarkSubmissionDoneParams struct {
+	ID           uuid.UUID      `json:"id"`
+	RawScore     pgtype.Numeric `json:"raw_score"`
+	DisplayScore pgtype.Numeric `json:"display_score"`
+	Column4      []byte         `json:"column_4"`
+}
+
+func (q *Queries) MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, markSubmissionDone,
+		arg.ID,
+		arg.RawScore,
+		arg.DisplayScore,
+		arg.Column4,
+	)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.ContestEntryID,
+		&i.TaskID,
+		&i.PhaseID,
+		&i.SubmittedBy,
+		&i.Status,
+		&i.SubmittedAt,
+		&i.FileCount,
+		&i.TotalSizeBytes,
+		&i.ManifestHash,
+		&i.ValidationResult,
+		&i.ErrorMessage,
+		&i.RawScore,
+		&i.DisplayScore,
+		&i.ScorePayload,
+		&i.EvaluatedAt,
+		&i.IsFinal,
+		&i.RejudgeCount,
+		&i.ClientIp,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markSubmissionFailed = `-- name: MarkSubmissionFailed :one
+UPDATE submissions
+SET status        = 'failed',
+    error_message = $2,
+    updated_at    = now()
+WHERE id = $1
+RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
+`
+
+type MarkSubmissionFailedParams struct {
+	ID           uuid.UUID `json:"id"`
+	ErrorMessage *string   `json:"error_message"`
+}
+
+func (q *Queries) MarkSubmissionFailed(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, markSubmissionFailed, arg.ID, arg.ErrorMessage)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.ContestEntryID,
+		&i.TaskID,
+		&i.PhaseID,
+		&i.SubmittedBy,
+		&i.Status,
+		&i.SubmittedAt,
+		&i.FileCount,
+		&i.TotalSizeBytes,
+		&i.ManifestHash,
+		&i.ValidationResult,
+		&i.ErrorMessage,
+		&i.RawScore,
+		&i.DisplayScore,
+		&i.ScorePayload,
+		&i.EvaluatedAt,
+		&i.IsFinal,
+		&i.RejudgeCount,
+		&i.ClientIp,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markSubmissionFinal = `-- name: MarkSubmissionFinal :one
 UPDATE submissions SET is_final = true, updated_at = now() WHERE id = $1 RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
 `
@@ -228,6 +370,44 @@ type MarkSubmissionQueuedParams struct {
 
 func (q *Queries) MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error) {
 	row := q.db.QueryRow(ctx, markSubmissionQueued, arg.ID, arg.FileCount, arg.TotalSizeBytes)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.ContestEntryID,
+		&i.TaskID,
+		&i.PhaseID,
+		&i.SubmittedBy,
+		&i.Status,
+		&i.SubmittedAt,
+		&i.FileCount,
+		&i.TotalSizeBytes,
+		&i.ManifestHash,
+		&i.ValidationResult,
+		&i.ErrorMessage,
+		&i.RawScore,
+		&i.DisplayScore,
+		&i.ScorePayload,
+		&i.EvaluatedAt,
+		&i.IsFinal,
+		&i.RejudgeCount,
+		&i.ClientIp,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markSubmissionRunning = `-- name: MarkSubmissionRunning :one
+UPDATE submissions
+SET status = 'running', updated_at = now()
+WHERE id = $1
+RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
+`
+
+func (q *Queries) MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Submission, error) {
+	row := q.db.QueryRow(ctx, markSubmissionRunning, id)
 	var i Submission
 	err := row.Scan(
 		&i.ID,

@@ -13,17 +13,19 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/handlers"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/queue"
 	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/mank1/olpai-backend/internal/storage"
 )
 
 // Deps groups shared dependencies injected into handlers.
 type Deps struct {
-	Pool    *pgxpool.Pool
-	Redis   *redis.Client
-	Storage *storage.S3
-	Log     zerolog.Logger
-	JWTMgr  *security.JWTManager
+	Pool     *pgxpool.Pool
+	Redis    *redis.Client
+	Storage  *storage.S3
+	Log      zerolog.Logger
+	JWTMgr   *security.JWTManager
+	Producer *queue.Producer
 }
 
 // NewRouter builds the Echo instance with middlewares and all route groups.
@@ -62,6 +64,7 @@ func NewRouter(d *Deps) *echo.Echo {
 	registerLeaderboards(api, q, d.JWTMgr)
 	registerStats(api, q)
 	registerAdmin(api, q, d.JWTMgr)
+	registerVolunteerWorkers(api, q, d.JWTMgr, d.Storage, d.Producer)
 
 	return e
 }
@@ -182,4 +185,25 @@ func registerStats(api *echo.Group, q *db.Queries) {
 	stats := api.Group("/stats")
 	stats.GET("/summary", h.Summary)
 	stats.GET("/tasks", h.TaskStats)
+}
+
+func registerVolunteerWorkers(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, s3 *storage.S3, producer *queue.Producer) {
+	h := handlers.NewVolunteerWorkerHandler(q, s3, producer)
+
+	// Public: register (no auth)
+	api.POST("/worker/register", h.Register)
+
+	// Worker API: requires X-Worker-Token
+	worker := api.Group("/worker", mw.WorkerAuth(q))
+	worker.POST("/heartbeat", h.Heartbeat)
+	worker.GET("/jobs/next", h.NextJob)
+	worker.POST("/jobs/:id/result", h.SubmitResult)
+
+	// Admin API: requires JWT + admin role
+	admin := api.Group("/admin/workers", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
+	admin.GET("", h.AdminList)
+	admin.GET("/:id", h.AdminGet)
+	admin.POST("/:id/approve", h.AdminApprove)
+	admin.POST("/:id/reject", h.AdminReject)
+	admin.DELETE("/:id", h.AdminDelete)
 }
