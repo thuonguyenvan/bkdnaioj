@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/config"
 	olpaihttp "github.com/mank1/olpai-backend/internal/http"
 	"github.com/mank1/olpai-backend/internal/queue"
@@ -18,6 +19,8 @@ import (
 	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/mank1/olpai-backend/internal/storage"
 	"github.com/mank1/olpai-backend/pkg/logger"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/zerolog"
 )
 
 func main() {
@@ -67,12 +70,21 @@ func main() {
 
 	jwtMgr := security.NewJWTManager(cfg.JWTSecret, cfg.JWTTTL)
 
+	var producer *queue.Producer
+	if rdb != nil {
+		producer = queue.NewProducer(rdb)
+		if err := producer.EnsureConsumerGroup(bootCtx); err != nil {
+			log.Warn().Err(err).Msg("consumer group init failed (volunteer dispatch may not work)")
+		}
+	}
+
 	e := olpaihttp.NewRouter(&olpaihttp.Deps{
-		Pool:    pool,
-		Redis:   rdb,
-		Storage: s3,
-		Log:     log,
-		JWTMgr:  jwtMgr,
+		Pool:     pool,
+		Redis:    rdb,
+		Storage:  s3,
+		Log:      log,
+		JWTMgr:   jwtMgr,
+		Producer: producer,
 	})
 
 	runCtx, runCancel := context.WithCancel(context.Background())
@@ -84,6 +96,9 @@ func main() {
 				log.Error().Err(err).Msg("leaderboard bridge")
 			}
 		}()
+
+		// Reclaim stale volunteer worker jobs every 60 seconds.
+		go runWorkerTimeoutWatcher(runCtx, db.New(pool), producer, log)
 	}
 
 	go func() {
@@ -103,5 +118,39 @@ func main() {
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("shutdown")
+	}
+}
+
+func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue.Producer, log zerolog.Logger) {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	const jobTimeout = 10 * time.Minute
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cutoff := pgtype.Timestamptz{Time: time.Now().Add(-jobTimeout), Valid: true}
+			stale, err := q.ListStaleWorkerClaims(ctx, cutoff)
+			if err != nil {
+				log.Error().Err(err).Msg("list stale worker claims")
+				continue
+			}
+			for _, w := range stale {
+				if !w.CurrentJobID.Valid {
+					continue
+				}
+				jobID := w.CurrentJobID.Bytes
+				if err := producer.EnqueueJudge(ctx, jobID, nil); err != nil {
+					log.Error().Err(err).Str("worker", w.ID.String()).Msg("re-enqueue stale job")
+					continue
+				}
+				if _, err := q.ForceReleaseWorkerJob(ctx, w.ID); err != nil {
+					log.Error().Err(err).Str("worker", w.ID.String()).Msg("force release worker job")
+					continue
+				}
+				log.Warn().Str("worker", w.ID.String()).Str("job", w.ID.String()).Msg("reclaimed stale job")
+			}
+		}
 	}
 }

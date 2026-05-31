@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	StreamJobsJudge   = "jobs:judge"
-	StreamJobsResults = "jobs:results"
+	StreamJobsJudge     = "jobs:judge"
+	StreamJobsResults   = "jobs:results"
+	WorkerConsumerGroup = "cg:judge-worker"
+	apiConsumerName     = "api-dispatcher"
 )
 
 type JudgeEnvelope struct {
@@ -47,6 +49,58 @@ func (p *Producer) EnqueueJudge(ctx context.Context, submissionID uuid.UUID, tra
 		Approx: true,
 		Values: map[string]any{"payload": string(payload)},
 	}).Err()
+}
+
+// EnsureConsumerGroup creates the consumer group if it does not exist.
+func (p *Producer) EnsureConsumerGroup(ctx context.Context) error {
+	if p == nil || p.rdb == nil {
+		return nil
+	}
+	err := p.rdb.XGroupCreateMkStream(ctx, StreamJobsJudge, WorkerConsumerGroup, "0").Err()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		return fmt.Errorf("create consumer group: %w", err)
+	}
+	return nil
+}
+
+// DequeueOne reads a single job from the stream for volunteer dispatch (non-blocking).
+func (p *Producer) DequeueOne(ctx context.Context) (*JudgeEnvelope, string, error) {
+	if p == nil || p.rdb == nil {
+		return nil, "", fmt.Errorf("redis not configured")
+	}
+	msgs, err := p.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group:    WorkerConsumerGroup,
+		Consumer: apiConsumerName,
+		Streams:  []string{StreamJobsJudge, ">"},
+		Count:    1,
+		Block:    -1,
+	}).Result()
+	if err == redis.Nil || len(msgs) == 0 || len(msgs[0].Messages) == 0 {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("xreadgroup: %w", err)
+	}
+	msg := msgs[0].Messages[0]
+	payload, ok := msg.Values["payload"].(string)
+	if !ok {
+		_ = p.rdb.XAck(ctx, StreamJobsJudge, WorkerConsumerGroup, msg.ID)
+		return nil, "", fmt.Errorf("invalid message payload")
+	}
+	var env JudgeEnvelope
+	if err := json.Unmarshal([]byte(payload), &env); err != nil {
+		_ = p.rdb.XAck(ctx, StreamJobsJudge, WorkerConsumerGroup, msg.ID)
+		return nil, "", fmt.Errorf("unmarshal envelope: %w", err)
+	}
+	return &env, msg.ID, nil
+}
+
+// Ack acknowledges a message as processed.
+func (p *Producer) Ack(ctx context.Context, msgID string) error {
+	if p == nil || p.rdb == nil {
+		return nil
+	}
+	return p.rdb.XAck(ctx, StreamJobsJudge, WorkerConsumerGroup, msgID).Err()
 }
 
 func (p *Producer) EnqueueResult(ctx context.Context, submissionID uuid.UUID, typ string) error {

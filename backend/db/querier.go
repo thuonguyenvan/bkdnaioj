@@ -16,6 +16,9 @@ type Querier interface {
 	AddTeamMember(ctx context.Context, arg AddTeamMemberParams) error
 	AnswerClarification(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
 	ApproveContestEntry(ctx context.Context, arg ApproveContestEntryParams) (ContestEntry, error)
+	ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
+	ClaimWorkerJob(ctx context.Context, arg ClaimWorkerJobParams) (VolunteerWorker, error)
+	CompleteWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	CountActiveEntries(ctx context.Context) (int64, error)
 	CountContests(ctx context.Context) (int64, error)
 	CountSubmissions(ctx context.Context) (int64, error)
@@ -38,6 +41,8 @@ type Querier interface {
 	// Tickets
 	CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
+	DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	DeleteAnnouncement(ctx context.Context, id uuid.UUID) error
 	DeleteContest(ctx context.Context, id uuid.UUID) error
 	DeleteContestEntry(ctx context.Context, id uuid.UUID) error
@@ -45,7 +50,10 @@ type Querier interface {
 	DeletePhaseDef(ctx context.Context, id uuid.UUID) error
 	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
 	DeleteTask(ctx context.Context, id uuid.UUID) error
+	DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
 	DisqualifyContestEntry(ctx context.Context, id uuid.UUID) (ContestEntry, error)
+	FailWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	ForceReleaseWorkerJob(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	GetClarificationByID(ctx context.Context, id uuid.UUID) (Clarification, error)
 	GetContestByID(ctx context.Context, id uuid.UUID) (Contest, error)
 	GetContestBySlug(ctx context.Context, slug string) (Contest, error)
@@ -57,6 +65,7 @@ type Querier interface {
 	GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error)
 	GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
+	GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	// Task-phase leaderboard
 	GetTaskPhaseLeaderboard(ctx context.Context, arg GetTaskPhaseLeaderboardParams) ([]GetTaskPhaseLeaderboardRow, error)
@@ -65,6 +74,8 @@ type Querier interface {
 	GetTeamBySlug(ctx context.Context, slug string) (Team, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	GetVolunteerWorkerByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	GetVolunteerWorkerByToken(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
 	ListContestEntries(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
@@ -74,6 +85,7 @@ type Querier interface {
 	ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
 	ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
+	ListStaleWorkerClaims(ctx context.Context, jobClaimedAt pgtype.Timestamptz) ([]VolunteerWorker, error)
 	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
 	ListSystemAnnouncements(ctx context.Context) ([]Announcement, error)
@@ -84,10 +96,15 @@ type Querier interface {
 	ListTicketsAll(ctx context.Context, arg ListTicketsAllParams) ([]Ticket, error)
 	ListTicketsByUser(ctx context.Context, createdBy uuid.UUID) ([]Ticket, error)
 	ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error)
+	ListVolunteerWorkers(ctx context.Context) ([]VolunteerWorker, error)
+	MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
+	MarkSubmissionFailed(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
 	MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
+	MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Submission, error)
 	RecomputeContestPhaseLeaderboard(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
 	RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
+	RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
 	ResetOtherFinalSubmissions(ctx context.Context, arg ResetOtherFinalSubmissionsParams) error
@@ -105,6 +122,7 @@ type Querier interface {
 	UpdateTicket(ctx context.Context, arg UpdateTicketParams) (Ticket, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
+	UpdateWorkerHeartbeat(ctx context.Context, arg UpdateWorkerHeartbeatParams) (VolunteerWorker, error)
 	UpsertContestPhaseLeaderboard(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
 	UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
 	UpsertTaskAsset(ctx context.Context, arg UpsertTaskAssetParams) (TaskAsset, error)

@@ -31,3 +31,38 @@ UPDATE submissions
 SET is_final = false, updated_at = now()
 WHERE contest_entry_id = $1 AND task_id = $2 AND phase_id = $3 AND id != $4;
 
+-- name: MarkSubmissionRunning :one
+UPDATE submissions
+SET status = 'running', updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: MarkSubmissionDone :one
+UPDATE submissions
+SET status        = 'done',
+    raw_score     = $2,
+    display_score = $3,
+    score_payload = $4::jsonb,
+    evaluated_at  = now(),
+    updated_at    = now(),
+    error_message = NULL
+WHERE id = $1
+RETURNING *;
+
+-- name: MarkSubmissionFailed :one
+UPDATE submissions
+SET status        = 'failed',
+    error_message = $2,
+    updated_at    = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: GetSubmissionForWorker :one
+SELECT s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id,
+       p.judge_key, p.contest_phase_def_id, p.evaluation_set_id, p.is_final,
+       t.submission_schema::text AS submission_schema
+FROM submissions s
+JOIN phases p ON p.id = s.phase_id
+JOIN tasks  t ON t.id = s.task_id
+WHERE s.id = $1;
+

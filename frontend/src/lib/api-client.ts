@@ -259,6 +259,28 @@ export interface EntryMember {
   full_name?: string;
 }
 
+export interface VolunteerWorker {
+  id: string;
+  display_name: string;
+  status: 'pending' | 'active' | 'rejected' | 'inactive';
+  capabilities: {
+    os?: string;
+    cpu_model?: string;
+    cpu_cores?: number;
+    ram_gb?: number;
+    gpu?: Array<{ model: string; vram_gb: number }>;
+    docker_available?: boolean;
+    disk_free_gb?: number;
+  };
+  online: boolean;
+  last_seen_at?: string | null;
+  current_job_id?: string | null;
+  jobs_completed: number;
+  jobs_failed: number;
+  approved_at?: string | null;
+  created_at: string;
+}
+
 export interface Ticket {
   id: string;
   submission_id?: string | null;
@@ -646,5 +668,22 @@ export const api = {
   async resolveTicket(id: string) {
     const res = await apiClient.post(`/tickets/${id}/resolve`);
     return res.data as Ticket;
+  },
+
+  // Volunteer Worker API (admin)
+  async listVolunteerWorkers() {
+    const res = await apiClient.get('/admin/workers');
+    return res.data as VolunteerWorker[];
+  },
+  async approveVolunteerWorker(id: string) {
+    const res = await apiClient.post(`/admin/workers/${id}/approve`);
+    return res.data as { worker: VolunteerWorker; token: string };
+  },
+  async rejectVolunteerWorker(id: string) {
+    const res = await apiClient.post(`/admin/workers/${id}/reject`);
+    return res.data as VolunteerWorker;
+  },
+  async deleteVolunteerWorker(id: string) {
+    await apiClient.delete(`/admin/workers/${id}`);
   },
 };

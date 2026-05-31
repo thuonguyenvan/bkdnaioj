@@ -96,6 +96,14 @@ func (s *S3) PresignPut(ctx context.Context, objectKey string, expiry time.Durat
 	return u.String(), nil
 }
 
+func (s *S3) PresignGet(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
+	u, err := s.public.PresignedGetObject(ctx, s.bucket, objectKey, expiry, nil)
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}
+
 func (s *S3) Download(ctx context.Context, objectKey, destPath string) error {
 	return s.internal.FGetObject(ctx, s.bucket, objectKey, destPath, minio.GetObjectOptions{})
 }

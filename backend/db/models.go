@@ -1031,6 +1031,61 @@ func (e UserRole) Valid() bool {
 	return false
 }
 
+type VolunteerWorkerStatus string
+
+const (
+	VolunteerWorkerStatusPending  VolunteerWorkerStatus = "pending"
+	VolunteerWorkerStatusActive   VolunteerWorkerStatus = "active"
+	VolunteerWorkerStatusRejected VolunteerWorkerStatus = "rejected"
+	VolunteerWorkerStatusInactive VolunteerWorkerStatus = "inactive"
+)
+
+func (e *VolunteerWorkerStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = VolunteerWorkerStatus(s)
+	case string:
+		*e = VolunteerWorkerStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for VolunteerWorkerStatus: %T", src)
+	}
+	return nil
+}
+
+type NullVolunteerWorkerStatus struct {
+	VolunteerWorkerStatus VolunteerWorkerStatus `json:"volunteer_worker_status"`
+	Valid                 bool                  `json:"valid"` // Valid is true if VolunteerWorkerStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullVolunteerWorkerStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.VolunteerWorkerStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.VolunteerWorkerStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullVolunteerWorkerStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.VolunteerWorkerStatus), nil
+}
+
+func (e VolunteerWorkerStatus) Valid() bool {
+	switch e {
+	case VolunteerWorkerStatusPending,
+		VolunteerWorkerStatusActive,
+		VolunteerWorkerStatusRejected,
+		VolunteerWorkerStatusInactive:
+		return true
+	}
+	return false
+}
+
 type Announcement struct {
 	ID        uuid.UUID          `json:"id"`
 	ContestID pgtype.UUID        `json:"contest_id"`
@@ -1325,4 +1380,23 @@ type User struct {
 	LastVisit    pgtype.Timestamptz `json:"last_visit"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VolunteerWorker struct {
+	ID            uuid.UUID             `json:"id"`
+	UserID        pgtype.UUID           `json:"user_id"`
+	DisplayName   string                `json:"display_name"`
+	Status        VolunteerWorkerStatus `json:"status"`
+	ApiToken      *string               `json:"api_token"`
+	Capabilities  []byte                `json:"capabilities"`
+	LastSeenAt    pgtype.Timestamptz    `json:"last_seen_at"`
+	CpuUsage      *int16                `json:"cpu_usage"`
+	RamUsage      *int16                `json:"ram_usage"`
+	CurrentJobID  pgtype.UUID           `json:"current_job_id"`
+	JobClaimedAt  pgtype.Timestamptz    `json:"job_claimed_at"`
+	JobsCompleted int32                 `json:"jobs_completed"`
+	JobsFailed    int32                 `json:"jobs_failed"`
+	ApprovedAt    pgtype.Timestamptz    `json:"approved_at"`
+	CreatedAt     pgtype.Timestamptz    `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz    `json:"updated_at"`
 }

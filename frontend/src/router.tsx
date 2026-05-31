@@ -15,6 +15,7 @@ import { ContestsPage } from './pages/contests-page';
 import { RankingsPage } from './pages/rankings-page';
 import { AdminUsersPage } from './pages/admin-users-page';
 import { AdminContestCreatePage } from './pages/admin-contest-create-page';
+import { AdminWorkersPage } from './pages/admin-workers-page';
 
 
 // Layout shell wrapping pages with Navbar
@@ -92,6 +93,7 @@ export const AppRouter: React.FC = () => {
               <Route path="/admin/contests/:contestId/setup" element={<AdminSetupPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/contests/new" element={<AdminContestCreatePage />} />
+              <Route path="/admin/workers" element={<AdminWorkersPage />} />
             </Route>
           </Route>
         </Route>
