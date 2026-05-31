@@ -215,9 +215,11 @@ export const AdminSetupPage: React.FC = () => {
       setTaskError(null);
       
       try {
-        // 1. Auto-create public & private evaluation sets
-        const publicSet = await api.createEvaluationSet(newTask.id, { key: 'public', title: 'Public Evaluation Set' });
-        const privateSet = await api.createEvaluationSet(newTask.id, { key: 'private', title: 'Private Evaluation Set' });
+        // 1. Fetch evaluation sets already created by backend on task creation
+        const evalSets = await api.getEvaluationSets(newTask.id);
+        const publicSet = evalSets.find((s: any) => s.key === 'public');
+        const privateSet = evalSets.find((s: any) => s.key === 'private');
+        if (!publicSet || !privateSet) throw new Error('Evaluation sets not found for new task');
 
         // 2. Auto-create concrete phases based on current phaseDefs
         if (phaseDefs && phaseDefs.length > 0) {
