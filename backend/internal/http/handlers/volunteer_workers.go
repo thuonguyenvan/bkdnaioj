@@ -46,10 +46,15 @@ func (h *VolunteerWorkerHandler) Register(c echo.Context) error {
 	if !json.Valid(req.Capabilities) {
 		return mw.ErrBadRequest("capabilities must be valid JSON")
 	}
+	maxWorkers := req.MaxWorkers
+	if maxWorkers <= 0 {
+		maxWorkers = 1
+	}
 	worker, err := h.q.CreateVolunteerWorker(c.Request().Context(), db.CreateVolunteerWorkerParams{
 		UserID:       pgtype.UUID{},
 		DisplayName:  req.DisplayName,
 		Capabilities: []byte(req.Capabilities),
+		MaxWorkers:   maxWorkers,
 	})
 	if err != nil {
 		return mw.ErrInternal("register failed")
@@ -92,8 +97,19 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 	if err != nil {
 		return mw.ErrInternal("fetch worker failed")
 	}
-	if worker.CurrentJobID.Valid {
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "already_busy"})
+
+	// Check capacity: active claims vs max_workers
+	activeClaims, err := h.q.CountWorkerActiveClaims(ctx, worker.ID)
+	if err != nil {
+		return mw.ErrInternal("count claims failed")
+	}
+	if activeClaims >= int64(worker.MaxWorkers) {
+		return c.JSON(http.StatusOK, map[string]any{
+			"submission_id": nil,
+			"reason":        "at_capacity",
+			"active":        activeClaims,
+			"max":           worker.MaxWorkers,
+		})
 	}
 
 	envelope, msgID, err := h.producer.DequeueOne(ctx)
@@ -115,10 +131,10 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 		return mw.ErrInternal("artifact presign failed")
 	}
 
-	jobUUID := pgtype.UUID{Bytes: sub.ID, Valid: true}
-	if _, err := h.q.ClaimWorkerJob(ctx, db.ClaimWorkerJobParams{
-		ApiToken:     &token,
-		CurrentJobID: jobUUID,
+	// Create claim in DB
+	if _, err := h.q.CreateWorkerClaim(ctx, db.CreateWorkerClaimParams{
+		WorkerID:     worker.ID,
+		SubmissionID: sub.ID,
 	}); err != nil {
 		_ = h.producer.Ack(ctx, msgID)
 		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
@@ -170,13 +186,30 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 	token := mw.GetWorkerToken(c)
 	ctx := c.Request().Context()
 
+	// Verify this worker owns the claim for this submission
+	claim, err := h.q.GetWorkerClaimBySubmission(ctx, subID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrForbidden("not your job")
+		}
+		return mw.ErrInternal("fetch claim failed")
+	}
+
 	worker, err := h.q.GetVolunteerWorkerByToken(ctx, &token)
 	if err != nil {
 		return mw.ErrInternal("fetch worker failed")
 	}
-	if !worker.CurrentJobID.Valid || uuid.UUID(worker.CurrentJobID.Bytes) != subID {
+	if claim.WorkerID != worker.ID {
 		return mw.ErrForbidden("not your job")
 	}
+
+	// Delete claim regardless of outcome
+	defer func() {
+		_ = h.q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{
+			WorkerID:     worker.ID,
+			SubmissionID: subID,
+		})
+	}()
 
 	if req.Status == "done" {
 		if req.RawScore == nil || req.DisplayScore == nil {
@@ -198,9 +231,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		}); err != nil {
 			return mw.ErrInternal("mark done failed")
 		}
-		if _, err := h.q.CompleteWorkerJob(ctx, &token); err != nil {
-			return mw.ErrInternal("complete job failed")
-		}
+		_, _ = h.q.IncrementWorkerCompleted(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "done")
 	} else {
 		errMsg := "judge failed"
@@ -217,9 +248,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		}); err != nil {
 			return mw.ErrInternal("mark failed failed")
 		}
-		if _, err := h.q.FailWorkerJob(ctx, &token); err != nil {
-			return mw.ErrInternal("fail job failed")
-		}
+		_, _ = h.q.IncrementWorkerFailed(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "failed")
 	}
 
@@ -234,7 +263,12 @@ func (h *VolunteerWorkerHandler) AdminList(c echo.Context) error {
 	}
 	resp := make([]dto.WorkerResponse, len(workers))
 	for i, w := range workers {
-		resp[i] = dto.VolunteerWorkerToResponse(w)
+		r := dto.VolunteerWorkerToResponse(w)
+		// Populate active jobs count
+		if n, err := h.q.CountWorkerActiveClaims(c.Request().Context(), w.ID); err == nil {
+			r.ActiveJobs = n
+		}
+		resp[i] = r
 	}
 	return c.JSON(http.StatusOK, resp)
 }
@@ -252,7 +286,11 @@ func (h *VolunteerWorkerHandler) AdminGet(c echo.Context) error {
 		}
 		return mw.ErrInternal("fetch worker failed")
 	}
-	return c.JSON(http.StatusOK, dto.VolunteerWorkerToResponse(worker))
+	r := dto.VolunteerWorkerToResponse(worker)
+	if n, err := h.q.CountWorkerActiveClaims(c.Request().Context(), id); err == nil {
+		r.ActiveJobs = n
+	}
+	return c.JSON(http.StatusOK, r)
 }
 
 // POST /api/v1/admin/workers/:id/approve
@@ -313,7 +351,6 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 	expiry := 30 * time.Minute
 	var artifacts []dto.ArtifactURL
 
-	// Submission files
 	files, err := h.q.ListSubmissionFilesBySubmission(ctx, sub.ID)
 	if err != nil {
 		return nil, err
@@ -331,7 +368,6 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 		})
 	}
 
-	// Evaluation set assets
 	evalAssets, err := h.q.ListEvaluationSetAssets(ctx, sub.EvaluationSetID)
 	if err != nil {
 		return nil, err
@@ -349,7 +385,6 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 		})
 	}
 
-	// Task-level assets (shared judge script etc.)
 	taskAssets, err := h.q.ListTaskAssets(ctx, sub.TaskID)
 	if err != nil {
 		return nil, err

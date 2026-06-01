@@ -7,57 +7,94 @@ Volunteer workers help judge submissions during AI contests by running the judge
 - Python 3.11+
 - 4 GB RAM minimum
 - 10 GB free disk
-- Docker (required for final-phase inference, optional for public test phases)
+- Docker (optional — needed for final-phase inference sandbox)
 
-## Setup
-
-### Install
+## Install
 
 ```bash
-pip install -e .
+pip install olpai-volunteer-agent
 ```
 
-### Step 1 — Register (first time, no token needed)
-
+Or from source:
 ```bash
-API_URL=https://judge.example.com WORKER_NAME="my-rtx4090" olpai-volunteer
+git clone ...
+cd volunteer-agent
+pip install -e ".[docker]"
 ```
 
-The agent will print your Worker ID and exit. Send the ID to the contest admin.
+## Usage
 
-### Step 2 — Get approved
-
-The admin approves your worker on the platform and sends you an API token.
-
-### Step 3 — Run
+### Step 1 — First-time setup wizard
 
 ```bash
-API_URL=https://judge.example.com WORKER_TOKEN=<your-token> olpai-volunteer
+olpai-volunteer setup
 ```
 
-The agent will poll for jobs every 10 seconds, run the judge, and submit results automatically.
+Wizard sẽ:
+- Hỏi Platform URL và tên máy
+- Tự collect CPU/RAM/GPU/disk info
+- Chạy benchmark nhẹ
+- Đăng ký với platform → in Worker ID
 
-Press `Ctrl+C` to stop gracefully.
+### Step 2 — Chờ admin approve
 
-## Environment Variables
+Admin vào `/admin/workers` → Approve → copy token.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `API_URL` | `http://localhost:8080` | Contest platform API URL |
-| `WORKER_TOKEN` | *(empty)* | Token from admin (required to process jobs) |
-| `WORKER_NAME` | hostname | Display name shown to admins |
-| `POLL_INTERVAL_S` | `10` | Seconds between job polls |
-| `HEARTBEAT_INTERVAL_S` | `30` | Seconds between heartbeats |
-| `SANDBOX_TIMEOUT_S` | `600` | Max judge execution time (seconds) |
-| `TEMP_DIR` | system temp | Directory for temporary files |
-
-## Docker
+### Step 3 — Lưu token
 
 ```bash
-docker run -d \
-  -e API_URL=https://judge.example.com \
-  -e WORKER_TOKEN=<your-token> \
-  -e WORKER_NAME=$(hostname) \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  olpai-volunteer-agent
+olpai-volunteer approve-token <TOKEN-FROM-ADMIN>
+```
+
+### Step 4 — Chạy
+
+```bash
+# Foreground (dev/test)
+olpai-volunteer start
+
+# Background service (production)
+olpai-volunteer service install
+olpai-volunteer service start
+```
+
+---
+
+## Tất cả commands
+
+```
+olpai-volunteer setup              First-run wizard + register
+olpai-volunteer approve-token <T>  Lưu token sau khi admin approve
+olpai-volunteer start              Chạy foreground
+olpai-volunteer doctor             Kiểm tra môi trường
+olpai-volunteer benchmark          Đo hiệu suất CPU/disk
+olpai-volunteer status             Xem config + trạng thái
+olpai-volunteer logs               Xem logs (service mode)
+olpai-volunteer logs -f            Follow logs
+
+olpai-volunteer service install    Cài system service (auto-start)
+olpai-volunteer service start      Bật service
+olpai-volunteer service stop       Tắt service
+olpai-volunteer service uninstall  Gỡ service
+```
+
+## Config file
+
+Sau khi `setup`, config lưu tại `~/.olpai/agent/config.toml`:
+
+```toml
+api_url = "https://judge.example.com"
+worker_name = "Lab-RTX4090"
+worker_token = "abc123..."
+poll_interval_s = 10
+heartbeat_interval_s = 30
+sandbox_timeout_s = 600
+```
+
+Có thể override bằng env var: `API_URL`, `WORKER_TOKEN`, `WORKER_NAME`, v.v.
+
+## Optional dependencies
+
+```bash
+pip install Pillow numpy      # cho bài xử lý ảnh (Sudoku, v.v.)
+pip install pynvml            # detect GPU NVIDIA
 ```

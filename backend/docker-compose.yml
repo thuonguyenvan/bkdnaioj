@@ -57,7 +57,6 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       WORKER_ROLE: "judge"
       WORKER_GROUP: "cg:judge-worker"
-      WORKER_CONSUMER: "worker-judge-1"
       STREAM_JUDGE: "jobs:judge"
       STREAM_RESULTS: "jobs:results"
       SANDBOX_TIMEOUT_S: "300"
@@ -68,8 +67,10 @@ services:
       S3_SECURE: "false"
       SHARED_TEMP_VOLUME_NAME: "olpai_shared_temp"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - shared-temp:/app/shared-temp
+      # docker.sock unmounted → runner falls back to subprocess mode (worker env has PIL/numpy)
+      # Mount again for production Docker-in-Docker isolation
+      # - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }

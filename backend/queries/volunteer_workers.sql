@@ -1,6 +1,6 @@
 -- name: CreateVolunteerWorker :one
-INSERT INTO volunteer_workers (user_id, display_name, capabilities)
-VALUES ($1, $2, $3)
+INSERT INTO volunteer_workers (user_id, display_name, capabilities, max_workers)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: GetVolunteerWorkerByID :one
@@ -47,45 +47,26 @@ SET last_seen_at = now(),
 WHERE api_token = $1
 RETURNING *;
 
--- name: ClaimWorkerJob :one
+-- name: IncrementWorkerCompleted :one
 UPDATE volunteer_workers
-SET current_job_id = $2,
-    job_claimed_at = now(),
-    updated_at     = now()
-WHERE api_token = $1
-RETURNING *;
-
--- name: CompleteWorkerJob :one
-UPDATE volunteer_workers
-SET current_job_id = NULL,
-    job_claimed_at = NULL,
-    jobs_completed = jobs_completed + 1,
+SET jobs_completed = jobs_completed + 1,
     last_seen_at   = now(),
     updated_at     = now()
 WHERE api_token = $1
 RETURNING *;
 
--- name: FailWorkerJob :one
+-- name: IncrementWorkerFailed :one
 UPDATE volunteer_workers
-SET current_job_id = NULL,
-    job_claimed_at = NULL,
-    jobs_failed    = jobs_failed + 1,
-    last_seen_at   = now(),
-    updated_at     = now()
+SET jobs_failed = jobs_failed + 1,
+    last_seen_at = now(),
+    updated_at   = now()
 WHERE api_token = $1
 RETURNING *;
 
--- name: ListStaleWorkerClaims :many
-SELECT * FROM volunteer_workers
-WHERE current_job_id IS NOT NULL
-  AND job_claimed_at < $1;
-
--- name: ForceReleaseWorkerJob :one
+-- name: IncrementWorkerFailedByID :one
 UPDATE volunteer_workers
-SET current_job_id = NULL,
-    job_claimed_at = NULL,
-    jobs_failed    = jobs_failed + 1,
-    updated_at     = now()
+SET jobs_failed = jobs_failed + 1,
+    updated_at  = now()
 WHERE id = $1
 RETURNING *;
 

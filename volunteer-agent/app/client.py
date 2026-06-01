@@ -29,10 +29,11 @@ class APIClient:
         self._base = api_url.rstrip("/")
         self._headers = {"X-Worker-Token": token}
 
-    def register(self, display_name: str, capabilities: dict) -> dict:
+    def register(self, display_name: str, capabilities: dict, max_workers: int = 1) -> dict:
         r = httpx.post(
             f"{self._base}/api/v1/worker/register",
-            json={"display_name": display_name, "capabilities": capabilities},
+            json={"display_name": display_name, "capabilities": capabilities,
+                  "max_workers": max_workers},
             timeout=10,
         )
         r.raise_for_status()

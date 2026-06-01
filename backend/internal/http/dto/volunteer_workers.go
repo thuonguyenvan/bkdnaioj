@@ -11,6 +11,7 @@ import (
 type RegisterWorkerRequest struct {
 	DisplayName  string          `json:"display_name" validate:"required,max=120"`
 	Capabilities json.RawMessage `json:"capabilities" validate:"required"`
+	MaxWorkers   int16           `json:"max_workers" validate:"min=1,max=32"`
 }
 
 type HeartbeatRequest struct {
@@ -33,7 +34,8 @@ type WorkerResponse struct {
 	Capabilities  json.RawMessage `json:"capabilities"`
 	Online        bool            `json:"online"`
 	LastSeenAt    *time.Time      `json:"last_seen_at"`
-	CurrentJobID  *uuid.UUID      `json:"current_job_id"`
+	MaxWorkers    int16           `json:"max_workers"`
+	ActiveJobs    int64           `json:"active_jobs"`
 	JobsCompleted int32           `json:"jobs_completed"`
 	JobsFailed    int32           `json:"jobs_failed"`
 	ApprovedAt    *time.Time      `json:"approved_at"`
@@ -69,6 +71,7 @@ func VolunteerWorkerToResponse(w db.VolunteerWorker) WorkerResponse {
 		DisplayName:   w.DisplayName,
 		Status:        string(w.Status),
 		Capabilities:  json.RawMessage(w.Capabilities),
+		MaxWorkers:    w.MaxWorkers,
 		JobsCompleted: w.JobsCompleted,
 		JobsFailed:    w.JobsFailed,
 	}
@@ -77,11 +80,7 @@ func VolunteerWorkerToResponse(w db.VolunteerWorker) WorkerResponse {
 		r.LastSeenAt = &t
 		r.Online = time.Since(t) < 2*time.Minute
 	}
-	if w.CurrentJobID.Valid {
-		id := w.CurrentJobID.Bytes
-		uid := uuid.UUID(id)
-		r.CurrentJobID = &uid
-	}
+	// CurrentJobID removed — now tracked in volunteer_worker_claims table
 	if w.ApprovedAt.Valid {
 		t := w.ApprovedAt.Time
 		r.ApprovedAt = &t
