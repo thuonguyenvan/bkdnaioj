@@ -371,6 +371,29 @@ def start() -> None:
             time.sleep(s.poll_interval_s)
 
 
+# ── cache ─────────────────────────────────────────────────────────────────────
+
+@app.command()
+def cache(
+    clear: bool = typer.Option(False, "--clear", help="Remove all cached artifacts"),
+) -> None:
+    """Show or clear local artifact cache (judge.py, inputs, ground_truth)."""
+    from .artifact_cache import ArtifactCache, DEFAULT_CACHE_DIR
+    c = ArtifactCache()
+    if clear:
+        n = c.clear()
+        _ok(f"Cleared {n} cached files from {DEFAULT_CACHE_DIR}")
+    else:
+        _echo(f"\nCache location : {DEFAULT_CACHE_DIR}")
+        _echo(f"Cache size     : {c.size_mb()} MB")
+        _echo("\nCached files:")
+        for f in sorted(DEFAULT_CACHE_DIR.iterdir()):
+            if f.is_file():
+                size_mb = round(f.stat().st_size / 1024 / 1024, 1)
+                _echo(f"  {f.name:<60} {size_mb:>6} MB")
+        _echo()
+
+
 # ── service subcommands ───────────────────────────────────────────────────────
 
 @svc_app.command("install")

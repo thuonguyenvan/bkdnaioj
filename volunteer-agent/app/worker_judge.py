@@ -8,6 +8,7 @@ import zipfile
 
 import structlog
 
+from .artifact_cache import ArtifactCache
 from .client import Artifact, Job
 from .runner import PhaseRunner
 from . import storage as store
@@ -16,8 +17,9 @@ log = structlog.get_logger()
 
 
 class VolunteerJudgeWorker:
-    def __init__(self, runner: PhaseRunner) -> None:
+    def __init__(self, runner: PhaseRunner, cache: ArtifactCache | None = None) -> None:
         self._runner = runner
+        self._cache  = cache or ArtifactCache()
 
     def run(self, job: Job, work_dir: str) -> dict:
         submission_dir = os.path.join(work_dir, "submission")
@@ -28,18 +30,28 @@ class VolunteerJudgeWorker:
         os.makedirs(assets_dir,     exist_ok=True)
 
         asset_paths: dict[str, str] = {}
-        submission_paths: list[str] = []
 
         for artifact in job.artifacts:
             if artifact.type == "submission":
+                # Submission files: always download fresh, never cache
                 dest = _safe_dest(submission_dir, artifact.original_filename)
                 store.download_url(artifact.url, dest)
-                submission_paths.append(dest)
+
             else:
+                # Static assets (judge.py, inputs, ground_truth): cache on disk
+                cache_key = f"{artifact.key}__{artifact.original_filename}"
+                sha256    = getattr(artifact, "sha256", None)
+
+                cached = self._cache.get(cache_key, artifact.url, sha256)
+
+                # Copy into assets_dir for this run
                 dest = _safe_dest(assets_dir, artifact.original_filename)
-                store.download_url(artifact.url, dest)
+                self._cache.symlink_into(cached, dest)
+
                 asset_paths[artifact.original_filename] = dest
-                asset_paths[artifact.key] = dest
+                asset_paths[artifact.key]               = dest
+
+                # Also copy to asset_key filename if different
                 key_dest = _safe_dest(assets_dir, artifact.key)
                 if os.path.abspath(key_dest) != os.path.abspath(dest):
                     shutil.copyfile(dest, key_dest)
@@ -51,7 +63,7 @@ class VolunteerJudgeWorker:
         judge = _resolve_judge(job.judge_key, asset_paths, assets_dir)
 
         if job.is_final:
-            self._extract_final_archives(submission_paths, submission_dir)
+            self._extract_final_archives(_submission_paths(submission_dir), submission_dir)
             inference = self._resolve_inference(job.context.get("submission_schema", {}), submission_dir)
             return self._runner.run_final(
                 inference_entrypoint=inference,
@@ -100,6 +112,13 @@ class VolunteerJudgeWorker:
                     if dest != root and not dest.startswith(root + os.sep):
                         raise RuntimeError("unsafe zip entry in final submission")
                 zf.extractall(submission_dir)
+
+
+def _submission_paths(submission_dir: str) -> list[str]:
+    paths = []
+    for name in os.listdir(submission_dir):
+        paths.append(os.path.join(submission_dir, name))
+    return paths
 
 
 def _resolve_judge(judge_key: str, asset_paths: dict[str, str], assets_dir: str) -> str:
