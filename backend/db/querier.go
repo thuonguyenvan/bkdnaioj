@@ -17,13 +17,12 @@ type Querier interface {
 	AnswerClarification(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
 	ApproveContestEntry(ctx context.Context, arg ApproveContestEntryParams) (ContestEntry, error)
 	ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
-	ClaimWorkerJob(ctx context.Context, arg ClaimWorkerJobParams) (VolunteerWorker, error)
-	CompleteWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	CountActiveEntries(ctx context.Context) (int64, error)
 	CountContests(ctx context.Context) (int64, error)
 	CountSubmissions(ctx context.Context) (int64, error)
 	CountTasks(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
+	CountWorkerActiveClaims(ctx context.Context, workerID uuid.UUID) (int64, error)
 	// Announcements
 	CreateAnnouncement(ctx context.Context, arg CreateAnnouncementParams) (Announcement, error)
 	// Clarifications
@@ -42,6 +41,7 @@ type Querier interface {
 	CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
+	CreateWorkerClaim(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
 	DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	DeleteAnnouncement(ctx context.Context, id uuid.UUID) error
 	DeleteContest(ctx context.Context, id uuid.UUID) error
@@ -51,9 +51,8 @@ type Querier interface {
 	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
 	DeleteTask(ctx context.Context, id uuid.UUID) error
 	DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
+	DeleteWorkerClaim(ctx context.Context, arg DeleteWorkerClaimParams) error
 	DisqualifyContestEntry(ctx context.Context, id uuid.UUID) (ContestEntry, error)
-	FailWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	ForceReleaseWorkerJob(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	GetClarificationByID(ctx context.Context, id uuid.UUID) (Clarification, error)
 	GetContestByID(ctx context.Context, id uuid.UUID) (Contest, error)
 	GetContestBySlug(ctx context.Context, slug string) (Contest, error)
@@ -76,6 +75,10 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetVolunteerWorkerByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	GetVolunteerWorkerByToken(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	GetWorkerClaimBySubmission(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error)
+	IncrementWorkerCompleted(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	IncrementWorkerFailed(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	IncrementWorkerFailedByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
 	ListContestEntries(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
@@ -85,7 +88,7 @@ type Querier interface {
 	ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
 	ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
-	ListStaleWorkerClaims(ctx context.Context, jobClaimedAt pgtype.Timestamptz) ([]VolunteerWorker, error)
+	ListStaleWorkerClaims2(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
 	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
 	ListSystemAnnouncements(ctx context.Context) ([]Announcement, error)

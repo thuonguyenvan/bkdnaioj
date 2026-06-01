@@ -73,7 +73,7 @@ class PhaseRunner:
                 except Exception:
                     pass
         else:
-            subprocess.run(
+            self._run_command(
                 [
                     "python",
                     inference_entrypoint,
@@ -86,8 +86,8 @@ class PhaseRunner:
                     "--context",
                     context_path,
                 ],
-                check=True,
                 timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
+                label="inference",
             )
         return self._run_judge(
             judge=judge,
@@ -99,7 +99,7 @@ class PhaseRunner:
 
     def _run_judge(self, *, judge: str, submission_dir: str, assets_dir: str, output_dir: str, context_path: str) -> dict:
         os.makedirs(output_dir, exist_ok=True)
-        p = subprocess.run(
+        p = self._run_command(
             [
                 "python",
                 judge,
@@ -112,15 +112,27 @@ class PhaseRunner:
                 "--context",
                 context_path,
             ],
-            capture_output=True,
-            text=True,
-            check=True,
             timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
+            label="judge",
         )
         out = json.loads(p.stdout.strip())
         if out.get("status") != "success":
             raise RuntimeError(out.get("message") or "judge failed")
         return out
+
+    def _run_command(self, command: list[str], *, timeout: int, label: str) -> subprocess.CompletedProcess[str]:
+        p = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if p.returncode != 0:
+            stderr = (p.stderr or "").strip()
+            stdout = (p.stdout or "").strip()
+            detail = stderr or stdout or "no output"
+            raise RuntimeError(f"{label} command failed with exit {p.returncode}: {detail}")
+        return p
 
     def payload_json(self, payload: dict | None) -> str | None:
         if payload is None:

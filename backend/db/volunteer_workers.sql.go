@@ -19,7 +19,7 @@ SET status      = 'active',
     approved_at = now(),
     updated_at  = now()
 WHERE id = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
 type ApproveVolunteerWorkerParams struct {
@@ -40,104 +40,36 @@ func (q *Queries) ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunte
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const claimWorkerJob = `-- name: ClaimWorkerJob :one
-UPDATE volunteer_workers
-SET current_job_id = $2,
-    job_claimed_at = now(),
-    updated_at     = now()
-WHERE api_token = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
-`
-
-type ClaimWorkerJobParams struct {
-	ApiToken     *string     `json:"api_token"`
-	CurrentJobID pgtype.UUID `json:"current_job_id"`
-}
-
-func (q *Queries) ClaimWorkerJob(ctx context.Context, arg ClaimWorkerJobParams) (VolunteerWorker, error) {
-	row := q.db.QueryRow(ctx, claimWorkerJob, arg.ApiToken, arg.CurrentJobID)
-	var i VolunteerWorker
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.DisplayName,
-		&i.Status,
-		&i.ApiToken,
-		&i.Capabilities,
-		&i.LastSeenAt,
-		&i.CpuUsage,
-		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
-		&i.JobsCompleted,
-		&i.JobsFailed,
-		&i.ApprovedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const completeWorkerJob = `-- name: CompleteWorkerJob :one
-UPDATE volunteer_workers
-SET current_job_id = NULL,
-    job_claimed_at = NULL,
-    jobs_completed = jobs_completed + 1,
-    last_seen_at   = now(),
-    updated_at     = now()
-WHERE api_token = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
-`
-
-func (q *Queries) CompleteWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
-	row := q.db.QueryRow(ctx, completeWorkerJob, apiToken)
-	var i VolunteerWorker
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.DisplayName,
-		&i.Status,
-		&i.ApiToken,
-		&i.Capabilities,
-		&i.LastSeenAt,
-		&i.CpuUsage,
-		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
-		&i.JobsCompleted,
-		&i.JobsFailed,
-		&i.ApprovedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }
 
 const createVolunteerWorker = `-- name: CreateVolunteerWorker :one
-INSERT INTO volunteer_workers (user_id, display_name, capabilities)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
+INSERT INTO volunteer_workers (user_id, display_name, capabilities, max_workers)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
 type CreateVolunteerWorkerParams struct {
 	UserID       pgtype.UUID `json:"user_id"`
 	DisplayName  string      `json:"display_name"`
 	Capabilities []byte      `json:"capabilities"`
+	MaxWorkers   int16       `json:"max_workers"`
 }
 
 func (q *Queries) CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error) {
-	row := q.db.QueryRow(ctx, createVolunteerWorker, arg.UserID, arg.DisplayName, arg.Capabilities)
+	row := q.db.QueryRow(ctx, createVolunteerWorker,
+		arg.UserID,
+		arg.DisplayName,
+		arg.Capabilities,
+		arg.MaxWorkers,
+	)
 	var i VolunteerWorker
 	err := row.Scan(
 		&i.ID,
@@ -149,13 +81,12 @@ func (q *Queries) CreateVolunteerWorker(ctx context.Context, arg CreateVolunteer
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }
@@ -165,7 +96,7 @@ UPDATE volunteer_workers
 SET status     = 'inactive',
     updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
 func (q *Queries) DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
@@ -181,13 +112,12 @@ func (q *Queries) DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }
@@ -201,77 +131,8 @@ func (q *Queries) DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
-const failWorkerJob = `-- name: FailWorkerJob :one
-UPDATE volunteer_workers
-SET current_job_id = NULL,
-    job_claimed_at = NULL,
-    jobs_failed    = jobs_failed + 1,
-    last_seen_at   = now(),
-    updated_at     = now()
-WHERE api_token = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
-`
-
-func (q *Queries) FailWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
-	row := q.db.QueryRow(ctx, failWorkerJob, apiToken)
-	var i VolunteerWorker
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.DisplayName,
-		&i.Status,
-		&i.ApiToken,
-		&i.Capabilities,
-		&i.LastSeenAt,
-		&i.CpuUsage,
-		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
-		&i.JobsCompleted,
-		&i.JobsFailed,
-		&i.ApprovedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const forceReleaseWorkerJob = `-- name: ForceReleaseWorkerJob :one
-UPDATE volunteer_workers
-SET current_job_id = NULL,
-    job_claimed_at = NULL,
-    jobs_failed    = jobs_failed + 1,
-    updated_at     = now()
-WHERE id = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
-`
-
-func (q *Queries) ForceReleaseWorkerJob(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
-	row := q.db.QueryRow(ctx, forceReleaseWorkerJob, id)
-	var i VolunteerWorker
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.DisplayName,
-		&i.Status,
-		&i.ApiToken,
-		&i.Capabilities,
-		&i.LastSeenAt,
-		&i.CpuUsage,
-		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
-		&i.JobsCompleted,
-		&i.JobsFailed,
-		&i.ApprovedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getVolunteerWorkerByID = `-- name: GetVolunteerWorkerByID :one
-SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at FROM volunteer_workers WHERE id = $1
+SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers FROM volunteer_workers WHERE id = $1
 `
 
 func (q *Queries) GetVolunteerWorkerByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
@@ -287,19 +148,18 @@ func (q *Queries) GetVolunteerWorkerByID(ctx context.Context, id uuid.UUID) (Vol
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }
 
 const getVolunteerWorkerByToken = `-- name: GetVolunteerWorkerByToken :one
-SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at FROM volunteer_workers
+SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers FROM volunteer_workers
 WHERE api_token = $1 AND status = 'active'
 LIMIT 1
 `
@@ -317,62 +177,113 @@ func (q *Queries) GetVolunteerWorkerByToken(ctx context.Context, apiToken *strin
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }
 
-const listStaleWorkerClaims = `-- name: ListStaleWorkerClaims :many
-SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at FROM volunteer_workers
-WHERE current_job_id IS NOT NULL
-  AND job_claimed_at < $1
+const incrementWorkerCompleted = `-- name: IncrementWorkerCompleted :one
+UPDATE volunteer_workers
+SET jobs_completed = jobs_completed + 1,
+    last_seen_at   = now(),
+    updated_at     = now()
+WHERE api_token = $1
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
-func (q *Queries) ListStaleWorkerClaims(ctx context.Context, jobClaimedAt pgtype.Timestamptz) ([]VolunteerWorker, error) {
-	rows, err := q.db.Query(ctx, listStaleWorkerClaims, jobClaimedAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []VolunteerWorker
-	for rows.Next() {
-		var i VolunteerWorker
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.DisplayName,
-			&i.Status,
-			&i.ApiToken,
-			&i.Capabilities,
-			&i.LastSeenAt,
-			&i.CpuUsage,
-			&i.RamUsage,
-			&i.CurrentJobID,
-			&i.JobClaimedAt,
-			&i.JobsCompleted,
-			&i.JobsFailed,
-			&i.ApprovedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) IncrementWorkerCompleted(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
+	row := q.db.QueryRow(ctx, incrementWorkerCompleted, apiToken)
+	var i VolunteerWorker
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.DisplayName,
+		&i.Status,
+		&i.ApiToken,
+		&i.Capabilities,
+		&i.LastSeenAt,
+		&i.CpuUsage,
+		&i.RamUsage,
+		&i.JobsCompleted,
+		&i.JobsFailed,
+		&i.ApprovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxWorkers,
+	)
+	return i, err
+}
+
+const incrementWorkerFailed = `-- name: IncrementWorkerFailed :one
+UPDATE volunteer_workers
+SET jobs_failed = jobs_failed + 1,
+    last_seen_at = now(),
+    updated_at   = now()
+WHERE api_token = $1
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
+`
+
+func (q *Queries) IncrementWorkerFailed(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
+	row := q.db.QueryRow(ctx, incrementWorkerFailed, apiToken)
+	var i VolunteerWorker
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.DisplayName,
+		&i.Status,
+		&i.ApiToken,
+		&i.Capabilities,
+		&i.LastSeenAt,
+		&i.CpuUsage,
+		&i.RamUsage,
+		&i.JobsCompleted,
+		&i.JobsFailed,
+		&i.ApprovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxWorkers,
+	)
+	return i, err
+}
+
+const incrementWorkerFailedByID = `-- name: IncrementWorkerFailedByID :one
+UPDATE volunteer_workers
+SET jobs_failed = jobs_failed + 1,
+    updated_at  = now()
+WHERE id = $1
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
+`
+
+func (q *Queries) IncrementWorkerFailedByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
+	row := q.db.QueryRow(ctx, incrementWorkerFailedByID, id)
+	var i VolunteerWorker
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.DisplayName,
+		&i.Status,
+		&i.ApiToken,
+		&i.Capabilities,
+		&i.LastSeenAt,
+		&i.CpuUsage,
+		&i.RamUsage,
+		&i.JobsCompleted,
+		&i.JobsFailed,
+		&i.ApprovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxWorkers,
+	)
+	return i, err
 }
 
 const listVolunteerWorkers = `-- name: ListVolunteerWorkers :many
-SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at FROM volunteer_workers
+SELECT id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers FROM volunteer_workers
 ORDER BY created_at DESC
 `
 
@@ -395,13 +306,12 @@ func (q *Queries) ListVolunteerWorkers(ctx context.Context) ([]VolunteerWorker, 
 			&i.LastSeenAt,
 			&i.CpuUsage,
 			&i.RamUsage,
-			&i.CurrentJobID,
-			&i.JobClaimedAt,
 			&i.JobsCompleted,
 			&i.JobsFailed,
 			&i.ApprovedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MaxWorkers,
 		); err != nil {
 			return nil, err
 		}
@@ -418,7 +328,7 @@ UPDATE volunteer_workers
 SET status     = 'rejected',
     updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
 func (q *Queries) RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
@@ -434,13 +344,12 @@ func (q *Queries) RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (Volu
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }
@@ -452,7 +361,7 @@ SET last_seen_at = now(),
     ram_usage    = $3,
     updated_at   = now()
 WHERE api_token = $1
-RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, current_job_id, job_claimed_at, jobs_completed, jobs_failed, approved_at, created_at, updated_at
+RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
 type UpdateWorkerHeartbeatParams struct {
@@ -474,13 +383,12 @@ func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, arg UpdateWorkerHea
 		&i.LastSeenAt,
 		&i.CpuUsage,
 		&i.RamUsage,
-		&i.CurrentJobID,
-		&i.JobClaimedAt,
 		&i.JobsCompleted,
 		&i.JobsFailed,
 		&i.ApprovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxWorkers,
 	)
 	return i, err
 }

@@ -42,7 +42,10 @@ def _ask(prompt: str, default: str = "") -> str:
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 @app.command()
-def setup() -> None:
+def setup(
+    workers: int = typer.Option(1, "--workers", "-w", min=1, max=32,
+                                help="Number of parallel judge workers this machine will run"),
+) -> None:
     """First-run wizard: collect hardware info, register with platform."""
     _echo("\n=== OLPAI Volunteer Judge Agent — Setup ===\n")
 
@@ -55,6 +58,8 @@ def setup() -> None:
     # 2. Worker name
     worker_name = _ask("Display name for this machine", s.worker_name)
     s.worker_name = worker_name
+
+    s.max_workers = workers  # type: ignore[attr-defined]
 
     # 3. Collect hardware
     _echo("\nCollecting hardware info...")
@@ -78,10 +83,11 @@ def setup() -> None:
         bench_results = _benchmark()
 
     # 5. Register
-    _echo(f"\nRegistering with {s.api_url}...")
+    _echo(f"\nRegistering with {s.api_url} (max_workers={workers})...")
     client = APIClient(s.api_url, "")
     try:
-        result = client.register(s.worker_name, {**caps, "benchmark": bench_results})
+        result = client.register(s.worker_name, {**caps, "benchmark": bench_results},
+                                 max_workers=workers)
     except Exception as e:
         _err(f"Registration failed: {e}")
         raise typer.Exit(1)
@@ -303,10 +309,14 @@ def logs(
 # ── start ─────────────────────────────────────────────────────────────────────
 
 @app.command()
-def start() -> None:
-    """Start the agent (foreground mode)."""
+def start(
+    workers: int = typer.Option(0, "--workers", "-w", min=1, max=32,
+                                help="Parallel workers (default: use value from setup)"),
+) -> None:
+    """Start the agent (foreground mode). Use --workers to override parallelism."""
     from .runner import PhaseRunner
     from .worker_judge import VolunteerJudgeWorker
+    from .artifact_cache import ArtifactCache
 
     configure_logging()
     s = cfg.load()
@@ -315,60 +325,83 @@ def start() -> None:
         _err("Worker token not set. Run: olpai-volunteer setup && olpai-volunteer approve-token <TOKEN>")
         raise typer.Exit(1)
 
+    n_workers = workers if workers > 0 else getattr(s, "max_workers", 1)
+
     import structlog
     log = structlog.get_logger()
-    log.info("volunteer_agent_starting", api_url=s.api_url, worker_name=s.worker_name)
+    log.info("volunteer_agent_starting", api_url=s.api_url, worker_name=s.worker_name,
+             parallel_workers=n_workers)
 
-    client = APIClient(s.api_url, s.worker_token)
-    judge_worker = VolunteerJudgeWorker(PhaseRunner())
+    client      = APIClient(s.api_url, s.worker_token)
+    cache       = ArtifactCache()
+    td_root     = s.temp_dir or None
+    stop_event  = threading.Event()
 
+    # Shared heartbeat — one per agent, not per worker thread
     def heartbeat_loop() -> None:
-        while True:
+        while not stop_event.is_set():
             try:
                 cpu, ram = get_resource_usage()
                 client.heartbeat(cpu, ram)
             except Exception as e:
                 log.warning("heartbeat_failed", error=str(e))
-            time.sleep(s.heartbeat_interval_s)
+            stop_event.wait(s.heartbeat_interval_s)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
 
-    while True:
-        try:
-            job = client.next_job()
-            if job is None:
-                time.sleep(s.poll_interval_s)
-                continue
+    def poll_loop(worker_idx: int) -> None:
+        judge_worker = VolunteerJudgeWorker(PhaseRunner(), cache)
+        log.info("worker_thread_started", idx=worker_idx)
+        while not stop_event.is_set():
+            try:
+                job = client.next_job()
+                if job is None:
+                    stop_event.wait(s.poll_interval_s)
+                    continue
 
-            log.info("job_received", submission_id=job.submission_id, is_final=job.is_final)
-            td_root = s.temp_dir or None
-            with tempfile.TemporaryDirectory(
-                prefix=f"olpai-vol-{job.submission_id[:8]}-",
-                dir=td_root,
-            ) as td:
-                try:
-                    result = judge_worker.run(job, td)
-                    client.submit_result(job.submission_id, {
-                        "status":        "done",
-                        "raw_score":     result["raw_score"],
-                        "display_score": result["display_score"],
-                        "payload":       result.get("payload"),
-                    })
-                    log.info("job_done", submission_id=job.submission_id, score=result["raw_score"])
-                except Exception as exc:
-                    err_msg = str(exc)[:4000]
-                    log.error("job_failed", submission_id=job.submission_id, error=err_msg)
+                log.info("job_received", worker=worker_idx, submission_id=job.submission_id,
+                         is_final=job.is_final)
+                with tempfile.TemporaryDirectory(
+                    prefix=f"olpai-vol-{job.submission_id[:8]}-",
+                    dir=td_root,
+                ) as td:
                     try:
-                        client.submit_result(job.submission_id, {"status": "failed", "error_message": err_msg})
-                    except Exception:
-                        pass
+                        result = judge_worker.run(job, td)
+                        client.submit_result(job.submission_id, {
+                            "status":        "done",
+                            "raw_score":     result["raw_score"],
+                            "display_score": result["display_score"],
+                            "payload":       result.get("payload"),
+                        })
+                        log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
+                                 score=result["raw_score"])
+                    except Exception as exc:
+                        err_msg = str(exc)[:4000]
+                        log.error("job_failed", worker=worker_idx, submission_id=job.submission_id,
+                                  error=err_msg)
+                        try:
+                            client.submit_result(job.submission_id,
+                                                 {"status": "failed", "error_message": err_msg})
+                        except Exception:
+                            pass
+            except Exception as exc:
+                log.error("poll_error", worker=worker_idx, error=str(exc))
+                stop_event.wait(s.poll_interval_s)
 
-        except KeyboardInterrupt:
-            log.info("shutting_down")
-            break
-        except Exception as exc:
-            log.error("poll_error", error=str(exc))
-            time.sleep(s.poll_interval_s)
+    # Spawn N worker threads
+    threads = [
+        threading.Thread(target=poll_loop, args=(i,), daemon=True)
+        for i in range(n_workers)
+    ]
+    for t in threads:
+        t.start()
+
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        log.info("shutting_down")
+        stop_event.set()
 
 
 # ── cache ─────────────────────────────────────────────────────────────────────

@@ -1392,11 +1392,17 @@ type VolunteerWorker struct {
 	LastSeenAt    pgtype.Timestamptz    `json:"last_seen_at"`
 	CpuUsage      *int16                `json:"cpu_usage"`
 	RamUsage      *int16                `json:"ram_usage"`
-	CurrentJobID  pgtype.UUID           `json:"current_job_id"`
-	JobClaimedAt  pgtype.Timestamptz    `json:"job_claimed_at"`
 	JobsCompleted int32                 `json:"jobs_completed"`
 	JobsFailed    int32                 `json:"jobs_failed"`
 	ApprovedAt    pgtype.Timestamptz    `json:"approved_at"`
 	CreatedAt     pgtype.Timestamptz    `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz    `json:"updated_at"`
+	MaxWorkers    int16                 `json:"max_workers"`
+}
+
+type VolunteerWorkerClaim struct {
+	ID           uuid.UUID          `json:"id"`
+	WorkerID     uuid.UUID          `json:"worker_id"`
+	SubmissionID uuid.UUID          `json:"submission_id"`
+	ClaimedAt    pgtype.Timestamptz `json:"claimed_at"`
 }

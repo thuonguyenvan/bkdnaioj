@@ -131,25 +131,25 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 			return
 		case <-ticker.C:
 			cutoff := pgtype.Timestamptz{Time: time.Now().Add(-jobTimeout), Valid: true}
-			stale, err := q.ListStaleWorkerClaims(ctx, cutoff)
+			stale, err := q.ListStaleWorkerClaims2(ctx, cutoff)
 			if err != nil {
 				log.Error().Err(err).Msg("list stale worker claims")
 				continue
 			}
-			for _, w := range stale {
-				if !w.CurrentJobID.Valid {
+			for _, claim := range stale {
+				if err := producer.EnqueueJudge(ctx, claim.SubmissionID, nil); err != nil {
+					log.Error().Err(err).Str("submission", claim.SubmissionID.String()).Msg("re-enqueue stale job")
 					continue
 				}
-				jobID := w.CurrentJobID.Bytes
-				if err := producer.EnqueueJudge(ctx, jobID, nil); err != nil {
-					log.Error().Err(err).Str("worker", w.ID.String()).Msg("re-enqueue stale job")
+				if err := q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{
+					WorkerID:     claim.WorkerID,
+					SubmissionID: claim.SubmissionID,
+				}); err != nil {
+					log.Error().Err(err).Msg("delete stale claim")
 					continue
 				}
-				if _, err := q.ForceReleaseWorkerJob(ctx, w.ID); err != nil {
-					log.Error().Err(err).Str("worker", w.ID.String()).Msg("force release worker job")
-					continue
-				}
-				log.Warn().Str("worker", w.ID.String()).Str("job", w.ID.String()).Msg("reclaimed stale job")
+				_, _ = q.IncrementWorkerFailedByID(ctx, claim.WorkerID)
+				log.Warn().Str("worker", claim.WorkerID.String()).Str("submission", claim.SubmissionID.String()).Msg("reclaimed stale job")
 			}
 		}
 	}

@@ -11,24 +11,27 @@ import (
 // Each method delegates to its corresponding Func field if non-nil,
 // otherwise returns zero value + nil error.
 type MockQuerier struct {
-	ApproveVolunteerWorkerFunc    func(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
-	ClaimWorkerJobFunc            func(ctx context.Context, arg ClaimWorkerJobParams) (VolunteerWorker, error)
-	CompleteWorkerJobFunc         func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	CreateVolunteerWorkerFunc     func(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
-	DeactivateVolunteerWorkerFunc func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	DeleteVolunteerWorkerFunc     func(ctx context.Context, id uuid.UUID) error
-	FailWorkerJobFunc             func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	ForceReleaseWorkerJobFunc     func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	GetSubmissionForWorkerFunc    func(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error)
-	GetVolunteerWorkerByIDFunc    func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	GetVolunteerWorkerByTokenFunc func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	ListStaleWorkerClaimsFunc     func(ctx context.Context, jobClaimedAt pgtype.Timestamptz) ([]VolunteerWorker, error)
-	ListVolunteerWorkersFunc      func(ctx context.Context) ([]VolunteerWorker, error)
-	MarkSubmissionDoneFunc        func(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
-	MarkSubmissionFailedFunc      func(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
-	MarkSubmissionRunningFunc     func(ctx context.Context, id uuid.UUID) (Submission, error)
-	RejectVolunteerWorkerFunc     func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	UpdateWorkerHeartbeatFunc     func(ctx context.Context, arg UpdateWorkerHeartbeatParams) (VolunteerWorker, error)
+	ApproveVolunteerWorkerFunc      func(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
+	CountWorkerActiveClaimsFunc     func(ctx context.Context, workerID uuid.UUID) (int64, error)
+	CreateVolunteerWorkerFunc       func(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
+	CreateWorkerClaimFunc           func(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
+	DeactivateVolunteerWorkerFunc   func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	DeleteVolunteerWorkerFunc       func(ctx context.Context, id uuid.UUID) error
+	DeleteWorkerClaimFunc           func(ctx context.Context, arg DeleteWorkerClaimParams) error
+	GetSubmissionForWorkerFunc      func(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error)
+	GetVolunteerWorkerByIDFunc      func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	GetVolunteerWorkerByTokenFunc   func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	GetWorkerClaimBySubmissionFunc  func(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error)
+	IncrementWorkerCompletedFunc    func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	IncrementWorkerFailedFunc       func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	IncrementWorkerFailedByIDFunc   func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	ListStaleWorkerClaims2Func      func(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
+	ListVolunteerWorkersFunc        func(ctx context.Context) ([]VolunteerWorker, error)
+	MarkSubmissionDoneFunc          func(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
+	MarkSubmissionFailedFunc        func(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
+	MarkSubmissionRunningFunc       func(ctx context.Context, id uuid.UUID) (Submission, error)
+	RejectVolunteerWorkerFunc       func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	UpdateWorkerHeartbeatFunc       func(ctx context.Context, arg UpdateWorkerHeartbeatParams) (VolunteerWorker, error)
 	AddEntryMemberFunc                    func(ctx context.Context, arg AddEntryMemberParams) error
 	AddTeamMemberFunc                     func(ctx context.Context, arg AddTeamMemberParams) error
 	AnswerClarificationFunc               func(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
@@ -768,18 +771,11 @@ func (m *MockQuerier) ApproveVolunteerWorker(ctx context.Context, arg ApproveVol
 	return VolunteerWorker{}, nil
 }
 
-func (m *MockQuerier) ClaimWorkerJob(ctx context.Context, arg ClaimWorkerJobParams) (VolunteerWorker, error) {
-	if m.ClaimWorkerJobFunc != nil {
-		return m.ClaimWorkerJobFunc(ctx, arg)
+func (m *MockQuerier) CountWorkerActiveClaims(ctx context.Context, workerID uuid.UUID) (int64, error) {
+	if m.CountWorkerActiveClaimsFunc != nil {
+		return m.CountWorkerActiveClaimsFunc(ctx, workerID)
 	}
-	return VolunteerWorker{}, nil
-}
-
-func (m *MockQuerier) CompleteWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
-	if m.CompleteWorkerJobFunc != nil {
-		return m.CompleteWorkerJobFunc(ctx, apiToken)
-	}
-	return VolunteerWorker{}, nil
+	return 0, nil
 }
 
 func (m *MockQuerier) CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error) {
@@ -787,6 +783,13 @@ func (m *MockQuerier) CreateVolunteerWorker(ctx context.Context, arg CreateVolun
 		return m.CreateVolunteerWorkerFunc(ctx, arg)
 	}
 	return VolunteerWorker{}, nil
+}
+
+func (m *MockQuerier) CreateWorkerClaim(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error) {
+	if m.CreateWorkerClaimFunc != nil {
+		return m.CreateWorkerClaimFunc(ctx, arg)
+	}
+	return VolunteerWorkerClaim{}, nil
 }
 
 func (m *MockQuerier) DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
@@ -803,18 +806,46 @@ func (m *MockQuerier) DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) e
 	return nil
 }
 
-func (m *MockQuerier) FailWorkerJob(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
-	if m.FailWorkerJobFunc != nil {
-		return m.FailWorkerJobFunc(ctx, apiToken)
+func (m *MockQuerier) DeleteWorkerClaim(ctx context.Context, arg DeleteWorkerClaimParams) error {
+	if m.DeleteWorkerClaimFunc != nil {
+		return m.DeleteWorkerClaimFunc(ctx, arg)
+	}
+	return nil
+}
+
+func (m *MockQuerier) GetWorkerClaimBySubmission(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error) {
+	if m.GetWorkerClaimBySubmissionFunc != nil {
+		return m.GetWorkerClaimBySubmissionFunc(ctx, submissionID)
+	}
+	return VolunteerWorkerClaim{}, nil
+}
+
+func (m *MockQuerier) IncrementWorkerCompleted(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
+	if m.IncrementWorkerCompletedFunc != nil {
+		return m.IncrementWorkerCompletedFunc(ctx, apiToken)
 	}
 	return VolunteerWorker{}, nil
 }
 
-func (m *MockQuerier) ForceReleaseWorkerJob(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
-	if m.ForceReleaseWorkerJobFunc != nil {
-		return m.ForceReleaseWorkerJobFunc(ctx, id)
+func (m *MockQuerier) IncrementWorkerFailed(ctx context.Context, apiToken *string) (VolunteerWorker, error) {
+	if m.IncrementWorkerFailedFunc != nil {
+		return m.IncrementWorkerFailedFunc(ctx, apiToken)
 	}
 	return VolunteerWorker{}, nil
+}
+
+func (m *MockQuerier) IncrementWorkerFailedByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error) {
+	if m.IncrementWorkerFailedByIDFunc != nil {
+		return m.IncrementWorkerFailedByIDFunc(ctx, id)
+	}
+	return VolunteerWorker{}, nil
+}
+
+func (m *MockQuerier) ListStaleWorkerClaims2(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error) {
+	if m.ListStaleWorkerClaims2Func != nil {
+		return m.ListStaleWorkerClaims2Func(ctx, claimedAt)
+	}
+	return nil, nil
 }
 
 func (m *MockQuerier) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error) {
@@ -838,12 +869,6 @@ func (m *MockQuerier) GetVolunteerWorkerByToken(ctx context.Context, apiToken *s
 	return VolunteerWorker{}, nil
 }
 
-func (m *MockQuerier) ListStaleWorkerClaims(ctx context.Context, jobClaimedAt pgtype.Timestamptz) ([]VolunteerWorker, error) {
-	if m.ListStaleWorkerClaimsFunc != nil {
-		return m.ListStaleWorkerClaimsFunc(ctx, jobClaimedAt)
-	}
-	return nil, nil
-}
 
 func (m *MockQuerier) ListVolunteerWorkers(ctx context.Context) ([]VolunteerWorker, error) {
 	if m.ListVolunteerWorkersFunc != nil {
