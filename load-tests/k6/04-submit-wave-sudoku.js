@@ -3,13 +3,11 @@
  * Judge 2-5s → test queue backlog + upload bandwidth
  */
 import { check, sleep } from 'k6';
-import { SharedArray } from 'k6/data';
 import { CONFIG } from './config.js';
 import { login, submitFile, waitForResult } from './helpers.js';
 
-const sudokuBytes = new SharedArray('sudoku', function () {
-  return [open('../fixtures/submission_sudoku.zip', 'b')];
-});
+// Binary file: open per-VU (SharedArray loses ArrayBuffer data)
+const sudokuBytes = open('../fixtures/submission_sudoku.zip', 'b');
 
 export const options = {
   stages: [
@@ -35,7 +33,7 @@ export default function () {
   const subId = submitFile(
     CONFIG.BASE_URL, token, entryId,
     CONFIG.SUDOKU_TASK_ID, CONFIG.SUDOKU_PHASE_ID,
-    'submission.zip', sudokuBytes[0], 'application/zip',
+    'submission.zip', sudokuBytes, 'application/zip',
   );
 
   if (subId) {

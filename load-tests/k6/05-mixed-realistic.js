@@ -9,7 +9,7 @@ import { CONFIG } from './config.js';
 import { login, authHeaders, submitFile, waitForResult } from './helpers.js';
 
 const zhviBytes = new SharedArray('zhvi', function () {
-  return [open('../fixtures/submission_zhvi.csv', 'b')];
+  return [open('../fixtures/submission_zhvi.csv')];
 });
 
 export const options = {
