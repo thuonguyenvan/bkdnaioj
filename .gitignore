@@ -23,5 +23,19 @@ backend/bin/
 /tmp/
 /logs/
 
+# macOS
+.DS_Store
+
+# Python packaging artifacts
+*.egg-info/
+dist/
+build/
+
+# Vite cache
+frontend/.vite/
+
+# Load test results (raw JSON output)
+load-tests/results/
+
 # local generated datasets and drafts
 draft/
