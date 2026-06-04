@@ -53,14 +53,13 @@ func (h *VolunteerWorkerHandler) Register(c echo.Context) error {
 		maxWorkers = 1
 	}
 	worker, err := h.q.CreateVolunteerWorker(c.Request().Context(), db.CreateVolunteerWorkerParams{
-		UserID:       pgtype.UUID{},
-		DisplayName:  req.DisplayName,
-		Capabilities: []byte(req.Capabilities),
-		MaxWorkers:   maxWorkers,
+		UserID:      pgtype.UUID{},
+		DisplayName: req.DisplayName,
+		Column3:     string(req.Capabilities), // string → text → jsonb cast in SQL
+		MaxWorkers:  maxWorkers,
 	})
 	if err != nil {
-		// Temporarily expose error for debugging
-		return mw.ErrInternal("register failed: " + err.Error())
+		return mw.ErrInternal("register failed")
 	}
 	return c.JSON(http.StatusCreated, dto.VolunteerWorkerToResponse(worker))
 }

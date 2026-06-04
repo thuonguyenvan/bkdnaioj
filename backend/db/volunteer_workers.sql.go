@@ -52,22 +52,22 @@ func (q *Queries) ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunte
 
 const createVolunteerWorker = `-- name: CreateVolunteerWorker :one
 INSERT INTO volunteer_workers (user_id, display_name, capabilities, max_workers)
-VALUES ($1, $2, $3, $4)
+VALUES ($1, $2, $3::text::jsonb, $4)
 RETURNING id, user_id, display_name, status, api_token, capabilities, last_seen_at, cpu_usage, ram_usage, jobs_completed, jobs_failed, approved_at, created_at, updated_at, max_workers
 `
 
 type CreateVolunteerWorkerParams struct {
-	UserID       pgtype.UUID `json:"user_id"`
-	DisplayName  string      `json:"display_name"`
-	Capabilities []byte      `json:"capabilities"`
-	MaxWorkers   int16       `json:"max_workers"`
+	UserID      pgtype.UUID `json:"user_id"`
+	DisplayName string      `json:"display_name"`
+	Column3     string      `json:"column_3"`
+	MaxWorkers  int16       `json:"max_workers"`
 }
 
 func (q *Queries) CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error) {
 	row := q.db.QueryRow(ctx, createVolunteerWorker,
 		arg.UserID,
 		arg.DisplayName,
-		arg.Capabilities,
+		arg.Column3,
 		arg.MaxWorkers,
 	)
 	var i VolunteerWorker

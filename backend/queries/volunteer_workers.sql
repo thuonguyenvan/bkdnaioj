@@ -1,6 +1,6 @@
 -- name: CreateVolunteerWorker :one
 INSERT INTO volunteer_workers (user_id, display_name, capabilities, max_workers)
-VALUES ($1, $2, $3, $4)
+VALUES ($1, $2, $3::text::jsonb, $4)
 RETURNING *;
 
 -- name: GetVolunteerWorkerByID :one
