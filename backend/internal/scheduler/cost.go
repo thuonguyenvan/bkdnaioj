@@ -89,7 +89,20 @@ func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 		}
 	}
 
-	return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: tCPU, ExecutionPath: "cpu"}
+	// GPU opportunity cost for output-only jobs:
+	// A GPU worker running a non-GPU job wastes its GPU capability.
+	// Penalize by adding estimated GPU idle time = T_infer_gpu for a typical final job.
+	// This makes CPU-only workers preferred for output-only without hardcoding a constant.
+	// If no CPU workers are available, GPU workers can still take output-only jobs.
+	adjustedCPU := tCPU
+	if !d.IsFinal && w.GPUFp32OpsPerSec > 0 {
+		// Opportunity cost ≈ time GPU could spend on a typical final job
+		// Using 50 GFLOPS demand (same as EstimateJobDemand default for final)
+		typicalFinalGPUOps := 50_000_000_000.0
+		gpuOpportunityCost := safeDivide(typicalFinalGPUOps, w.GPUFp32OpsPerSec)
+		adjustedCPU = tCPU + gpuOpportunityCost
+	}
+	return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: adjustedCPU, ExecutionPath: "cpu"}
 }
 
 // Cost is the lexicographic tuple used to rank worker-job pairs.
