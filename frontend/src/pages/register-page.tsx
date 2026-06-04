@@ -38,82 +38,108 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="auth-wrapper">
-      <div className="auth-card">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: '#0f172a', fontWeight: 700 }}>
-          <UserPlus size={24} /> Create Account
-        </h2>
-
-        {error && (
-          <div className="alert alert-danger flex items-center gap-2">
-            <AlertCircle size={18} />
-            <div>{error}</div>
+    <div className="container auth-wrapper">
+      <div className="auth-shell">
+        <aside className="auth-context-card">
+          <h1 className="auth-title">Join the contest platform</h1>
+          <p className="auth-subtitle">
+            Create one account for individual contests, team membership, and support requests.
+          </p>
+          <div className="auth-meta-list">
+            <div className="auth-meta-item">
+              <strong>Account identity</strong>
+              <span>Your display name is used in registrations, submissions, and team rosters.</span>
+            </div>
+            <div className="auth-meta-item">
+              <strong>Team contests</strong>
+              <span>Create or join teams after registration from the Groups page.</span>
+            </div>
+            <div className="auth-meta-item">
+              <strong>Contest access</strong>
+              <span>Register for available contests after signing in.</span>
+            </div>
           </div>
-        )}
+        </aside>
 
-        {success && (
-          <div className="alert alert-success flex items-center gap-2">
-            <CheckCircle size={18} />
-            <div>{success}</div>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Full Name</label>
-            <input
-              type="text"
-              className="form-input"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              placeholder="e.g. Nguyen Van A"
-            />
+        <div className="auth-card auth-form-card">
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h2 className="auth-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <UserPlus size={22} /> Create Account
+            </h2>
+            <p className="auth-subtitle">Enter your profile and login credentials.</p>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Student ID (Optional)</label>
-            <input
-              type="text"
-              className="form-input"
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              placeholder="e.g. 20211234"
-            />
-          </div>
+          {error && (
+            <div className="alert alert-danger flex items-center gap-2" style={{ marginBottom: '1rem' }}>
+              <AlertCircle size={18} />
+              <div>{error}</div>
+            </div>
+          )}
 
-          <div className="form-group">
-            <label className="form-label">Email Address</label>
-            <input
-              type="email"
-              className="form-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="e.g. user@domain.com"
-            />
-          </div>
+          {success && (
+            <div className="alert alert-success flex items-center gap-2" style={{ marginBottom: '1rem' }}>
+              <CheckCircle size={18} />
+              <div>{success}</div>
+            </div>
+          )}
 
-          <div className="form-group">
-            <label className="form-label">Password (At least 8 characters)</label>
-            <input
-              type="password"
-              className="form-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                placeholder="Nguyen Van A"
+              />
+            </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} disabled={submitting || !!success}>
-            {submitting ? 'Creating account...' : 'Register'}
-          </button>
-        </form>
+            <div className="form-group">
+              <label className="form-label">Student ID</label>
+              <input
+                type="text"
+                className="form-input"
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
 
-        <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
-          Already have an account? <Link to="/login">Log in here</Link>
-        </p>
+            <div className="form-group">
+              <label className="form-label">Email Address</label>
+              <input
+                type="email"
+                className="form-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="user@domain.com"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <input
+                type="password"
+                className="form-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="At least 8 characters"
+              />
+            </div>
+
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }} disabled={submitting || !!success}>
+              {submitting ? 'Creating account...' : 'Create Account'}
+            </button>
+          </form>
+
+          <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
+            Already have an account? <Link to="/login">Log in</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

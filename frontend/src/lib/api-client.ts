@@ -235,6 +235,21 @@ export interface LeaderboardRow {
   user_emails: string[];
 }
 
+export interface GlobalRankingDetail {
+  contest_title: string;
+  task_title: string;
+  score: number | string;
+}
+
+export interface GlobalRankingRow {
+  rank: number;
+  display_name: string;
+  user_email: string;
+  total_score: number | string;
+  task_count: number;
+  details: GlobalRankingDetail[];
+}
+
 export interface Team {
   id: string;
   slug: string;
@@ -562,6 +577,10 @@ export const api = {
     const url = entryMode ? `/contests/${contestId}/phase-defs/${defId}/leaderboard?entry_mode=${entryMode}` : `/contests/${contestId}/phase-defs/${defId}/leaderboard`;
     const res = await apiClient.get(url);
     return res.data as LeaderboardRow[];
+  },
+  async getGlobalRanking(phaseKey: string) {
+    const res = await apiClient.get(`/rankings/global?phase=${encodeURIComponent(phaseKey)}`);
+    return res.data as GlobalRankingRow[];
   },
   async recomputeTaskPhaseLeaderboard(phaseId: string) {
     const res = await apiClient.post(`/phases/${phaseId}/leaderboard/recompute`);

@@ -108,17 +108,24 @@ export const ContestsPage: React.FC = () => {
     const now = Date.now();
     const sorted = [...publicContests].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
+    const hasEnded = (contest: Contest) => {
+      const end = new Date(contest.end_time).getTime();
+      return contest.status === 'ended' || contest.status === 'archived' || (Number.isFinite(end) && now > end);
+    };
+
     const running = sorted.filter((contest) => {
+      if (hasEnded(contest)) return false;
       const start = new Date(contest.start_time).getTime();
       const end = new Date(contest.end_time).getTime();
-      return contest.status === 'running' || (now >= start && now <= end);
+      return contest.status === 'running' || (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end);
     });
     const runningIds = new Set(running.map((contest) => contest.id));
 
     const upcoming = sorted.filter((contest) => {
       if (runningIds.has(contest.id)) return false;
+      if (hasEnded(contest)) return false;
       const start = new Date(contest.start_time).getTime();
-      return contest.status === 'registration_open' || now < start;
+      return contest.status === 'registration_open' || (Number.isFinite(start) && now < start);
     });
     const upcomingIds = new Set(upcoming.map((contest) => contest.id));
 
@@ -128,9 +135,7 @@ export const ContestsPage: React.FC = () => {
       ended: sorted
         .filter((contest) => {
           if (runningIds.has(contest.id) || upcomingIds.has(contest.id)) return false;
-          const start = new Date(contest.start_time).getTime();
-          const end = new Date(contest.end_time).getTime();
-          return contest.status === 'ended' || contest.status === 'archived' || now > end || now > start;
+          return hasEnded(contest);
         })
         .sort((a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()),
     };

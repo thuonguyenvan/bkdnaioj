@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Contest, type PhaseDef, type LeaderboardRow } from '../lib/api-client';
+import { api, type PhaseDef } from '../lib/api-client';
 import { Trophy, Medal, Users, Search, ChevronDown, ChevronUp } from 'lucide-react';
 
 type RankingPhaseKey = PhaseDef['key'];
@@ -27,125 +27,41 @@ export const RankingsPage: React.FC = () => {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [activePhaseKey, setActivePhaseKey] = useState<RankingPhaseKey>('public_test');
 
-  // Fetch all contests
-  const { data: contests = [], isLoading: loadingContests } = useQuery<Contest[]>({
-    queryKey: ['contests'],
-    queryFn: api.getContests,
-  });
-
-  // Fetch task leaderboards for all contests, aggregating each user's best raw score per task.
+  // Backend aggregates global rankings by phase, avoiding frontend N+1 leaderboard scans.
   const { data: rankingsByPhase = {}, isLoading: loadingStandings, error } = useQuery<Partial<Record<RankingPhaseKey, StandingUser[]>>>({
-    queryKey: ['global-rankings', contests.map(c => c.id).join(',')],
+    queryKey: ['global-rankings'],
     queryFn: async () => {
-      if (contests.length === 0) return {};
-      
-      const phaseScores: Record<RankingPhaseKey, { [username: string]: { totalScore: number; taskCount: number; details: { contestTitle: string; phaseTitle: string; taskTitle: string; score: number }[] } }> = {
-        public_test: {},
-        private_test: {},
-        final_public: {},
-        final_private: {},
-      };
-
-      const usernamesForRow = (row: LeaderboardRow) => {
-        if (row.user_emails && row.user_emails.length > 0) {
-          return Array.from(new Set(row.user_emails.map(email => email.split('@')[0])));
-        }
-        if (row.display_name) {
-          return [row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name];
-        }
-        return [];
-      };
-
-      await Promise.all(
-        contests.map(async (contest) => {
-          try {
-            // Only pull standings for published contests (running/ended/archived)
-            if (contest.status === 'draft') return;
-
-            const phaseDefs = await api.getPhaseDefs(contest.id);
-            if (phaseDefs.length === 0) return;
-            const tasks = await api.getTasks(contest.id);
-            if (tasks.length === 0) return;
-
-            const phasesByTask = await Promise.all(
-              tasks.map(async task => {
-                try {
-                  const phases = await api.getPhasesByTask(task.id);
-                  return { task, phases };
-                } catch (e) {
-                  console.error(`Failed to load phases for task ${task.id}`, e);
-                  return { task, phases: [] };
-                }
-              })
-            );
-            
-            await Promise.all(
-              RANKING_PHASES.map(async ({ key }) => {
-                const targetDef = phaseDefs.find(d => d.key === key);
-                if (!targetDef) return;
-
-                await Promise.all(
-                  phasesByTask.map(async ({ task, phases }) => {
-                    const phase = phases.find(item => item.contest_phase_def_id === targetDef.id);
-                    if (!phase) return;
-
-                    const leaderboard = await api.getTaskPhaseLeaderboard(phase.id);
-                    const bestScoreByUser = new Map<string, number>();
-
-                    leaderboard.forEach(row => {
-                      const rawScore = Number(row.raw_score !== undefined ? row.raw_score : row.score || 0);
-                      const safeScore = Number.isFinite(rawScore) ? rawScore : 0;
-                      usernamesForRow(row).forEach(username => {
-                        const current = bestScoreByUser.get(username);
-                        if (current === undefined || safeScore > current) {
-                          bestScoreByUser.set(username, safeScore);
-                        }
-                      });
-                    });
-
-                    bestScoreByUser.forEach((score, username) => {
-                      if (!phaseScores[key][username]) {
-                        phaseScores[key][username] = {
-                          totalScore: 0,
-                          taskCount: 0,
-                          details: []
-                        };
-                      }
-                      phaseScores[key][username].totalScore += score;
-                      phaseScores[key][username].taskCount += 1;
-                      phaseScores[key][username].details.push({
-                        contestTitle: contest.title,
-                        phaseTitle: getRankingPhaseLabel(targetDef.key),
-                        taskTitle: task.title,
-                        score
-                      });
-                    });
-                  })
-                );
-              })
-            );
-          } catch (e) {
-            console.error(`Failed to load standings for contest ${contest.id}`, e);
-          }
+      const pairs = await Promise.all(
+        RANKING_PHASES.map(async ({ key }) => {
+          const rows = await api.getGlobalRanking(key);
+          return [key, rows.map(row => {
+            const totalScore = Number(row.total_score);
+            return {
+              displayName: row.display_name,
+              totalScore: Number.isFinite(totalScore) ? totalScore : 0,
+              taskCount: row.task_count,
+              details: row.details.map(detail => {
+                const score = Number(detail.score);
+                return {
+                  contestTitle: detail.contest_title,
+                  phaseTitle: getRankingPhaseLabel(key),
+                  taskTitle: detail.task_title,
+                  score: Number.isFinite(score) ? score : 0,
+                };
+              }),
+            };
+          })] as const;
         })
       );
 
-      return RANKING_PHASES.reduce<Partial<Record<RankingPhaseKey, StandingUser[]>>>((acc, { key }) => {
-        acc[key] = Object.entries(phaseScores[key])
-          .map(([name, data]) => ({
-            displayName: name,
-            totalScore: data.totalScore,
-            taskCount: data.taskCount,
-            details: data.details
-          }))
-          .sort((a, b) => b.totalScore - a.totalScore);
+      return pairs.reduce<Partial<Record<RankingPhaseKey, StandingUser[]>>>((acc, [key, rows]) => {
+        acc[key] = rows;
         return acc;
       }, {});
     },
-    enabled: contests.length > 0,
   });
 
-  const isLoading = loadingContests || (contests.length > 0 && loadingStandings);
+  const isLoading = loadingStandings;
 
   // Filter rankings by user display name
   const standings = rankingsByPhase[activePhaseKey] || [];
