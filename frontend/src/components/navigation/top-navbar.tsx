@@ -59,6 +59,7 @@ export const TopNavbar: React.FC = () => {
             <Link to="/teams" style={getLinkStyle('/teams')}>Groups</Link>
             <Link to="/rankings" style={getLinkStyle('/rankings')}>Ranking</Link>
             <Link to="/newsfeed" style={getLinkStyle('/newsfeed')}>Newsfeed</Link>
+            <Link to="/docs" style={getLinkStyle('/docs')}>Docs</Link>
             
             {isAdmin && (
               <Link to="/admin/users" style={getLinkStyle('/admin/users')}>Users & Roles</Link>

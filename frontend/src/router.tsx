@@ -17,6 +17,7 @@ import { RankingsPage } from './pages/rankings-page';
 import { AdminUsersPage } from './pages/admin-users-page';
 import { AdminContestCreatePage } from './pages/admin-contest-create-page';
 import { AdminWorkersPage } from './pages/admin-workers-page';
+import { DocsPage } from './pages/docs-page';
 
 
 // Layout shell wrapping pages with Navbar
@@ -73,10 +74,11 @@ export const AppRouter: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public auth routes with navigation shell */}
+        {/* Public routes with navigation shell (no auth required) */}
         <Route element={<AppLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/docs" element={<DocsPage />} />
         </Route>
 
         {/* Authenticated routes with navigation shell */}
