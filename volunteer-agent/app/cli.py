@@ -473,7 +473,7 @@ def logs(
 
 @app.command()
 def start(
-    workers: int = typer.Option(0, "--workers", "-w", min=1, max=32,
+    workers: int = typer.Option(0, "--workers", "-w",
                                 help="Parallel workers (default: use value from setup)"),
 ) -> None:
     """Start the agent (foreground mode). Use --workers to override parallelism."""
