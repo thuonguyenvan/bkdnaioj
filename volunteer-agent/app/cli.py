@@ -83,6 +83,23 @@ def setup() -> None:
     _echo(f"  Docker: {'yes' if caps.get('docker_available') else 'no'}")
     _echo(f"  Python: {caps.get('python_version','?').split()[0]}")
 
+    # Docker install offer (needed for final phase inference sandbox)
+    if not caps.get("docker_available"):
+        _echo()
+        _warn("Docker not found. Docker is required to judge final-phase submissions.")
+        install_docker = _ask("Install Docker now? (y/n)", "n").lower().startswith("y")
+        if install_docker:
+            _install_docker()
+            # Re-check after install
+            import importlib
+            from . import capabilities as _caps_mod
+            importlib.reload(_caps_mod)
+            caps["docker_available"] = _caps_mod._check_docker()
+            if caps.get("docker_available"):
+                _ok("Docker installed successfully.")
+            else:
+                _warn("Docker install may need a terminal restart. Re-run: olpai-volunteer doctor")
+
     # 4. Benchmark
     run_bench = _ask("\nRun quick benchmark? (y/n)", "y").lower().startswith("y")
     bench_results: dict = {}
@@ -210,6 +227,51 @@ def doctor() -> None:
 
 
 # ── benchmark ─────────────────────────────────────────────────────────────────
+
+def _install_docker() -> None:
+    """Install Docker Engine based on the current OS."""
+    import platform, subprocess
+    system = platform.system().lower()
+
+    if system == "linux":
+        _echo("\nInstalling Docker Engine (Linux)...")
+        _echo("  Running: curl -fsSL https://get.docker.com | sh")
+        try:
+            result = subprocess.run(
+                ["sh", "-c", "curl -fsSL https://get.docker.com | sh"],
+                timeout=300,
+            )
+            if result.returncode == 0:
+                # Add current user to docker group so no sudo needed
+                import os
+                user = os.environ.get("USER") or os.environ.get("LOGNAME", "")
+                if user:
+                    subprocess.run(["usermod", "-aG", "docker", user], check=False)
+                _ok("Docker Engine installed.")
+                _warn("You may need to log out and back in for group permissions.")
+            else:
+                _err("Docker install script returned non-zero. Install manually: https://docs.docker.com/engine/install/")
+        except subprocess.TimeoutExpired:
+            _err("Install timed out. Try manually: https://docs.docker.com/engine/install/")
+        except Exception as e:
+            _err(f"Install failed: {e}")
+
+    elif system == "darwin":
+        _echo("\nOn macOS, Docker Desktop must be installed manually.")
+        _echo("  Download: https://www.docker.com/products/docker-desktop/")
+        _echo("  Or via Homebrew: brew install --cask docker")
+        install_brew = _ask("Install via Homebrew? (y/n)", "n").lower().startswith("y")
+        if install_brew:
+            try:
+                subprocess.run(["brew", "install", "--cask", "docker"], check=True, timeout=300)
+                _ok("Docker Desktop installed via Homebrew. Please launch Docker Desktop to complete setup.")
+            except FileNotFoundError:
+                _err("Homebrew not found. Install from https://brew.sh/ first.")
+            except Exception as e:
+                _err(f"Homebrew install failed: {e}")
+    else:
+        _warn(f"Auto-install not supported on {system}. Install manually: https://docs.docker.com/engine/install/")
+
 
 def _benchmark() -> dict:
     """Run local benchmarks, return throughput-based results (ops/sec, bytes/sec)."""
