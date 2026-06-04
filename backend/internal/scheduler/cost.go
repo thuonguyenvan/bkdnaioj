@@ -71,10 +71,25 @@ func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 		tSetup = w.DockerStartupSeconds
 	}
 
-	tRun := safeDivide(d.CPUOps, effectiveCPU)
+	// CPU path
+	tRunCPU := safeDivide(d.CPUOps, effectiveCPU)
+	tCPU := tDownload + tUnpack + tSetup + tRunCPU
 
-	total := tDownload + tUnpack + tSetup + tRun
-	return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: total, ExecutionPath: "cpu"}
+	// GPU path — only for final inference jobs on GPU workers
+	if d.IsFinal && w.GPUFp32OpsPerSec > 0 {
+		// Hard constraint: need enough VRAM
+		if d.VRAMBytes > 0 && d.VRAMBytes > w.AvailableVRAMBytes {
+			// Not enough VRAM → GPU path invalid, fall through to CPU
+		} else {
+			tRunGPU := safeDivide(d.GPUOps, w.GPUFp32OpsPerSec)
+			tGPU := tDownload + tUnpack + tSetup + tRunGPU
+			if tGPU < tCPU {
+				return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: tGPU, ExecutionPath: "gpu"}
+			}
+		}
+	}
+
+	return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: tCPU, ExecutionPath: "cpu"}
 }
 
 // Cost is the lexicographic tuple used to rank worker-job pairs.
@@ -109,5 +124,11 @@ func (a Cost) LessThan(b Cost) bool {
 func ComputeStress(w *WorkerProfile, d *JobDemand, plan ExecutionPlan) float64 {
 	timeoutStress := safeDivide(plan.RuntimeSeconds, float64(d.TimeoutSecs))
 	ramStress := safeDivide(float64(d.RAMBytes), float64(w.AvailableRAMBytes))
-	return math.Max(timeoutStress, ramStress)
+	stress := math.Max(timeoutStress, ramStress)
+	// Add VRAM stress for GPU path
+	if plan.ExecutionPath == "gpu" && w.AvailableVRAMBytes > 0 && d.VRAMBytes > 0 {
+		vramStress := safeDivide(float64(d.VRAMBytes), float64(w.AvailableVRAMBytes))
+		stress = math.Max(stress, vramStress)
+	}
+	return stress
 }

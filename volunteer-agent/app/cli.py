@@ -292,6 +292,45 @@ def _benchmark() -> dict:
         results["sandbox_passed"] = False
         _echo(f"    Docker: unavailable ({e})")
 
+    # GPU benchmark (NVIDIA via pynvml + torch CUDA)
+    _echo("  GPU benchmark...")
+    results["gpu_fp32_ops_per_sec"] = 0.0
+    results["available_vram_bytes"] = 0
+    try:
+        import pynvml  # type: ignore
+        pynvml.nvmlInit()
+        n_gpu = pynvml.nvmlDeviceGetCount()
+        if n_gpu > 0:
+            h = pynvml.nvmlDeviceGetHandleByIndex(0)
+            mem = pynvml.nvmlDeviceGetMemoryInfo(h)
+            results["available_vram_bytes"] = int(mem.free)
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    # Matmul benchmark: 2 * N^3 FP32 ops per call
+                    N = 4096
+                    a = torch.randn(N, N, device="cuda", dtype=torch.float32)
+                    b = torch.randn(N, N, device="cuda", dtype=torch.float32)
+                    torch.mm(a, b); torch.cuda.synchronize()  # warmup
+                    REPS = 5
+                    t_gpu = time.perf_counter()
+                    for _ in range(REPS):
+                        torch.mm(a, b)
+                    torch.cuda.synchronize()
+                    elapsed_gpu = time.perf_counter() - t_gpu
+                    ops = 2 * (N ** 3) * REPS
+                    results["gpu_fp32_ops_per_sec"] = ops / elapsed_gpu
+                    _echo(f"    GPU FP32: {results['gpu_fp32_ops_per_sec']/1e12:.2f} TFLOPS  "
+                          f"VRAM free: {mem.free//1024//1024} MB")
+                else:
+                    _echo(f"    GPU: detected (VRAM {mem.free//1024//1024} MB) — torch CUDA unavailable")
+            except ImportError:
+                _echo(f"    GPU: detected (VRAM {mem.free//1024//1024} MB) — install torch for FLOPS benchmark")
+        else:
+            _echo("    GPU: none detected")
+    except Exception:
+        _echo("    GPU: none (non-NVIDIA or pynvml unavailable)")
+
     return results
 
 

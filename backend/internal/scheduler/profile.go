@@ -23,6 +23,9 @@ type WorkerProfile struct {
 	AvailableRAMBytes          int64
 	AvailableDiskBytes         int64
 	MaxParallelJobs            int
+	// GPU fields — non-zero only on NVIDIA workers with torch+CUDA benchmark
+	GPUFp32OpsPerSec  float64
+	AvailableVRAMBytes int64
 }
 
 // ParseWorkerProfile parses capabilities JSON → WorkerProfile.
@@ -60,6 +63,8 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 		AvailableRAMBytes:    int64(getF(caps, "available_ram_bytes")),
 		AvailableDiskBytes:   int64(getF(caps, "available_disk_bytes")),
 		MaxParallelJobs:      maxWorkers,
+		GPUFp32OpsPerSec:     getF(bench, "gpu_fp32_ops_per_sec"),
+		AvailableVRAMBytes:   int64(getF(bench, "available_vram_bytes")),
 	}, nil
 }
 
@@ -67,7 +72,9 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 type JobDemand struct {
 	SubmissionID uuid.UUID
 	CPUOps       float64
+	GPUOps       float64 // 0 for output-only; non-zero for final inference
 	RAMBytes     int64
+	VRAMBytes    int64 // 0 for output-only; non-zero for final inference
 	UnzipBytes   int64 // compressed artifact size (final jobs only)
 	NetworkBytes int64 // bytes to download from S3
 	IsFinal      bool
@@ -94,14 +101,20 @@ func EstimateJobDemand(
 		EntryMode:    entryMode,
 	}
 	if isFinal {
-		d.UnzipBytes   = 50 * 1024 * 1024  // 50 MB compressed artifact
+		d.UnzipBytes   = 50 * 1024 * 1024   // 50 MB compressed artifact
 		d.NetworkBytes = 50 * 1024 * 1024
-		d.CPUOps       = 5_000_000
-		d.RAMBytes     = 512 * 1024 * 1024 // 512 MB
+		d.CPUOps       = 5_000_000           // fallback if no GPU
+		d.RAMBytes     = 512 * 1024 * 1024   // 512 MB
+		// GPU demand for model inference — heuristic, replaced by dry-run profile later
+		d.GPUOps   = 50_000_000_000          // 50 GFLOPS FP32 (typical small model)
+		d.VRAMBytes = 4 * 1024 * 1024 * 1024 // 4 GB VRAM heuristic
 	} else {
 		d.NetworkBytes = 5 * 1024 * 1024 // 5 MB prediction file
 		d.CPUOps       = 500_000
 		d.RAMBytes     = 256 * 1024 * 1024 // 256 MB
+		// Output-only: no GPU needed
+		d.GPUOps   = 0
+		d.VRAMBytes = 0
 	}
 	return d
 }
