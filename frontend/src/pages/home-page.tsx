@@ -98,9 +98,23 @@ export const HomePage: React.FC = () => {
 
   const now = Date.now();
   const publicContests = contests.filter((contest) => contest.status !== 'draft' && contest.visibility === 'public');
+  
+  // Find ongoing contest first
+  const ongoingContest = [...publicContests]
+    .filter((contest) => {
+      const start = new Date(contest.start_time).getTime();
+      const end = new Date(contest.end_time).getTime();
+      return now >= start && now <= end;
+    })[0];
+
+  // If no ongoing, find next upcoming
   const upcomingContest = [...publicContests]
-    .filter((contest) => new Date(contest.start_time).getTime() > now || contest.status === 'registration_open')
+    .filter((contest) => new Date(contest.start_time).getTime() > now)
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())[0];
+
+  const activeOrUpcomingContest = ongoingContest || upcomingContest;
+  const isOngoing = !!ongoingContest;
+
   const recentContests = [...publicContests]
     .filter((contest) => contest.status === 'ended' || contest.status === 'archived' || new Date(contest.end_time).getTime() < now)
     .sort((a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime())
@@ -140,7 +154,7 @@ export const HomePage: React.FC = () => {
       <div className="table-section">
         <h2 className="section-heading">
           <CalendarDays size={16} />
-          Upcoming Contest
+          Upcoming & Ongoing Contest
         </h2>
         
         <div style={{
@@ -157,43 +171,50 @@ export const HomePage: React.FC = () => {
         }}>
           {loadingContests ? (
             <div className="text-muted" style={{ fontSize: '0.875rem' }}>Loading contests...</div>
-          ) : upcomingContest ? (
+          ) : activeOrUpcomingContest ? (
             <>
               <div style={{ flex: '1 1 360px' }}>
-                <Link to={`/contests/${upcomingContest.id}`} style={{ color: 'hsl(var(--primary))', fontWeight: 700, fontSize: '0.925rem', textDecoration: 'none' }}>
-                  {upcomingContest.title}
+                <Link to={`/contests/${activeOrUpcomingContest.id}`} style={{ color: 'hsl(var(--primary))', fontWeight: 700, fontSize: '0.925rem', textDecoration: 'none' }}>
+                  {activeOrUpcomingContest.title}
                 </Link>
                 <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.15rem' }}>
-                  {getEntryPolicyText(upcomingContest.entry_policy)}
+                  {getEntryPolicyText(activeOrUpcomingContest.entry_policy)}
                 </div>
               </div>
 
               <div style={{ minWidth: '180px', textAlign: 'center' }}>
-                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Starts in</div>
-                <div style={{ color: 'hsl(var(--primary))', fontWeight: 700, fontSize: '1.1rem', margin: '0.1rem 0' }}>
-                  <CountdownText targetTime={upcomingContest.start_time} />
+                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{isOngoing ? 'Ends in' : 'Starts in'}</div>
+                <div style={{ color: isOngoing ? '#ef4444' : 'hsl(var(--primary))', fontWeight: 700, fontSize: '1.1rem', margin: '0.1rem 0' }}>
+                  <CountdownText 
+                    targetTime={isOngoing ? activeOrUpcomingContest.end_time : activeOrUpcomingContest.start_time} 
+                    fallback={isOngoing ? 'Ended' : 'Started'}
+                  />
                 </div>
-                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{formatDateTime(upcomingContest.start_time)}</div>
+                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                  {formatDateTime(isOngoing ? activeOrUpcomingContest.end_time : activeOrUpcomingContest.start_time)}
+                </div>
               </div>
 
               <div style={{ color: '#475569', fontSize: '0.8rem', fontWeight: 500 }}>
-                <span className="badge badge-secondary">{upcomingContest.status.replace(/_/g, ' ')}</span>
+                <span className="badge badge-secondary" style={{ color: isOngoing ? '#ef4444' : undefined }}>
+                  {isOngoing ? 'RUNNING' : activeOrUpcomingContest.status.replace(/_/g, ' ')}
+                </span>
               </div>
 
               <div style={{ flex: '0 0 auto' }}>
-                <Link to={`/contests/${upcomingContest.id}`} className="btn btn-secondary btn-sm">
-                  Register
+                <Link to={`/contests/${activeOrUpcomingContest.id}`} className="btn btn-secondary btn-sm">
+                  {isOngoing ? 'Join' : 'Register'}
                 </Link>
               </div>
             </>
           ) : (
-            <div className="text-muted" style={{ fontSize: '0.875rem' }}>No upcoming contests.</div>
+            <div className="text-muted" style={{ fontSize: '0.875rem' }}>No upcoming or ongoing contests.</div>
           )}
         </div>
         
         <div style={{ textAlign: 'right', marginTop: '0.2rem' }}>
           <Link to="/contests" style={{ color: 'hsl(var(--primary))', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 500 }}>
-            View all upcoming contests »
+            View all contests »
           </Link>
         </div>
       </div>
