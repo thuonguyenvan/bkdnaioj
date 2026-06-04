@@ -12,6 +12,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAllLeaderboardEntriesForPhase = `-- name: GetAllLeaderboardEntriesForPhase :many
+SELECT contest_entry_id, score
+FROM task_phase_leaderboard_entries
+WHERE phase_id = $1
+ORDER BY rank ASC
+`
+
+type GetAllLeaderboardEntriesForPhaseRow struct {
+	ContestEntryID uuid.UUID `json:"contest_entry_id"`
+	Score          string    `json:"score"`
+}
+
+// Used to seed Redis ZSET on startup from existing DB state.
+func (q *Queries) GetAllLeaderboardEntriesForPhase(ctx context.Context, phaseID uuid.UUID) ([]GetAllLeaderboardEntriesForPhaseRow, error) {
+	rows, err := q.db.Query(ctx, getAllLeaderboardEntriesForPhase, phaseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllLeaderboardEntriesForPhaseRow
+	for rows.Next() {
+		var i GetAllLeaderboardEntriesForPhaseRow
+		if err := rows.Scan(&i.ContestEntryID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBestSubmissionForEntry = `-- name: GetBestSubmissionForEntry :one
+SELECT s.id, s.display_score
+FROM submissions s
+WHERE s.phase_id = $1
+  AND s.contest_entry_id = $2
+  AND s.status = 'done'
+  AND s.display_score IS NOT NULL
+ORDER BY s.is_final DESC, s.display_score DESC, s.submitted_at DESC
+LIMIT 1
+`
+
+type GetBestSubmissionForEntryParams struct {
+	PhaseID        uuid.UUID `json:"phase_id"`
+	ContestEntryID uuid.UUID `json:"contest_entry_id"`
+}
+
+type GetBestSubmissionForEntryRow struct {
+	ID           uuid.UUID      `json:"id"`
+	DisplayScore pgtype.Numeric `json:"display_score"`
+}
+
+// Returns the chosen submission_id and its display_score for an entry in a phase.
+func (q *Queries) GetBestSubmissionForEntry(ctx context.Context, arg GetBestSubmissionForEntryParams) (GetBestSubmissionForEntryRow, error) {
+	row := q.db.QueryRow(ctx, getBestSubmissionForEntry, arg.PhaseID, arg.ContestEntryID)
+	var i GetBestSubmissionForEntryRow
+	err := row.Scan(&i.ID, &i.DisplayScore)
+	return i, err
+}
+
 const getContestPhaseLeaderboard = `-- name: GetContestPhaseLeaderboard :many
 
 SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
@@ -99,6 +161,23 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 		return nil, err
 	}
 	return items, nil
+}
+
+const getPhaseMaxScore = `-- name: GetPhaseMaxScore :one
+
+SELECT COALESCE(MAX(raw_score), 0)::float8 AS max_score
+FROM task_phase_leaderboard_entries
+WHERE phase_id = $1
+`
+
+// ── Incremental leaderboard queries (Phase 04) ──────────────────────────────
+// Returns current max display_score among all entries in phase.
+// Used to decide whether incremental or full recompute is needed.
+func (q *Queries) GetPhaseMaxScore(ctx context.Context, phaseID uuid.UUID) (float64, error) {
+	row := q.db.QueryRow(ctx, getPhaseMaxScore, phaseID)
+	var max_score float64
+	err := row.Scan(&max_score)
+	return max_score, err
 }
 
 const getTaskPhaseLeaderboard = `-- name: GetTaskPhaseLeaderboard :many
@@ -387,6 +466,42 @@ type RecomputeTaskPhaseLeaderboardParams struct {
 
 func (q *Queries) RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error {
 	_, err := q.db.Exec(ctx, recomputeTaskPhaseLeaderboard, arg.LeaderboardMode, arg.HigherIsBetter, arg.PhaseID)
+	return err
+}
+
+const updateSingleLeaderboardEntry = `-- name: UpdateSingleLeaderboardEntry :exec
+UPDATE task_phase_leaderboard_entries
+SET
+    rank       = $3,
+    score      = $4,
+    raw_score  = $5,
+    chosen_submission_id = $6,
+    entries_count        = $7,
+    updated_at = now()
+WHERE phase_id = $1 AND contest_entry_id = $2
+`
+
+type UpdateSingleLeaderboardEntryParams struct {
+	PhaseID            uuid.UUID   `json:"phase_id"`
+	ContestEntryID     uuid.UUID   `json:"contest_entry_id"`
+	Rank               *int32      `json:"rank"`
+	Score              string      `json:"score"`
+	RawScore           string      `json:"raw_score"`
+	ChosenSubmissionID pgtype.UUID `json:"chosen_submission_id"`
+	EntriesCount       int32       `json:"entries_count"`
+}
+
+// Updates one entry after incremental recompute (O(log n) path).
+func (q *Queries) UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error {
+	_, err := q.db.Exec(ctx, updateSingleLeaderboardEntry,
+		arg.PhaseID,
+		arg.ContestEntryID,
+		arg.Rank,
+		arg.Score,
+		arg.RawScore,
+		arg.ChosenSubmissionID,
+		arg.EntriesCount,
+	)
 	return err
 }
 

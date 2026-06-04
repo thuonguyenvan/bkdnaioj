@@ -235,3 +235,42 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
   entries_count = EXCLUDED.entries_count,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now();
+
+-- ── Incremental leaderboard queries (Phase 04) ──────────────────────────────
+
+-- name: GetPhaseMaxScore :one
+-- Returns current max display_score among all entries in phase.
+-- Used to decide whether incremental or full recompute is needed.
+SELECT COALESCE(MAX(raw_score), 0)::float8 AS max_score
+FROM task_phase_leaderboard_entries
+WHERE phase_id = $1;
+
+-- name: UpdateSingleLeaderboardEntry :exec
+-- Updates one entry after incremental recompute (O(log n) path).
+UPDATE task_phase_leaderboard_entries
+SET
+    rank       = $3,
+    score      = $4,
+    raw_score  = $5,
+    chosen_submission_id = $6,
+    entries_count        = $7,
+    updated_at = now()
+WHERE phase_id = $1 AND contest_entry_id = $2;
+
+-- name: GetAllLeaderboardEntriesForPhase :many
+-- Used to seed Redis ZSET on startup from existing DB state.
+SELECT contest_entry_id, score
+FROM task_phase_leaderboard_entries
+WHERE phase_id = $1
+ORDER BY rank ASC;
+
+-- name: GetBestSubmissionForEntry :one
+-- Returns the chosen submission_id and its display_score for an entry in a phase.
+SELECT s.id, s.display_score
+FROM submissions s
+WHERE s.phase_id = $1
+  AND s.contest_entry_id = $2
+  AND s.status = 'done'
+  AND s.display_score IS NOT NULL
+ORDER BY s.is_final DESC, s.display_score DESC, s.submitted_at DESC
+LIMIT 1;

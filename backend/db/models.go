@@ -1219,6 +1219,18 @@ type EvaluationSetAsset struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type JobExecutionLog struct {
+	ID                      uuid.UUID          `json:"id"`
+	SubmissionID            uuid.UUID          `json:"submission_id"`
+	WorkerID                uuid.UUID          `json:"worker_id"`
+	PhaseKey                string             `json:"phase_key"`
+	IsFinal                 bool               `json:"is_final"`
+	PredictedRuntimeSeconds *float32           `json:"predicted_runtime_seconds"`
+	ActualRuntimeSeconds    *float32           `json:"actual_runtime_seconds"`
+	ErrorRatio              *float32           `json:"error_ratio"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+}
+
 type Phase struct {
 	ID                  uuid.UUID          `json:"id"`
 	TaskID              uuid.UUID          `json:"task_id"`

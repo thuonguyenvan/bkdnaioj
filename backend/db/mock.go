@@ -911,3 +911,39 @@ func (m *MockQuerier) UpdateWorkerHeartbeat(ctx context.Context, arg UpdateWorke
 	}
 	return VolunteerWorker{}, nil
 }
+
+func (m *MockQuerier) GetAllLeaderboardEntriesForPhase(ctx context.Context, phaseID uuid.UUID) ([]GetAllLeaderboardEntriesForPhaseRow, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) GetBestSubmissionForEntry(ctx context.Context, arg GetBestSubmissionForEntryParams) (GetBestSubmissionForEntryRow, error) {
+	return GetBestSubmissionForEntryRow{}, nil
+}
+
+func (m *MockQuerier) GetPhaseMaxScore(ctx context.Context, phaseID uuid.UUID) (float64, error) {
+	return 0, nil
+}
+
+func (m *MockQuerier) UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error {
+	return nil
+}
+
+func (m *MockQuerier) DeleteStaleWorkerClaims(ctx context.Context, claimedAt pgtype.Timestamptz) ([]DeleteStaleWorkerClaimsRow, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) ListWorkerActiveClaimCounts(ctx context.Context) ([]ListWorkerActiveClaimCountsRow, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) WorkerIsAtCapacity(ctx context.Context, arg WorkerIsAtCapacityParams) (bool, error) {
+	return false, nil
+}
+
+func (m *MockQuerier) GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error) {
+	return GetCorrectionFactorRow{CorrectionFactor: 1.0, SampleCount: 0}, nil
+}
+
+func (m *MockQuerier) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error {
+	return nil
+}

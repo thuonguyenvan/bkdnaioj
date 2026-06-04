@@ -114,24 +114,29 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submissi
 const getSubmissionForWorker = `-- name: GetSubmissionForWorker :one
 SELECT s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id,
        p.judge_key, p.contest_phase_def_id, p.evaluation_set_id, p.is_final,
-       t.submission_schema::text AS submission_schema
+       t.submission_schema::text AS submission_schema,
+       ce.entry_mode,
+       s.submitted_at
 FROM submissions s
-JOIN phases p ON p.id = s.phase_id
-JOIN tasks  t ON t.id = s.task_id
+JOIN phases         p  ON p.id  = s.phase_id
+JOIN tasks          t  ON t.id  = s.task_id
+JOIN contest_entries ce ON ce.id = s.contest_entry_id
 WHERE s.id = $1
 `
 
 type GetSubmissionForWorkerRow struct {
-	ID                uuid.UUID `json:"id"`
-	ContestID         uuid.UUID `json:"contest_id"`
-	ContestEntryID    uuid.UUID `json:"contest_entry_id"`
-	TaskID            uuid.UUID `json:"task_id"`
-	PhaseID           uuid.UUID `json:"phase_id"`
-	JudgeKey          string    `json:"judge_key"`
-	ContestPhaseDefID uuid.UUID `json:"contest_phase_def_id"`
-	EvaluationSetID   uuid.UUID `json:"evaluation_set_id"`
-	IsFinal           bool      `json:"is_final"`
-	SubmissionSchema  string    `json:"submission_schema"`
+	ID                uuid.UUID          `json:"id"`
+	ContestID         uuid.UUID          `json:"contest_id"`
+	ContestEntryID    uuid.UUID          `json:"contest_entry_id"`
+	TaskID            uuid.UUID          `json:"task_id"`
+	PhaseID           uuid.UUID          `json:"phase_id"`
+	JudgeKey          string             `json:"judge_key"`
+	ContestPhaseDefID uuid.UUID          `json:"contest_phase_def_id"`
+	EvaluationSetID   uuid.UUID          `json:"evaluation_set_id"`
+	IsFinal           bool               `json:"is_final"`
+	SubmissionSchema  string             `json:"submission_schema"`
+	EntryMode         EntryMode          `json:"entry_mode"`
+	SubmittedAt       pgtype.Timestamptz `json:"submitted_at"`
 }
 
 func (q *Queries) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error) {
@@ -148,6 +153,8 @@ func (q *Queries) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (Get
 		&i.EvaluationSetID,
 		&i.IsFinal,
 		&i.SubmissionSchema,
+		&i.EntryMode,
+		&i.SubmittedAt,
 	)
 	return i, err
 }

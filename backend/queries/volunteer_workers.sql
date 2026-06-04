@@ -72,3 +72,25 @@ RETURNING *;
 
 -- name: DeleteVolunteerWorker :exec
 DELETE FROM volunteer_workers WHERE id = $1;
+
+-- ── Engineering optimizations (Phase 06) ────────────────────────────────────
+
+-- name: ListWorkerActiveClaimCounts :many
+-- Single aggregation to replace N+1 CountWorkerActiveClaims in AdminList.
+SELECT worker_id, COUNT(*)::int AS active_claims
+FROM volunteer_worker_claims
+GROUP BY worker_id;
+
+-- name: WorkerIsAtCapacity :one
+-- Bounded check: stops scanning after max_workers rows found.
+-- Returns true when worker already has max_workers active claims.
+SELECT COUNT(*) >= $2 AS at_capacity
+FROM (
+    SELECT 1 FROM volunteer_worker_claims WHERE worker_id = $1 LIMIT $2
+) sub;
+
+-- name: DeleteStaleWorkerClaims :many
+-- Batch delete all stale claims in one query; RETURNING for re-enqueue loop.
+DELETE FROM volunteer_worker_claims
+WHERE claimed_at < $1
+RETURNING worker_id, submission_id;

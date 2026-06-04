@@ -122,6 +122,38 @@ func (q *Queries) DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (
 	return i, err
 }
 
+const deleteStaleWorkerClaims = `-- name: DeleteStaleWorkerClaims :many
+DELETE FROM volunteer_worker_claims
+WHERE claimed_at < $1
+RETURNING worker_id, submission_id
+`
+
+type DeleteStaleWorkerClaimsRow struct {
+	WorkerID     uuid.UUID `json:"worker_id"`
+	SubmissionID uuid.UUID `json:"submission_id"`
+}
+
+// Batch delete all stale claims in one query; RETURNING for re-enqueue loop.
+func (q *Queries) DeleteStaleWorkerClaims(ctx context.Context, claimedAt pgtype.Timestamptz) ([]DeleteStaleWorkerClaimsRow, error) {
+	rows, err := q.db.Query(ctx, deleteStaleWorkerClaims, claimedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeleteStaleWorkerClaimsRow
+	for rows.Next() {
+		var i DeleteStaleWorkerClaimsRow
+		if err := rows.Scan(&i.WorkerID, &i.SubmissionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteVolunteerWorker = `-- name: DeleteVolunteerWorker :exec
 DELETE FROM volunteer_workers WHERE id = $1
 `
@@ -323,6 +355,40 @@ func (q *Queries) ListVolunteerWorkers(ctx context.Context) ([]VolunteerWorker, 
 	return items, nil
 }
 
+const listWorkerActiveClaimCounts = `-- name: ListWorkerActiveClaimCounts :many
+
+SELECT worker_id, COUNT(*)::int AS active_claims
+FROM volunteer_worker_claims
+GROUP BY worker_id
+`
+
+type ListWorkerActiveClaimCountsRow struct {
+	WorkerID     uuid.UUID `json:"worker_id"`
+	ActiveClaims int32     `json:"active_claims"`
+}
+
+// ── Engineering optimizations (Phase 06) ────────────────────────────────────
+// Single aggregation to replace N+1 CountWorkerActiveClaims in AdminList.
+func (q *Queries) ListWorkerActiveClaimCounts(ctx context.Context) ([]ListWorkerActiveClaimCountsRow, error) {
+	rows, err := q.db.Query(ctx, listWorkerActiveClaimCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkerActiveClaimCountsRow
+	for rows.Next() {
+		var i ListWorkerActiveClaimCountsRow
+		if err := rows.Scan(&i.WorkerID, &i.ActiveClaims); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rejectVolunteerWorker = `-- name: RejectVolunteerWorker :one
 UPDATE volunteer_workers
 SET status     = 'rejected',
@@ -391,4 +457,25 @@ func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, arg UpdateWorkerHea
 		&i.MaxWorkers,
 	)
 	return i, err
+}
+
+const workerIsAtCapacity = `-- name: WorkerIsAtCapacity :one
+SELECT COUNT(*) >= $2 AS at_capacity
+FROM (
+    SELECT 1 FROM volunteer_worker_claims WHERE worker_id = $1 LIMIT $2
+) sub
+`
+
+type WorkerIsAtCapacityParams struct {
+	WorkerID uuid.UUID   `json:"worker_id"`
+	Column2  interface{} `json:"column_2"`
+}
+
+// Bounded check: stops scanning after max_workers rows found.
+// Returns true when worker already has max_workers active claims.
+func (q *Queries) WorkerIsAtCapacity(ctx context.Context, arg WorkerIsAtCapacityParams) (bool, error) {
+	row := q.db.QueryRow(ctx, workerIsAtCapacity, arg.WorkerID, arg.Column2)
+	var at_capacity bool
+	err := row.Scan(&at_capacity)
+	return at_capacity, err
 }

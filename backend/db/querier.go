@@ -48,21 +48,35 @@ type Querier interface {
 	DeleteContestEntry(ctx context.Context, id uuid.UUID) error
 	DeletePhase(ctx context.Context, id uuid.UUID) error
 	DeletePhaseDef(ctx context.Context, id uuid.UUID) error
+	// Batch delete all stale claims in one query; RETURNING for re-enqueue loop.
+	DeleteStaleWorkerClaims(ctx context.Context, claimedAt pgtype.Timestamptz) ([]DeleteStaleWorkerClaimsRow, error)
 	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
 	DeleteTask(ctx context.Context, id uuid.UUID) error
 	DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
 	DeleteWorkerClaim(ctx context.Context, arg DeleteWorkerClaimParams) error
 	DisqualifyContestEntry(ctx context.Context, id uuid.UUID) (ContestEntry, error)
+	// Used to seed Redis ZSET on startup from existing DB state.
+	GetAllLeaderboardEntriesForPhase(ctx context.Context, phaseID uuid.UUID) ([]GetAllLeaderboardEntriesForPhaseRow, error)
+	// Returns the chosen submission_id and its display_score for an entry in a phase.
+	GetBestSubmissionForEntry(ctx context.Context, arg GetBestSubmissionForEntryParams) (GetBestSubmissionForEntryRow, error)
 	GetClarificationByID(ctx context.Context, id uuid.UUID) (Clarification, error)
 	GetContestByID(ctx context.Context, id uuid.UUID) (Contest, error)
 	GetContestBySlug(ctx context.Context, slug string) (Contest, error)
 	GetContestEntryByID(ctx context.Context, id uuid.UUID) (ContestEntry, error)
 	// Contest-phase leaderboard
 	GetContestPhaseLeaderboard(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
+	// Returns median(error_ratio) for jobs in same group over last 7 days.
+	// error_ratio = actual / predicted; ratio > 1 means T0 underestimates.
+	// Falls back to 1.0 if fewer than 3 samples (not enough data).
+	GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error)
 	GetEvaluationSetByID(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
 	GetEvaluationSetByTaskAndKey(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
 	GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error)
 	GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error)
+	// ── Incremental leaderboard queries (Phase 04) ──────────────────────────────
+	// Returns current max display_score among all entries in phase.
+	// Used to decide whether incremental or full recompute is needed.
+	GetPhaseMaxScore(ctx context.Context, phaseID uuid.UUID) (float64, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
@@ -79,6 +93,7 @@ type Querier interface {
 	IncrementWorkerCompleted(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailed(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailedByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error
 	ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
 	ListContestEntries(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
@@ -100,6 +115,9 @@ type Querier interface {
 	ListTicketsByUser(ctx context.Context, createdBy uuid.UUID) ([]Ticket, error)
 	ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error)
 	ListVolunteerWorkers(ctx context.Context) ([]VolunteerWorker, error)
+	// ── Engineering optimizations (Phase 06) ────────────────────────────────────
+	// Single aggregation to replace N+1 CountWorkerActiveClaims in AdminList.
+	ListWorkerActiveClaimCounts(ctx context.Context) ([]ListWorkerActiveClaimCountsRow, error)
 	MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
 	MarkSubmissionFailed(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
 	MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error)
@@ -121,6 +139,8 @@ type Querier interface {
 	UpdateContestStatus(ctx context.Context, arg UpdateContestStatusParams) (Contest, error)
 	UpdatePhase(ctx context.Context, arg UpdatePhaseParams) (Phase, error)
 	UpdatePhaseDef(ctx context.Context, arg UpdatePhaseDefParams) (ContestPhaseDef, error)
+	// Updates one entry after incremental recompute (O(log n) path).
+	UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error)
 	UpdateTicket(ctx context.Context, arg UpdateTicketParams) (Ticket, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
@@ -130,6 +150,9 @@ type Querier interface {
 	UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
 	UpsertTaskAsset(ctx context.Context, arg UpsertTaskAssetParams) (TaskAsset, error)
 	UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
+	// Bounded check: stops scanning after max_workers rows found.
+	// Returns true when worker already has max_workers active claims.
+	WorkerIsAtCapacity(ctx context.Context, arg WorkerIsAtCapacityParams) (bool, error)
 }
 
 var _ Querier = (*Queries)(nil)

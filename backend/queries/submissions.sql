@@ -60,9 +60,12 @@ RETURNING *;
 -- name: GetSubmissionForWorker :one
 SELECT s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id,
        p.judge_key, p.contest_phase_def_id, p.evaluation_set_id, p.is_final,
-       t.submission_schema::text AS submission_schema
+       t.submission_schema::text AS submission_schema,
+       ce.entry_mode,
+       s.submitted_at
 FROM submissions s
-JOIN phases p ON p.id = s.phase_id
-JOIN tasks  t ON t.id = s.task_id
+JOIN phases         p  ON p.id  = s.phase_id
+JOIN tasks          t  ON t.id  = s.task_id
+JOIN contest_entries ce ON ce.id = s.contest_entry_id
 WHERE s.id = $1;
 
