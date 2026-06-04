@@ -12,9 +12,10 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 @dataclass
 class Settings:
-    api_url:              str  = "http://localhost:8080"
+    api_url:              str  = "https://api.bkdnaioj.app"
     worker_name:          str  = field(default_factory=lambda: socket.gethostname())
     worker_token:         str  = ""
+    max_workers:          int  = 1
     poll_interval_s:      int  = 10
     heartbeat_interval_s: int  = 30
     sandbox_timeout_s:    int  = 600
@@ -38,6 +39,7 @@ def load() -> Settings:
         "api_url":              os.getenv("API_URL"),
         "worker_name":          os.getenv("WORKER_NAME"),
         "worker_token":         os.getenv("WORKER_TOKEN"),
+        "max_workers":          os.getenv("MAX_WORKERS"),
         "poll_interval_s":      os.getenv("POLL_INTERVAL_S"),
         "heartbeat_interval_s": os.getenv("HEARTBEAT_INTERVAL_S"),
         "sandbox_timeout_s":    os.getenv("SANDBOX_TIMEOUT_S"),
@@ -59,6 +61,7 @@ def save(s: Settings) -> None:
         f'api_url = "{s.api_url}"',
         f'worker_name = "{s.worker_name}"',
         f'worker_token = "{s.worker_token}"',
+        f'max_workers = {s.max_workers}',
         f'poll_interval_s = {s.poll_interval_s}',
         f'heartbeat_interval_s = {s.heartbeat_interval_s}',
         f'sandbox_timeout_s = {s.sandbox_timeout_s}',

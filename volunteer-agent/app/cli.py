@@ -42,16 +42,13 @@ def _ask(prompt: str, default: str = "") -> str:
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 @app.command()
-def setup(
-    workers: int = typer.Option(1, "--workers", "-w", min=1, max=32,
-                                help="Number of parallel judge workers this machine will run"),
-) -> None:
+def setup() -> None:
     """First-run wizard: collect hardware info, register with platform."""
     _echo("\n=== OLPAI Volunteer Judge Agent — Setup ===\n")
 
     s = cfg.load()
 
-    # 1. API URL
+    # 1. API URL (pre-configured, allow override)
     api_url = _ask("Platform URL", s.api_url)
     s.api_url = api_url.rstrip("/")
 
@@ -59,7 +56,17 @@ def setup(
     worker_name = _ask("Display name for this machine", s.worker_name)
     s.worker_name = worker_name
 
-    s.max_workers = workers  # type: ignore[attr-defined]
+    # 3. Number of parallel workers
+    while True:
+        try:
+            raw = _ask("Number of parallel judge workers (1–32)", str(s.max_workers))
+            n = int(raw)
+            if 1 <= n <= 32:
+                s.max_workers = n
+                break
+            _warn("Please enter a number between 1 and 32.")
+        except ValueError:
+            _warn("Please enter a valid number.")
 
     # 3. Collect hardware
     _echo("\nCollecting hardware info...")
@@ -83,11 +90,11 @@ def setup(
         bench_results = _benchmark()
 
     # 5. Register
-    _echo(f"\nRegistering with {s.api_url} (max_workers={workers})...")
+    _echo(f"\nRegistering with {s.api_url} (max_workers={s.max_workers})...")
     client = APIClient(s.api_url, "")
     try:
         result = client.register(s.worker_name, {**caps, "benchmark": bench_results},
-                                 max_workers=workers)
+                                 max_workers=s.max_workers)
     except Exception as e:
         _err(f"Registration failed: {e}")
         raise typer.Exit(1)
