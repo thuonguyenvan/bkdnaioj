@@ -20,6 +20,34 @@ func NewLeaderboardHandler(q db.Querier) *LeaderboardHandler {
 	return &LeaderboardHandler{q: q}
 }
 
+// GET /api/v1/rankings/global?phase=public_test
+func (h *LeaderboardHandler) GlobalPhaseRanking(c echo.Context) error {
+	ctx := c.Request().Context()
+	phaseKey := db.ContestPhaseKey(c.QueryParam("phase"))
+	if phaseKey == "" {
+		phaseKey = db.ContestPhaseKeyPublicTest
+	}
+	if !phaseKey.Valid() {
+		return mw.ErrBadRequest("invalid phase key")
+	}
+
+	limit, offset := parsePagination(c)
+	rows, err := h.q.GetGlobalPhaseRanking(ctx, db.GetGlobalPhaseRankingParams{
+		PhaseKey: phaseKey,
+		Limit:    int32(limit),
+		Offset:   int32(offset),
+	})
+	if err != nil {
+		return mw.ErrInternal("fetch global ranking failed")
+	}
+
+	resp := make([]dto.GlobalRankingRow, len(rows))
+	for i, r := range rows {
+		resp[i] = dto.GlobalRankingRowToResponse(r)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 // GET /api/v1/phases/:phase_id/leaderboard?entry_mode=official
 func (h *LeaderboardHandler) TaskPhaseBoard(c echo.Context) error {
 	ctx := c.Request().Context()

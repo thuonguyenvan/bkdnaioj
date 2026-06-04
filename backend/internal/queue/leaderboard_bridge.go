@@ -34,6 +34,7 @@ type LeaderboardBridge struct {
 	getSubmissionFn      func(ctx context.Context, submissionID uuid.UUID) (db.Submission, error)
 	recomputeTaskPhaseFn func(ctx context.Context, sub db.Submission) error
 	recomputeContestFn   func(ctx context.Context, sub db.Submission) error
+	recomputeGlobalFn    func(ctx context.Context, sub db.Submission) error
 }
 
 func NewLeaderboardBridge(rdb *redis.Client, pool *pgxpool.Pool, log zerolog.Logger) *LeaderboardBridge {
@@ -53,6 +54,7 @@ func (b *LeaderboardBridge) WithHandlers(
 	b.getSubmissionFn = getSubmission
 	b.recomputeTaskPhaseFn = recomputeTaskPhase
 	b.recomputeContestFn = recomputeContest
+	b.recomputeGlobalFn = func(ctx context.Context, sub db.Submission) error { return nil }
 	return b
 }
 
@@ -149,12 +151,19 @@ func (b *LeaderboardBridge) Run(ctx context.Context) error {
 					if recomputeContest == nil {
 						recomputeContest = b.recomputeContestPhase
 					}
+					recomputeGlobal := b.recomputeGlobalFn
+					if recomputeGlobal == nil {
+						recomputeGlobal = b.recomputeGlobalPhase
+					}
 
 					if err := recomputeTask(ctx, sub); err != nil {
 						b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("recompute task-phase failed")
 					}
 					if err := recomputeContest(ctx, sub); err != nil {
 						b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("recompute contest-phase failed")
+					}
+					if err := recomputeGlobal(ctx, sub); err != nil {
+						b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("recompute global phase ranking failed")
 					}
 				} else {
 					b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("fetch submission for leaderboard")
@@ -502,6 +511,28 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
 	)
 	if err != nil {
 		return fmt.Errorf("recompute contest-phase board: %w", err)
+	}
+	return nil
+}
+
+func (b *LeaderboardBridge) recomputeGlobalPhase(ctx context.Context, sub db.Submission) error {
+	start := time.Now()
+	defer func() {
+		metrics.LeaderboardRecomputeDuration.WithLabelValues("global_phase").
+			Observe(time.Since(start).Seconds())
+	}()
+
+	q := db.New(b.pool)
+	phase, err := q.GetPhaseByID(ctx, sub.PhaseID)
+	if err != nil {
+		return fmt.Errorf("get phase: %w", err)
+	}
+	def, err := q.GetPhaseDefByID(ctx, phase.ContestPhaseDefID)
+	if err != nil {
+		return fmt.Errorf("get phase def: %w", err)
+	}
+	if err := q.RecomputeGlobalPhaseRanking(ctx, def.Key); err != nil {
+		return fmt.Errorf("recompute global phase ranking: %w", err)
 	}
 	return nil
 }

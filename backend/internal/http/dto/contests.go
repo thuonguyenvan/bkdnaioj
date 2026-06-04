@@ -63,18 +63,21 @@ type ContestResponse struct {
 }
 
 func ContestToResponse(c db.Contest) ContestResponse {
+	startTime := PgTimeVal(c.StartTime)
+	endTime := PgTimeVal(c.EndTime)
+
 	return ContestResponse{
 		ID:                c.ID,
 		Slug:              c.Slug,
 		Title:             c.Title,
 		Description:       c.Description,
 		BannerURL:         c.BannerUrl,
-		Status:            string(c.Status),
+		Status:            effectiveContestStatus(c.Status, startTime, endTime, time.Now()),
 		EntryPolicy:       string(c.EntryPolicy),
 		RegistrationStart: PgTime(c.RegistrationStart),
 		RegistrationEnd:   PgTime(c.RegistrationEnd),
-		StartTime:         PgTimeVal(c.StartTime),
-		EndTime:           PgTimeVal(c.EndTime),
+		StartTime:         startTime,
+		EndTime:           endTime,
 		Visibility:        string(c.Visibility),
 		RulesJSON:         c.RulesJson,
 		MaxTeamSize:       c.MaxTeamSize,
@@ -82,6 +85,19 @@ func ContestToResponse(c db.Contest) ContestResponse {
 		ScaleScores:       c.ScaleScores,
 		CreatedAt:         PgTimeVal(c.CreatedAt),
 	}
+}
+
+func effectiveContestStatus(status db.ContestStatus, startTime, endTime, now time.Time) string {
+	if status == db.ContestStatusDraft || status == db.ContestStatusArchived {
+		return string(status)
+	}
+	if !endTime.IsZero() && now.After(endTime) {
+		return string(db.ContestStatusEnded)
+	}
+	if !startTime.IsZero() && !endTime.IsZero() && (now.Equal(startTime) || now.After(startTime)) && now.Before(endTime) {
+		return string(db.ContestStatusRunning)
+	}
+	return string(status)
 }
 
 // ToPgTimestamptz converts a *time.Time to pgtype.Timestamptz for sqlc.

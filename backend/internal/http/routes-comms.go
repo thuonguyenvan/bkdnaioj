@@ -57,6 +57,7 @@ func registerTickets(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager
 
 func registerLeaderboards(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {
 	h := handlers.NewLeaderboardHandler(q)
+	api.GET("/rankings/global", h.GlobalPhaseRanking)
 	api.GET("/phases/:phase_id/leaderboard", h.TaskPhaseBoard)
 	api.GET("/contests/:contest_id/phase-defs/:def_id/leaderboard", h.ContestPhaseBoard)
 	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
