@@ -117,11 +117,23 @@ export const TeamsPage: React.FC = () => {
   };
 
   return (
-    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '4rem' }}>
-      <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ marginBottom: '0.25rem' }}>Team Management</h1>
-        <p style={{ color: 'var(--text-muted)', margin: 0 }}>
-          Create teams, invite members, and manage your lineups for team-based contest events.
+    <div className="container" style={{ paddingTop: '1rem', paddingBottom: '4rem' }}>
+      
+      {/* Page Header */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.25rem',
+        marginTop: '0.5rem',
+        marginBottom: '1.25rem',
+        borderBottom: '1px solid #e2e8f0',
+        paddingBottom: '0.75rem'
+      }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+          Team Management
+        </h1>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
+          Create teams, invite teammates, and manage rosters for team contests.
         </p>
       </div>
 
@@ -140,11 +152,11 @@ export const TeamsPage: React.FC = () => {
       )}
 
       <div className="grid-1-3">
-        {/* Left Panel: Teams List & Creation */}
+        {/* Left Panel: Teams List & Creation (Unified into a single premium card) */}
         <div className="flex flex-col gap-4">
-          <div className="panel">
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Users size={18} />
+          <div className="team-card" style={{ minHeight: '480px', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Users size={18} style={{ color: 'hsl(var(--primary))' }} />
               My Teams
             </h3>
 
@@ -153,13 +165,15 @@ export const TeamsPage: React.FC = () => {
                 <Loader2 className="spinner" size={24} />
               </div>
             ) : teamsError ? (
-              <p style={{ color: 'var(--text-danger)', fontSize: '0.85rem' }}>Failed to load teams.</p>
+              <p style={{ color: 'hsl(var(--danger))', fontSize: '0.85rem' }}>Could not load teams.</p>
             ) : myTeams.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                You don't belong to any teams yet. Create one on the right or below!
-              </p>
+              <div style={{ padding: '1.25rem 1rem', border: '1px dashed #cbd5e1', borderRadius: '8px', backgroundColor: '#f8fafc', textAlign: 'center', marginBottom: '1.25rem' }}>
+                <p style={{ color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic', margin: 0 }}>
+                  You are not in any team yet.
+                </p>
+              </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2" style={{ marginBottom: '1.25rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '0.2rem' }}>
                 {myTeams.map((team) => (
                   <button
                     key={team.id}
@@ -168,181 +182,173 @@ export const TeamsPage: React.FC = () => {
                       setActionError(null);
                       setActionSuccess(null);
                     }}
-                    className={`btn text-left flex justify-between items-center`}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem 1rem',
-                      justifyContent: 'space-between',
-                      border: selectedTeamId === team.id ? '1px solid hsl(var(--primary))' : '1px solid hsl(var(--border))',
-                      backgroundColor: selectedTeamId === team.id ? 'hsla(var(--primary), 0.03)' : 'var(--card)',
-                      color: 'var(--text)',
-                      fontWeight: selectedTeamId === team.id ? 600 : 400,
-                    }}
+                    className={`team-btn-item ${selectedTeamId === team.id ? 'active' : ''}`}
                   >
                     <div>
-                      <div style={{ fontSize: '0.9rem' }}>{team.name}</div>
-                      <div className="font-mono text-muted" style={{ fontSize: '0.7rem' }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{team.name}</div>
+                      <div className="font-mono" style={{ fontSize: '0.7rem', color: selectedTeamId === team.id ? 'hsl(var(--primary-hover))' : '#64748b', marginTop: '0.15rem' }}>
                         /{team.slug}
                       </div>
                     </div>
                     {team.owner_id === user?.id && (
-                      <span className="badge badge-primary" style={{ fontSize: '0.6rem', textTransform: 'uppercase' }}>
-                        Owner
+                      <span className="team-badge-owner">
+                        Manager
                       </span>
                     )}
                   </button>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Create Team Form */}
-          <div className="panel">
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Plus size={18} />
-              New Team
-            </h3>
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1.25rem', marginTop: 'auto' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Plus size={18} style={{ color: 'hsl(var(--primary))' }} />
+                Create New Team
+              </h3>
 
-            <form onSubmit={handleCreateTeam} className="flex flex-col gap-3">
-              <div>
-                <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                  Team Name
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Anti Gravity"
-                  value={newTeamName}
-                  onChange={handleNameChange}
-                  required
-                />
-              </div>
-              <div>
-                <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                  Slug (unique URL name)
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. anti-gravity"
-                  value={newTeamSlug}
-                  onChange={(e) => setNewTeamSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-primary flex items-center justify-center gap-2"
-                style={{ width: '100%', marginTop: '0.5rem' }}
-                disabled={createTeamMutation.isPending}
-              >
-                {createTeamMutation.isPending ? <Loader2 className="spinner" size={16} /> : <Plus size={16} />}
-                Create Team
-              </button>
-            </form>
+              <form onSubmit={handleCreateTeam} className="flex flex-col gap-3">
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.25rem', display: 'block' }}>
+                    Team Name
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Anti Gravity"
+                    value={newTeamName}
+                    onChange={handleNameChange}
+                    required
+                    style={{ borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0.45rem 0.75rem', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', marginBottom: '0.25rem', display: 'block' }}>
+                    Identifier Slug (URL)
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. anti-gravity"
+                    value={newTeamSlug}
+                    onChange={(e) => setNewTeamSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    required
+                    style={{ borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0.45rem 0.75rem', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="btn btn-primary flex items-center justify-center gap-2"
+                  style={{ width: '100%', marginTop: '0.5rem', fontWeight: 600, borderRadius: '6px', padding: '0.55rem 1rem', boxShadow: '0 4px 12px hsla(var(--primary), 0.12)' }}
+                  disabled={createTeamMutation.isPending}
+                >
+                  {createTeamMutation.isPending ? <Loader2 className="spinner" size={16} /> : <Plus size={16} />}
+                  Create Team
+                </button>
+              </form>
+            </div>
           </div>
         </div>
 
         {/* Right Panel: Selected Team Members */}
         <div>
           {selectedTeam ? (
-            <div className="panel">
-              <div className="flex justify-between items-center" style={{ borderBottom: '1px solid hsl(var(--border))', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+            <div className="team-card" style={{ minHeight: '480px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="flex justify-between items-start" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1.25rem' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.4rem', margin: 0 }}>{selectedTeam.name}</h2>
-                  <p className="font-mono text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{selectedTeam.name}</h2>
+                  <p className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', margin: '0.35rem 0 0 0' }}>
                     Slug: /{selectedTeam.slug} | ID: {selectedTeam.id}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="badge badge-info" style={{ textTransform: 'uppercase' }}>
-                    {teamMembers.length} member{teamMembers.length !== 1 && 's'}
-                  </span>
-                </div>
+                <span className="badge badge-info" style={{ textTransform: 'uppercase', backgroundColor: '#e0f2fe', color: '#0369a1', fontSize: '0.75rem', fontWeight: 700, padding: '0.35rem 0.75rem', borderRadius: '6px' }}>
+                  {teamMembers.length} members
+                </span>
               </div>
 
               {/* Members Table */}
-              <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Teammates</h3>
-              {loadingMembers ? (
-                <div className="flex justify-center" style={{ padding: '2rem 0' }}>
-                  <Loader2 className="spinner" size={24} />
-                </div>
-              ) : (
-                <div className="table-container" style={{ marginBottom: '2rem' }}>
-                  <table className="oj-table">
-                    <thead>
-                      <tr>
-                        <th>Participant</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Joined At</th>
-                        {selectedTeam.owner_id === user?.id && <th style={{ width: '80px', textAlign: 'center' }}>Action</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamMembers.map((member) => (
-                        <tr key={member.user_id}>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{member.full_name || 'Pending User'}</div>
-                            <div className="font-mono text-muted" style={{ fontSize: '0.7rem' }}>
-                              UUID: {member.user_id}
-                            </div>
-                          </td>
-                          <td className="font-mono" style={{ fontSize: '0.85rem' }}>
-                            {member.email}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${member.role === 'manager' ? 'badge-primary' : 'badge-secondary'}`}
-                              style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}
-                            >
-                              {member.role}
-                            </span>
-                          </td>
-                          <td className="font-mono" style={{ fontSize: '0.8rem' }}>
-                            {new Date(member.joined_at).toLocaleDateString()}
-                          </td>
-                          {selectedTeam.owner_id === user?.id && (
-                            <td style={{ textAlign: 'center' }}>
-                              {member.user_id === user.id ? (
-                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>
-                                  Self
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={() => removeMemberMutation.mutate(member.user_id)}
-                                  className="text-danger flex items-center gap-1"
-                                  style={{
-                                    border: 'none',
-                                    background: 'none',
-                                    cursor: 'pointer',
-                                    margin: '0 auto',
-                                    padding: '0.2rem',
-                                  }}
-                                  title="Remove Member"
-                                  disabled={removeMemberMutation.isPending}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
-                            </td>
-                          )}
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.85rem' }}>Team Members</h3>
+                {loadingMembers ? (
+                  <div className="flex justify-center" style={{ padding: '2rem 0' }}>
+                    <Loader2 className="spinner" size={24} />
+                  </div>
+                ) : (
+                  <div className="table-container" style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.01)' }}>
+                    <table className="oj-table" style={{ margin: 0 }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                          <th style={{ color: '#475569', fontWeight: 600, padding: '0.85rem 1rem' }}>Member</th>
+                          <th style={{ color: '#475569', fontWeight: 600, padding: '0.85rem 1rem' }}>Email Address</th>
+                          <th style={{ color: '#475569', fontWeight: 600, padding: '0.85rem 1rem' }}>Role</th>
+                          <th style={{ color: '#475569', fontWeight: 600, padding: '0.85rem 1rem' }}>Joined At</th>
+                          {selectedTeam.owner_id === user?.id && <th style={{ width: '90px', textAlign: 'center', color: '#475569', fontWeight: 600, padding: '0.85rem 1rem' }}>Actions</th>}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {teamMembers.map((member) => (
+                          <tr key={member.user_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <div style={{ fontWeight: 600, color: '#1e293b' }}>{member.full_name || 'Pending'}</div>
+                              <div className="font-mono text-muted" style={{ fontSize: '0.675rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                                UUID: {member.user_id}
+                              </div>
+                            </td>
+                            <td className="font-mono" style={{ fontSize: '0.85rem', color: '#475569', padding: '0.85rem 1rem' }}>
+                              {member.email}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span className={member.role === 'manager' ? 'team-badge-owner' : 'team-badge-member'}>
+                                {member.role === 'manager' ? 'Manager' : 'Member'}
+                              </span>
+                            </td>
+                            <td className="font-mono" style={{ fontSize: '0.8rem', color: '#64748b', padding: '0.85rem 1rem' }}>
+                              {new Date(member.joined_at).toLocaleDateString('vi-VN')}
+                            </td>
+                            {selectedTeam.owner_id === user?.id && (
+                              <td style={{ textAlign: 'center', padding: '0.85rem 1rem' }}>
+                                {member.user_id === user.id ? (
+                                  <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                    You
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => removeMemberMutation.mutate(member.user_id)}
+                                    className="text-danger flex items-center justify-center gap-1"
+                                    style={{
+                                      border: 'none',
+                                      background: 'none',
+                                      cursor: 'pointer',
+                                      margin: '0 auto',
+                                      padding: '0.25rem',
+                                      color: '#ef4444',
+                                      borderRadius: '4px',
+                                      transition: 'background-color 0.15s ease'
+                                    }}
+                                    title="Remove from team"
+                                    disabled={removeMemberMutation.isPending}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
 
               {/* Add Member Form (Only visible to managers/owners) */}
               {selectedTeam.owner_id === user?.id && (
-                <div style={{ borderTop: '1px solid hsl(var(--border))', paddingTop: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <UserPlus size={18} />
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem', marginTop: 'auto' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <UserPlus size={18} style={{ color: 'hsl(var(--primary))' }} />
                     Invite Teammate
                   </h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-                    Add another participant to your team using their account's User UUID.
+                  <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
+                    Add another contestant to your team by entering their user UUID.
                   </p>
 
                   <form onSubmit={handleAddMember} className="flex gap-2" style={{ maxWidth: '600px' }}>
@@ -353,29 +359,29 @@ export const TeamsPage: React.FC = () => {
                       value={inviteUserId}
                       onChange={(e) => setInviteUserId(e.target.value)}
                       required
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, borderRadius: '6px', border: '1px solid #cbd5e1' }}
                     />
                     <button
                       type="submit"
                       className="btn btn-primary flex items-center gap-2"
                       disabled={addMemberMutation.isPending}
+                      style={{ fontWeight: 600, borderRadius: '6px', padding: '0.6rem 1.25rem' }}
                     >
                       {addMemberMutation.isPending ? <Loader2 className="spinner" size={16} /> : <UserPlus size={16} />}
-                      Invite
+                      Invite Member
                     </button>
                   </form>
                 </div>
               )}
             </div>
           ) : (
-            <div
-              className="panel flex flex-col items-center justify-center text-center"
-              style={{ minHeight: '350px', borderStyle: 'dashed', color: 'var(--text-muted)' }}
-            >
-              <Users size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-              <h3>No Team Selected</h3>
-              <p style={{ fontSize: '0.9rem', maxWidth: '320px', margin: '0 auto' }}>
-                Select a team from the left menu to view members, invite new teammates, or manage roles.
+            <div className="team-empty-state" style={{ minHeight: '480px' }}>
+              <div style={{ backgroundColor: '#eff6ff', padding: '1.25rem', borderRadius: '50%', marginBottom: '1.25rem', display: 'inline-flex' }}>
+                <Users size={40} style={{ color: 'hsl(var(--primary))' }} />
+              </div>
+              <h3 style={{ color: '#0f172a', fontWeight: 700, margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>No Team Selected</h3>
+              <p style={{ fontSize: '0.875rem', color: '#64748b', maxWidth: '340px', margin: 0, lineHeight: '1.6' }}>
+                Select a team from the left list to manage members or invite new teammates.
               </p>
             </div>
           )}

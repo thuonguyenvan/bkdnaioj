@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './contexts/auth-context';
 import { TopNavbar } from './components/navigation/top-navbar';
+import { Footer } from './components/navigation/footer';
 import { LoginPage } from './pages/login-page';
 import { RegisterPage } from './pages/register-page';
 import { HomePage } from './pages/home-page';
@@ -26,6 +27,7 @@ const AppLayout: React.FC = () => {
       <main style={{ flex: 1 }}>
         <Outlet />
       </main>
+      <Footer />
     </div>
   );
 };

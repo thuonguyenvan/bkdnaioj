@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/auth-context';
-import { Code2, LogOut, User as UserIcon, Search } from 'lucide-react';
+import { LogOut, User as UserIcon } from 'lucide-react';
 
 export const TopNavbar: React.FC = () => {
   const { user, logout, isAdmin } = useAuth();
@@ -13,98 +13,123 @@ export const TopNavbar: React.FC = () => {
     navigate('/login');
   };
 
-  // Active tab helper based on pathname prefix
   const isActive = (path: string) => {
-    return pathname.startsWith(path);
+    return pathname === path || pathname.startsWith(path + '/');
   };
 
   const getLinkStyle = (path: string) => {
     const active = isActive(path);
     return {
-      color: active ? '#2563eb' : '#64748b',
-      fontWeight: active ? 600 : 500,
-      borderBottom: active ? '2px solid #2563eb' : 'none',
-      paddingBottom: '0.25rem'
+      color: active ? '#ffffff' : '#94a3b8',
+      fontWeight: active ? 700 : 500,
+      fontSize: '0.9rem',
+      textDecoration: 'none',
+      padding: '0.5rem 0',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '0.25rem',
+      cursor: 'pointer'
     };
   };
 
   return (
-    <header className="navbar" style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0', boxShadow: 'none', height: '64px' }}>
-      <div className="container flex justify-between items-center">
-        <div className="flex items-center gap-8">
-          <Link to="/" className="navbar-brand" style={{ gap: '0.4rem', color: '#0f172a', fontWeight: 800, fontSize: '1.35rem' }}>
-            <Code2 size={24} style={{ color: '#2563eb' }} />
-            BKDNAIOJ<span></span>
+    <header style={{ backgroundColor: '#0f172a', height: '64px', display: 'flex', alignItems: 'center', zIndex: 100, position: 'relative' }}>
+      <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+        
+        {/* Left Section: Logo + Navigation Links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
+          {/* Logo brand */}
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: '0.5rem' }}>
+            <svg viewBox="0 0 100 100" width="38" height="38" style={{ flexShrink: 0 }}>
+              <circle cx="50" cy="50" r="46" fill="#ffffff" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#0b1329" strokeWidth="3.5" />
+              <text x="50" y="44" textAnchor="middle" fill="#0b1329" fontSize="22" fontWeight="900" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">AI</text>
+              <text x="50" y="68" textAnchor="middle" fill="#0b1329" fontSize="18" fontWeight="800" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">OLP</text>
+            </svg>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+              <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.05rem', letterSpacing: '0.02em', fontFamily: 'sans-serif' }}>AI OLYMPIC</span>
+              <span style={{ color: '#94a3b8', fontWeight: 650, fontSize: '0.7rem', letterSpacing: '0.08em', fontFamily: 'sans-serif' }}>ONLINE JUDGE</span>
+            </div>
           </Link>
 
-          <nav className="navbar-links" style={{ gap: '1.75rem', display: 'flex', alignItems: 'center' }}>
-            <Link to="/newsfeed" className="navbar-item" style={getLinkStyle('/newsfeed')}>Newsfeed</Link>
-            <Link to="/problems" className="navbar-item" style={getLinkStyle('/problems')}>Problems</Link>
-            <Link to="/contests" className="navbar-item" style={getLinkStyle('/contests')}>Contests</Link>
-            <Link to="/rankings" className="navbar-item" style={getLinkStyle('/rankings')}>Rankings</Link>
-            <Link to="/teams" className="navbar-item" style={getLinkStyle('/teams')}>Groups</Link>
+          {/* Navigation Links */}
+          <nav style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', position: 'relative' }}>
+            <Link to="/contests" style={getLinkStyle('/contests')}>Contest</Link>
+            <Link to="/problems" style={getLinkStyle('/problems')}>Problems</Link>
+            <Link to="/teams" style={getLinkStyle('/teams')}>Groups</Link>
+            <Link to="/rankings" style={getLinkStyle('/rankings')}>Ranking</Link>
+            <Link to="/newsfeed" style={getLinkStyle('/newsfeed')}>Newsfeed</Link>
+            
             {isAdmin && (
-              <Link to="/admin/users" className="navbar-item" style={getLinkStyle('/admin/users')}>Users & Roles</Link>
+              <Link to="/admin/users" style={getLinkStyle('/admin/users')}>Users & Roles</Link>
             )}
             {isAdmin && (
-              <Link to="/admin/contests/new" className="navbar-item" style={getLinkStyle('/admin/contests/new')}>Create Contest</Link>
+              <Link to="/admin/contests/new" style={getLinkStyle('/admin/contests/new')}>Create Contest</Link>
             )}
             {isAdmin && (
-              <Link to="/admin/workers" className="navbar-item" style={getLinkStyle('/admin/workers')}>Workers</Link>
+              <Link to="/admin/workers" style={getLinkStyle('/admin/workers')}>Workers</Link>
             )}
           </nav>
         </div>
 
-        <div className="flex items-center gap-6">
-          {/* Search problems bar */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '240px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
-            <input
-              type="text"
-              placeholder="Search problems..."
-              style={{
-                paddingLeft: '32px',
-                paddingRight: '12px',
-                height: '36px',
-                borderRadius: '6px',
-                border: '1px solid #e2e8f0',
-                fontSize: '0.825rem',
-                width: '100%',
-                backgroundColor: '#f8fafc',
-                outline: 'none',
-                transition: 'border-color 0.15s ease',
-              }}
-              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-              onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-            />
+        {/* Right Section: Language & Auth Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          {/* Language Selector mockup */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#ffffff', cursor: 'pointer', fontWeight: 500 }}>
+            <span style={{ fontSize: '1rem' }}>🇻🇳</span>
+            <span>English</span>
+            <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>▼</span>
           </div>
 
-          <div className="flex items-center gap-4">
+          {/* User Auth controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {user ? (
-              <>
-
-                <div className="flex items-center gap-2">
-                  <div className="badge badge-info" style={{ textTransform: 'uppercase', fontSize: '0.7rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="badge badge-info" style={{ textTransform: 'uppercase', fontSize: '0.65rem', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
                     {user.role}
-                  </div>
-                  <div className="flex items-center gap-1 font-mono" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                    <UserIcon size={14} className="text-muted" />
+                  </span>
+                  <span className="font-mono" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <UserIcon size={13} style={{ color: '#94a3b8' }} />
                     {user.full_name}
-                  </div>
+                  </span>
                 </div>
-                <button onClick={handleLogout} className="btn btn-danger flex items-center gap-1" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                  <LogOut size={14} />
-                  Logout
+                <button 
+                  onClick={handleLogout} 
+                  className="btn btn-danger" 
+                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                >
+                  <LogOut size={13} />
+                  Log out
                 </button>
-              </>
+              </div>
             ) : (
-              <div className="flex gap-2">
-                <Link to="/login" className="btn btn-secondary" style={{ border: '1px solid #cbd5e1', color: '#0f172a', padding: '0.45rem 1rem', borderRadius: '6px' }}>Sign in</Link>
-                <Link to="/register" className="btn btn-primary" style={{ backgroundColor: '#2563eb', padding: '0.45rem 1rem', borderRadius: '6px' }}>Register</Link>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Link 
+                  to="/login" 
+                  style={{ color: '#ffffff', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', padding: '0.4rem 0.5rem' }}
+                >
+                  Log in
+                </Link>
+                <Link 
+                  to="/register" 
+                  style={{ border: '1px solid #ffffff', color: '#ffffff', backgroundColor: 'transparent', padding: '0.4rem 1rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', transition: 'all 0.15s ease' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#ffffff';
+                    e.currentTarget.style.color = 'hsl(var(--primary))';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#ffffff';
+                  }}
+                >
+                  Register
+                </Link>
               </div>
             )}
           </div>
         </div>
+
       </div>
     </header>
   );

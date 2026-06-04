@@ -19,7 +19,7 @@ export const LoginPage: React.FC = () => {
       await login({ email, password });
       navigate('/');
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Invalid email or password.');
+      setError(err?.response?.data?.message || 'Email or password is incorrect.');
     } finally {
       setSubmitting(false);
     }
@@ -28,8 +28,8 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="auth-wrapper">
       <div className="auth-card">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          <LogIn size={24} /> Login to OLP AI
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: '#0f172a', fontWeight: 700 }}>
+          <LogIn size={24} /> Log in to OLP AI
         </h2>
 
         {error && (
@@ -65,12 +65,12 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} disabled={submitting}>
-            {submitting ? 'Logging in...' : 'Login'}
+            {submitting ? 'Logging in...' : 'Log in'}
           </button>
         </form>
 
-        <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-          Don't have an account? <Link to="/register">Register here</Link>
+        <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
+          Do not have an account? <Link to="/register">Register here</Link>
         </p>
       </div>
     </div>

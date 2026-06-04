@@ -26,12 +26,12 @@ export const RegisterPage: React.FC = () => {
         full_name: fullName,
         student_id: studentId || undefined,
       });
-      setSuccess('Account created successfully! Redirecting to login...');
+      setSuccess('Account registered successfully. Redirecting to login...');
       setTimeout(() => {
         navigate('/login');
       }, 2000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Registration failed. Try a different email.');
+      setError(err?.response?.data?.message || 'Registration failed. Try another email address.');
     } finally {
       setSubmitting(false);
     }
@@ -40,7 +40,7 @@ export const RegisterPage: React.FC = () => {
   return (
     <div className="auth-wrapper">
       <div className="auth-card">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: '#0f172a', fontWeight: 700 }}>
           <UserPlus size={24} /> Create Account
         </h2>
 
@@ -95,7 +95,7 @@ export const RegisterPage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password (Min 8 characters)</label>
+            <label className="form-label">Password (At least 8 characters)</label>
             <input
               type="password"
               className="form-input"
@@ -111,8 +111,8 @@ export const RegisterPage: React.FC = () => {
           </button>
         </form>
 
-        <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-          Already have an account? <Link to="/login">Login here</Link>
+        <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
+          Already have an account? <Link to="/login">Log in here</Link>
         </p>
       </div>
     </div>
