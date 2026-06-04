@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Contest, type Announcement } from '../lib/api-client';
 import { useAuth } from '../contexts/auth-context';
-import { Volume2, Megaphone, Clock, Award, ShieldAlert, Trash2 } from 'lucide-react';
+import { Volume2, Megaphone, Clock, Award, Pin, ShieldAlert, Trash2 } from 'lucide-react';
 
 interface RichAnnouncement extends Announcement {
   contestTitle: string;
@@ -40,7 +40,7 @@ export const NewsfeedPage: React.FC = () => {
       }
       const richSystemList = systemList.map(item => ({
         ...item,
-        contestTitle: 'Hệ thống',
+        contestTitle: 'System',
         isSystem: true
       }));
 
@@ -80,12 +80,12 @@ export const NewsfeedPage: React.FC = () => {
       setAnnTitle('');
       setAnnContent('');
       setAnnIsPinned(false);
-      setFormSuccess('Đăng thông báo hệ thống thành công!');
+      setFormSuccess('System announcement posted successfully!');
       queryClient.invalidateQueries({ queryKey: ['global-announcements'] });
       setTimeout(() => setFormSuccess(null), 3000);
     },
     onError: (err: any) => {
-      setFormError(err?.response?.data?.message || 'Có lỗi xảy ra khi đăng thông báo.');
+      setFormError(err?.response?.data?.message || 'An error occurred while posting the announcement.');
     }
   });
 
@@ -96,7 +96,7 @@ export const NewsfeedPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['global-announcements'] });
     },
     onError: (err: any) => {
-      alert(err?.response?.data?.message || 'Có lỗi xảy ra khi xóa thông báo.');
+      alert(err?.response?.data?.message || 'An error occurred while deleting the announcement.');
     }
   });
 
@@ -105,7 +105,7 @@ export const NewsfeedPage: React.FC = () => {
     setFormError(null);
     setFormSuccess(null);
     if (!annTitle.trim() || !annContent.trim()) {
-      setFormError('Tiêu đề và nội dung là bắt buộc.');
+      setFormError('Title and content are required.');
       return;
     }
     createMutation.mutate({
@@ -116,7 +116,7 @@ export const NewsfeedPage: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa thông báo này?')) {
+    if (window.confirm('Are you sure you want to delete this announcement?')) {
       deleteMutation.mutate(id);
     }
   };
@@ -135,24 +135,24 @@ export const NewsfeedPage: React.FC = () => {
   };
 
   return (
-    <div className="container" style={{ paddingTop: '2.5rem', paddingBottom: '4rem' }}>
+    <div className="container" style={{ paddingTop: '1rem', paddingBottom: '4rem' }}>
       
-      {/* Header Banner */}
-      <div className="home-banner" style={{ minHeight: '160px', padding: '2rem 3rem', marginBottom: '2.5rem' }}>
-        <div className="home-banner-grid-bg"></div>
-        <div className="home-banner-glow"></div>
-        
-        <div className="home-banner-content">
-          <span className="home-banner-badge" style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>Tin Tức Hệ Thống</span>
-          <h1 className="home-banner-title" style={{ fontSize: '2.25rem', marginBottom: '0.5rem' }}>Bảng Tin Thông Báo</h1>
-          <p className="home-banner-subtitle" style={{ fontSize: '1rem', opacity: 0.9 }}>
-            Cập nhật những thông báo chính thức, thông tin thay đổi đề thi và cập nhật hệ thống mới nhất.
-          </p>
-        </div>
-        
-        <div style={{ position: 'absolute', right: '5%', bottom: '10%', opacity: 0.15, pointerEvents: 'none' }}>
-          <Megaphone size={120} color="#ffffff" />
-        </div>
+      {/* Page Header */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.25rem',
+        marginTop: '0.5rem',
+        marginBottom: '1.25rem',
+        borderBottom: '1px solid #e2e8f0',
+        paddingBottom: '0.75rem'
+      }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+          Newsfeed
+        </h1>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
+          Latest official announcements, contest updates, and system notices.
+        </p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.2fr', gap: '2rem' }}>
@@ -162,22 +162,22 @@ export const NewsfeedPage: React.FC = () => {
           {isLoading && (
             <div className="flex flex-col items-center justify-center" style={{ minHeight: '250px' }}>
               <div className="spinner"></div>
-              <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Đang tải tin tức...</p>
+              <p style={{ marginTop: '1rem', color: 'hsl(var(--text-muted))' }}>Loading news...</p>
             </div>
           )}
 
           {!isLoading && contestsError && (
             <div className="alert alert-danger">
-              Không thể kết nối máy chủ để tải thông báo.
+              Could not connect to the server to load announcements.
             </div>
           )}
 
           {!isLoading && !contestsError && announcements.length === 0 && (
             <div className="panel flex flex-col items-center justify-center text-center" style={{ padding: '4rem 2rem' }}>
               <Volume2 size={48} style={{ color: '#94a3b8', marginBottom: '1rem' }} />
-              <h3 style={{ margin: 0, color: '#475569' }}>Không có thông báo nào</h3>
+              <h3 style={{ margin: 0, color: '#475569' }}>No announcements yet</h3>
               <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '0.5rem', maxWidth: '380px' }}>
-                Hiện tại hệ thống chưa ghi nhận bất kỳ thông báo chính thức nào từ Ban Tổ Chức.
+                No official announcements have been posted yet.
               </p>
             </div>
           )}
@@ -189,9 +189,9 @@ export const NewsfeedPage: React.FC = () => {
                   key={ann.id} 
                   className="panel"
                   style={{
-                    borderLeft: ann.is_pinned ? '4px solid #2563eb' : (ann.isSystem ? '4px solid #dc2626' : '1px solid #e2e8f0'),
+                    borderLeft: ann.is_pinned ? '4px solid hsl(var(--primary))' : (ann.isSystem ? '4px solid #dc2626' : '1px solid #e2e8f0'),
                     transition: 'all 0.2s ease',
-                    boxShadow: ann.is_pinned ? '0 4px 12px rgba(37, 99, 235, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
+                    boxShadow: ann.is_pinned ? '0 4px 12px hsla(var(--primary), 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
                   }}
                 >
                   <div className="flex justify-between items-start" style={{ marginBottom: '1rem' }}>
@@ -201,7 +201,7 @@ export const NewsfeedPage: React.FC = () => {
                           style={{ 
                             fontSize: '0.75rem', 
                             backgroundColor: ann.isSystem ? '#fef2f2' : '#eff6ff', 
-                            color: ann.isSystem ? '#dc2626' : '#2563eb', 
+                            color: ann.isSystem ? '#dc2626' : 'hsl(var(--primary))', 
                             border: ann.isSystem ? '1px solid #fca5a5' : 'none',
                             padding: '0.2rem 0.6rem', 
                             borderRadius: '4px',
@@ -216,12 +216,15 @@ export const NewsfeedPage: React.FC = () => {
                               fontSize: '0.75rem', 
                               backgroundColor: '#fee2e2', 
                               color: '#ef4444', 
-                              padding: '0.2rem 0.6rem', 
+                              padding: '0.2rem 0.45rem', 
                               borderRadius: '4px',
-                              fontWeight: 600
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center'
                             }}
+                            title="Pinned"
                           >
-                            Ghim
+                            <Pin size={13} fill="currentColor" />
                           </span>
                         )}
                       </div>
@@ -246,7 +249,7 @@ export const NewsfeedPage: React.FC = () => {
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
                           onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
-                          title="Xóa thông báo"
+                          title="Delete announcement"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -278,27 +281,27 @@ export const NewsfeedPage: React.FC = () => {
             <div className="panel" style={{ padding: '1.5rem', marginBottom: '1.5rem', border: '1px solid #fca5a5', backgroundColor: '#fffdfd' }}>
               <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626' }}>
                 <Megaphone size={18} />
-                Đăng Tin Hệ Thống
+                Post System Announcement
               </h3>
               {formError && <div className="alert alert-danger" style={{ fontSize: '0.8rem', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.75rem' }}>{formError}</div>}
               {formSuccess && <div className="alert alert-success" style={{ fontSize: '0.8rem', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.75rem' }}>{formSuccess}</div>}
               <form onSubmit={handleCreateAnnouncement}>
                 <div style={{ marginBottom: '0.75rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', color: '#475569' }}>Tiêu đề</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', color: '#475569' }}>Title</label>
                   <input
                     type="text"
                     value={annTitle}
                     onChange={(e) => setAnnTitle(e.target.value)}
-                    placeholder="Ví dụ: Lịch bảo trì hệ thống..."
+                    placeholder="Example: System maintenance schedule..."
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem' }}
                   />
                 </div>
                 <div style={{ marginBottom: '0.75rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', color: '#475569' }}>Nội dung</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', color: '#475569' }}>Content</label>
                   <textarea
                     value={annContent}
                     onChange={(e) => setAnnContent(e.target.value)}
-                    placeholder="Nhập nội dung thông báo chi tiết..."
+                    placeholder="Enter announcement details..."
                     rows={4}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', resize: 'vertical' }}
                   />
@@ -310,7 +313,7 @@ export const NewsfeedPage: React.FC = () => {
                     checked={annIsPinned}
                     onChange={(e) => setAnnIsPinned(e.target.checked)}
                   />
-                  <label htmlFor="is_pinned" style={{ fontSize: '0.8rem', color: '#475569', cursor: 'pointer' }}>Ghim lên đầu bảng tin</label>
+                  <label htmlFor="is_pinned" style={{ fontSize: '0.8rem', color: '#475569', cursor: 'pointer' }}>Pin to top</label>
                 </div>
                 <button 
                   type="submit" 
@@ -318,7 +321,7 @@ export const NewsfeedPage: React.FC = () => {
                   style={{ width: '100%', padding: '0.5rem', fontSize: '0.875rem', backgroundColor: '#dc2626', borderColor: '#dc2626' }}
                   disabled={createMutation.isPending}
                 >
-                  {createMutation.isPending ? 'Đang gửi...' : 'Đăng thông báo'}
+                  {createMutation.isPending ? 'Posting...' : 'Post announcement'}
                 </button>
               </form>
             </div>
@@ -327,16 +330,16 @@ export const NewsfeedPage: React.FC = () => {
           {/* Platform Info Section */}
           <div className="panel" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
             <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Award size={18} style={{ color: '#2563eb' }} />
-              Về Nền Tảng
+              <Award size={18} style={{ color: 'hsl(var(--primary))' }} />
+              About the Platform
             </h3>
             <p style={{ fontSize: '0.875rem', lineHeight: '1.6', color: '#475569', margin: 0 }}>
-              Chào mừng đến với nền tảng thi AI OLP. Đây là không gian tương tác, cập nhật trực tiếp tiến độ các kì thi. Hãy theo dõi Newsfeed để nhận các thông tin kỹ thuật sớm nhất.
+              Welcome to the AI OLP contest platform. Follow the newsfeed for official updates, contest changes, and technical notices.
             </p>
             <hr style={{ margin: '1rem 0', borderColor: '#e2e8f0' }} />
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: '#64748b', fontSize: '0.8rem' }}>
               <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '0.1rem', color: '#eab308' }} />
-              <span>Nếu có bất kỳ sự cố kỹ thuật nào trong quá trình nộp bài, vui lòng gửi Support Ticket trong trang chi tiết Vòng thi tương ứng.</span>
+              <span>If you encounter technical issues during submission, please create a support ticket from the relevant contest page.</span>
             </div>
           </div>
         </div>

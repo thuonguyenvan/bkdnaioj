@@ -1,18 +1,31 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Contest } from '../lib/api-client';
+import { api, type Contest, type PhaseDef, type LeaderboardRow } from '../lib/api-client';
 import { Trophy, Medal, Users, Search, ChevronDown, ChevronUp } from 'lucide-react';
+
+type RankingPhaseKey = PhaseDef['key'];
 
 interface StandingUser {
   displayName: string;
   totalScore: number;
-  contestCount: number;
-  details: { contestTitle: string; score: number }[];
+  taskCount: number;
+  details: { contestTitle: string; phaseTitle: string; taskTitle: string; score: number }[];
 }
+
+const RANKING_PHASES: Array<{ key: RankingPhaseKey; label: string }> = [
+  { key: 'public_test', label: 'Public Test' },
+  { key: 'final_public', label: 'Final Public' },
+  { key: 'private_test', label: 'Private Test' },
+  { key: 'final_private', label: 'Final Private' },
+];
+
+const getRankingPhaseLabel = (key: RankingPhaseKey) =>
+  RANKING_PHASES.find(phase => phase.key === key)?.label || key.replace(/_/g, ' ');
 
 export const RankingsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [activePhaseKey, setActivePhaseKey] = useState<RankingPhaseKey>('public_test');
 
   // Fetch all contests
   const { data: contests = [], isLoading: loadingContests } = useQuery<Contest[]>({
@@ -20,13 +33,28 @@ export const RankingsPage: React.FC = () => {
     queryFn: api.getContests,
   });
 
-  // Fetch phase definitions and leaderboards for all contests, aggregating scores
-  const { data: standings = [], isLoading: loadingStandings, error } = useQuery<StandingUser[]>({
+  // Fetch task leaderboards for all contests, aggregating each user's best raw score per task.
+  const { data: rankingsByPhase = {}, isLoading: loadingStandings, error } = useQuery<Partial<Record<RankingPhaseKey, StandingUser[]>>>({
     queryKey: ['global-rankings', contests.map(c => c.id).join(',')],
     queryFn: async () => {
-      if (contests.length === 0) return [];
+      if (contests.length === 0) return {};
       
-      const userScores: { [username: string]: { totalScore: number; contestCount: number; details: { contestTitle: string; score: number }[] } } = {};
+      const phaseScores: Record<RankingPhaseKey, { [username: string]: { totalScore: number; taskCount: number; details: { contestTitle: string; phaseTitle: string; taskTitle: string; score: number }[] } }> = {
+        public_test: {},
+        private_test: {},
+        final_public: {},
+        final_private: {},
+      };
+
+      const usernamesForRow = (row: LeaderboardRow) => {
+        if (row.user_emails && row.user_emails.length > 0) {
+          return Array.from(new Set(row.user_emails.map(email => email.split('@')[0])));
+        }
+        if (row.display_name) {
+          return [row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name];
+        }
+        return [];
+      };
 
       await Promise.all(
         contests.map(async (contest) => {
@@ -36,58 +64,83 @@ export const RankingsPage: React.FC = () => {
 
             const phaseDefs = await api.getPhaseDefs(contest.id);
             if (phaseDefs.length === 0) return;
-            
-            // Target the private_test phase def (where output is evaluated against the private dataset)
-            const targetDef = phaseDefs.find(d => d.key === 'private_test');
-            if (!targetDef) return;
+            const tasks = await api.getTasks(contest.id);
+            if (tasks.length === 0) return;
 
-            const leaderboard = await api.getContestPhaseLeaderboard(contest.id, targetDef.id);
-            leaderboard.forEach(row => {
-              // Extract raw score (use raw_score, fallback to score)
-              const rawScore = Number(row.raw_score !== undefined ? row.raw_score : row.score || 0);
-
-              // Get list of usernames for this row
-              let usernames: string[] = [];
-              if (row.user_emails && row.user_emails.length > 0) {
-                usernames = row.user_emails.map(email => email.split('@')[0]);
-              } else if (row.display_name) {
-                const fallbackUsername = row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name;
-                usernames = [fallbackUsername];
-              }
-
-              // Deduplicate usernames in case the same user is listed multiple times (failsafe)
-              const uniqueUsernames = Array.from(new Set(usernames));
-
-              uniqueUsernames.forEach(username => {
-                if (!userScores[username]) {
-                  userScores[username] = {
-                    totalScore: 0,
-                    contestCount: 0,
-                    details: []
-                  };
+            const phasesByTask = await Promise.all(
+              tasks.map(async task => {
+                try {
+                  const phases = await api.getPhasesByTask(task.id);
+                  return { task, phases };
+                } catch (e) {
+                  console.error(`Failed to load phases for task ${task.id}`, e);
+                  return { task, phases: [] };
                 }
-                userScores[username].totalScore += rawScore;
-                userScores[username].contestCount += 1;
-                userScores[username].details.push({
-                  contestTitle: contest.title,
-                  score: rawScore
-                });
-              });
-            });
+              })
+            );
+            
+            await Promise.all(
+              RANKING_PHASES.map(async ({ key }) => {
+                const targetDef = phaseDefs.find(d => d.key === key);
+                if (!targetDef) return;
+
+                await Promise.all(
+                  phasesByTask.map(async ({ task, phases }) => {
+                    const phase = phases.find(item => item.contest_phase_def_id === targetDef.id);
+                    if (!phase) return;
+
+                    const leaderboard = await api.getTaskPhaseLeaderboard(phase.id);
+                    const bestScoreByUser = new Map<string, number>();
+
+                    leaderboard.forEach(row => {
+                      const rawScore = Number(row.raw_score !== undefined ? row.raw_score : row.score || 0);
+                      const safeScore = Number.isFinite(rawScore) ? rawScore : 0;
+                      usernamesForRow(row).forEach(username => {
+                        const current = bestScoreByUser.get(username);
+                        if (current === undefined || safeScore > current) {
+                          bestScoreByUser.set(username, safeScore);
+                        }
+                      });
+                    });
+
+                    bestScoreByUser.forEach((score, username) => {
+                      if (!phaseScores[key][username]) {
+                        phaseScores[key][username] = {
+                          totalScore: 0,
+                          taskCount: 0,
+                          details: []
+                        };
+                      }
+                      phaseScores[key][username].totalScore += score;
+                      phaseScores[key][username].taskCount += 1;
+                      phaseScores[key][username].details.push({
+                        contestTitle: contest.title,
+                        phaseTitle: getRankingPhaseLabel(targetDef.key),
+                        taskTitle: task.title,
+                        score
+                      });
+                    });
+                  })
+                );
+              })
+            );
           } catch (e) {
             console.error(`Failed to load standings for contest ${contest.id}`, e);
           }
         })
       );
 
-      return Object.entries(userScores)
-        .map(([name, data]) => ({
-          displayName: name,
-          totalScore: data.totalScore,
-          contestCount: data.contestCount,
-          details: data.details
-        }))
-        .sort((a, b) => b.totalScore - a.totalScore);
+      return RANKING_PHASES.reduce<Partial<Record<RankingPhaseKey, StandingUser[]>>>((acc, { key }) => {
+        acc[key] = Object.entries(phaseScores[key])
+          .map(([name, data]) => ({
+            displayName: name,
+            totalScore: data.totalScore,
+            taskCount: data.taskCount,
+            details: data.details
+          }))
+          .sort((a, b) => b.totalScore - a.totalScore);
+        return acc;
+      }, {});
     },
     enabled: contests.length > 0,
   });
@@ -95,6 +148,9 @@ export const RankingsPage: React.FC = () => {
   const isLoading = loadingContests || (contests.length > 0 && loadingStandings);
 
   // Filter rankings by user display name
+  const standings = rankingsByPhase[activePhaseKey] || [];
+  const activePhaseLabel = RANKING_PHASES.find(phase => phase.key === activePhaseKey)?.label || 'Ranking';
+
   const filteredStandings = standings.filter(s => 
     s.displayName.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -133,73 +189,71 @@ export const RankingsPage: React.FC = () => {
   };
 
   return (
-    <div className="container" style={{ paddingTop: '2.5rem', paddingBottom: '4rem' }}>
-      
-      {/* Header Banner */}
-      <div className="home-banner" style={{ minHeight: '160px', padding: '2rem 3rem', marginBottom: '2.5rem' }}>
-        <div className="home-banner-grid-bg"></div>
-        <div className="home-banner-glow"></div>
-        
-        <div className="home-banner-content">
-          <span className="home-banner-badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24' }}>Bảng Xếp Hạng Hệ Thống</span>
-          <h1 className="home-banner-title" style={{ fontSize: '2.25rem', marginBottom: '0.5rem' }}>Bảng Xếp Hạng Tổng</h1>
-          <p className="home-banner-subtitle" style={{ fontSize: '1rem', opacity: 0.9 }}>
-            Thứ hạng danh giá của tất cả đấu thủ trên toàn bộ hệ thống tính bằng tổng điểm từ các phase Private Test.
-          </p>
-        </div>
-        
-        <div style={{ position: 'absolute', right: '5%', bottom: '10%', opacity: 0.15, pointerEvents: 'none' }}>
-          <Trophy size={120} color="#ffffff" />
-        </div>
+    <div className="container" style={{ paddingTop: '1rem', paddingBottom: '4rem' }}>
+      <div className="page-header">
+        <h1 className="page-title">Global Ranking</h1>
+        <p className="page-subtitle">
+          Raw-score rankings across contests, separated by contest phase. Each task contributes the contestant's best score across all participation modes.
+        </p>
       </div>
 
-      {/* Control bar */}
-      <div className="panel flex justify-between items-center" style={{ padding: '1rem 1.5rem', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', maxWidth: '380px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
+      <div className="panel toolbar-panel-stacked">
+        <div className="toolbar-row">
+          <div className="flex flex-wrap gap-2">
+            {RANKING_PHASES.map(phase => (
+              <button
+                key={phase.key}
+                type="button"
+                onClick={() => {
+                  setActivePhaseKey(phase.key);
+                  setExpandedUser(null);
+                }}
+                className={`btn btn-sm ${activePhaseKey === phase.key ? 'btn-primary' : 'btn-secondary'}`}
+              >
+                {phase.label}
+                <span className={`badge ${activePhaseKey === phase.key ? 'badge-secondary' : 'badge-info'}`} style={{ marginLeft: '0.35rem', fontSize: '0.65rem' }}>
+                  {(rankingsByPhase[phase.key] || []).length}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="toolbar-meta">
+            Showing <strong>{filteredStandings.length}</strong> contestants
+          </div>
+        </div>
+
+        <div className="search-field">
+          <Search size={16} />
           <input
             type="text"
-            placeholder="Tìm tên người chơi..."
-            style={{
-              paddingLeft: '38px',
-              paddingRight: '12px',
-              height: '40px',
-              borderRadius: '6px',
-              border: '1px solid #e2e8f0',
-              fontSize: '0.875rem',
-              width: '100%',
-              backgroundColor: '#f8fafc',
-              outline: 'none',
-            }}
+            placeholder="Search contestant..."
+            className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-        </div>
-        
-        <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
-          Đang hiển thị <strong>{filteredStandings.length}</strong> thí sinh
         </div>
       </div>
 
       {isLoading && (
         <div className="flex flex-col items-center justify-center" style={{ minHeight: '300px' }}>
           <div className="spinner"></div>
-          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Đang tính toán thứ hạng tổng hợp...</p>
+          <p style={{ marginTop: '1rem', color: 'hsl(var(--text-muted))' }}>Computing rankings...</p>
         </div>
       )}
 
       {!isLoading && error && (
         <div className="alert alert-danger">
-          Không thể tính toán bảng xếp hạng hệ thống. Vui lòng thử lại sau.
+          Could not compute global rankings. Please try again later.
         </div>
       )}
 
       {!isLoading && !error && filteredStandings.length === 0 && (
-        <div className="panel flex flex-col items-center justify-center text-center" style={{ padding: '4rem 2rem' }}>
-          <Users size={48} style={{ color: '#94a3b8', marginBottom: '1rem' }} />
-          <h3 style={{ margin: 0, color: '#475569' }}>Không tìm thấy dữ liệu xếp hạng</h3>
-          <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            Hiện chưa có thí sinh nào ghi nhận điểm số chính thức trên hệ thống hoặc không có kết quả khớp.
+        <div className="panel empty-state">
+          <Users size={48} />
+          <h3>No ranking data found</h3>
+          <p>
+            There are no raw-score results for {activePhaseLabel}, or no contestants match the current search.
           </p>
         </div>
       )}
@@ -207,14 +261,14 @@ export const RankingsPage: React.FC = () => {
       {!isLoading && !error && filteredStandings.length > 0 && (
         <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table className="oj-table">
               <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', width: '80px' }}>THỨ HẠNG</th>
-                  <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem' }}>THÍ SINH</th>
-                  <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', textAlign: 'center' }}>SỐ KÌ THI THAM GIA</th>
-                  <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', textAlign: 'right' }}>TỔNG ĐIỂM TÍCH LŨY</th>
-                  <th style={{ padding: '1rem 1.5rem', color: '#475569', fontWeight: 600, fontSize: '0.85rem', textAlign: 'center', width: '100px' }}>CHI TIẾT</th>
+                <tr>
+                  <th style={{ width: '80px' }}>Rank</th>
+                  <th>Contestant</th>
+                  <th style={{ width: '120px', textAlign: 'center' }}>Tasks</th>
+                  <th style={{ width: '160px', textAlign: 'right' }}>Raw Score</th>
+                  <th style={{ width: '100px', textAlign: 'center' }}>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,31 +280,26 @@ export const RankingsPage: React.FC = () => {
                     <React.Fragment key={user.displayName}>
                       <tr 
                         style={{ 
-                          borderBottom: isExpanded ? 'none' : '1px solid #e2e8f0', 
-                          transition: 'background-color 0.15s ease',
+                          borderBottom: isExpanded ? 'none' : undefined, 
                           cursor: 'pointer'
                         }}
                         onClick={() => toggleExpandUser(user.displayName)}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       >
-                        <td style={{ padding: '1.25rem 1.5rem', verticalAlign: 'middle' }}>
+                        <td>
                           {getRankBadge(rank)}
                         </td>
-                        <td style={{ padding: '1.25rem 1.5rem', verticalAlign: 'middle' }}>
-                          <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1rem' }}>{user.displayName}</div>
+                        <td>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{user.displayName}</div>
                         </td>
-                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center', verticalAlign: 'middle', color: '#475569' }}>
-                          <span style={{ backgroundColor: '#f1f5f9', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 600, fontSize: '0.85rem' }}>
-                            {user.contestCount}
-                          </span>
+                        <td style={{ textAlign: 'center', color: '#475569' }}>
+                          <span className="metric-pill">{user.taskCount}</span>
                         </td>
-                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', verticalAlign: 'middle' }}>
-                          <span style={{ color: '#2563eb', fontWeight: 800, fontSize: '1.1rem', fontFamily: 'monospace' }}>
+                        <td style={{ textAlign: 'right' }}>
+                          <span className="font-mono" style={{ color: 'hsl(var(--primary))', fontWeight: 800 }}>
                             {user.totalScore.toLocaleString()}
                           </span>
                         </td>
-                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center', verticalAlign: 'middle', color: '#94a3b8' }}>
+                        <td style={{ textAlign: 'center', color: '#94a3b8' }}>
                           {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                         </td>
                       </tr>
@@ -259,11 +308,11 @@ export const RankingsPage: React.FC = () => {
                         <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                           <td colSpan={5} style={{ padding: '1rem 2rem' }}>
                             <div style={{ borderLeft: '3px solid #cbd5e1', paddingLeft: '1rem' }}>
-                              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#475569', fontWeight: 700 }}>Chi tiết điểm số theo kì thi:</h4>
+                              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#475569', fontWeight: 700 }}>Best raw score by task:</h4>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                 {user.details.map((detail, dIdx) => (
                                   <div key={dIdx} className="flex justify-between items-center" style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '450px' }}>
-                                    <span>{detail.contestTitle}</span>
+                                    <span>{detail.contestTitle} · {detail.phaseTitle} · {detail.taskTitle}</span>
                                     <span style={{ fontWeight: 600, color: '#334155', fontFamily: 'monospace' }}>+{detail.score.toLocaleString()}</span>
                                   </div>
                                 ))}

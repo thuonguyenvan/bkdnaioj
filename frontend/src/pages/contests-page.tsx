@@ -1,8 +1,77 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Contest } from '../lib/api-client';
-import { Calendar, Clock, MapPin } from 'lucide-react';
+import { Calendar } from 'lucide-react';
+import { api, type Contest, type ContestEntry } from '../lib/api-client';
+
+const CountdownTicker: React.FC<{ endTime: string }> = ({ endTime }) => {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const difference = new Date(endTime).getTime() - Date.now();
+      if (difference <= 0) {
+        setTimeLeft('Ended');
+        return;
+      }
+
+      const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((difference / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((difference / 1000 / 60) % 60);
+      const seconds = Math.floor((difference / 1000) % 60);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+
+      setTimeLeft(`${days > 0 ? `${days}d ` : ''}${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [endTime]);
+
+  return <span style={{ color: '#ef4444', fontWeight: 600 }}>{timeLeft}</span>;
+};
+
+const formatDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const formatDuration = (startValue: string, endValue: string) => {
+  const start = new Date(startValue).getTime();
+  const end = new Date(endValue).getTime();
+  const diffMs = end - start;
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return '-';
+
+  const totalMinutes = Math.round(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0 && hours > 0) return `${days}d ${hours}h`;
+  if (days > 0) return `${days}d`;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+};
+
+const getEntryPolicyText = (policy: Contest['entry_policy']) => {
+  switch (policy) {
+    case 'individual':
+      return 'Individual';
+    case 'team':
+      return 'Team';
+    case 'both':
+      return 'Individual & Team';
+    default:
+      return policy;
+  }
+};
+
+type ContestSection = 'running' | 'upcoming' | 'ended';
 
 export const ContestsPage: React.FC = () => {
   const { data: contests = [], isLoading, error } = useQuery<Contest[]>({
@@ -10,217 +79,192 @@ export const ContestsPage: React.FC = () => {
     queryFn: api.getContests,
   });
 
-  const formatDateTime = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const day = pad(d.getDate());
-    const month = pad(d.getMonth() + 1);
-    const year = d.getFullYear();
-    const hours = pad(d.getHours());
-    const minutes = pad(d.getMinutes());
-    return `${day}/${month}/${year} ${hours}:${minutes}`;
-  };
+  const publicContests = useMemo(
+    () => contests.filter((contest) => contest.status !== 'draft' && contest.visibility === 'public'),
+    [contests]
+  );
 
-  const getEntryPolicyText = (policy: string) => {
-    switch (policy) {
-      case 'individual': return 'Cá nhân';
-      case 'team': return 'Đồng đội (Team)';
-      case 'both': return 'Cá nhân & Đồng đội';
-      default: return 'Cá nhân';
-    }
-  };
-
-  // Group contests (filtering out draft status)
-  const publicContests = contests.filter(c => c.status !== 'draft');
-
-  const activeContests = publicContests.filter(c => {
-    const start = new Date(c.start_time);
-    const end = new Date(c.end_time);
-    const now = new Date();
-    return now >= start && now <= end;
+  const { data: entryCounts = {} } = useQuery<Record<string, number>>({
+    queryKey: ['contest-entry-counts', publicContests.map((contest) => contest.id).join(',')],
+    queryFn: async () => {
+      const pairs = await Promise.all(
+        publicContests.map(async (contest) => {
+          try {
+            const entries = await api.getEntries(contest.id);
+            const officialEntries = entries.filter((entry: ContestEntry) => entry.entry_mode === 'official');
+            return [contest.id, officialEntries.length] as const;
+          } catch (err) {
+            console.error(`Failed to load entries for contest ${contest.id}`, err);
+            return [contest.id, -1] as const;
+          }
+        })
+      );
+      return Object.fromEntries(pairs);
+    },
+    enabled: publicContests.length > 0,
   });
 
-  const upcomingContests = publicContests.filter(c => {
-    const start = new Date(c.start_time);
-    const now = new Date();
-    return now < start;
-  });
+  const groupedContests = useMemo(() => {
+    const now = Date.now();
+    const sorted = [...publicContests].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-  const endedContests = publicContests.filter(c => {
-    const end = new Date(c.end_time);
-    const now = new Date();
-    return now > end;
-  });
+    const running = sorted.filter((contest) => {
+      const start = new Date(contest.start_time).getTime();
+      const end = new Date(contest.end_time).getTime();
+      return contest.status === 'running' || (now >= start && now <= end);
+    });
+    const runningIds = new Set(running.map((contest) => contest.id));
 
-  const renderContestSection = (title: string, list: Contest[], statusType: 'running' | 'upcoming' | 'ended') => {
+    const upcoming = sorted.filter((contest) => {
+      if (runningIds.has(contest.id)) return false;
+      const start = new Date(contest.start_time).getTime();
+      return contest.status === 'registration_open' || now < start;
+    });
+    const upcomingIds = new Set(upcoming.map((contest) => contest.id));
+
+    return {
+      running,
+      upcoming,
+      ended: sorted
+        .filter((contest) => {
+          if (runningIds.has(contest.id) || upcomingIds.has(contest.id)) return false;
+          const start = new Date(contest.start_time).getTime();
+          const end = new Date(contest.end_time).getTime();
+          return contest.status === 'ended' || contest.status === 'archived' || now > end || now > start;
+        })
+        .sort((a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()),
+    };
+  }, [publicContests]);
+
+  const renderContestSection = (title: string, list: Contest[], statusType: ContestSection) => {
     if (list.length === 0) return null;
 
+    const isRunning = statusType === 'running';
+    const isUpcoming = statusType === 'upcoming';
+    const isEnded = statusType === 'ended';
+
     return (
-      <div style={{ marginBottom: '2.5rem' }}>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '1.25rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span 
-            style={{ 
-              width: '8px', 
-              height: '18px', 
-              borderRadius: '2px', 
-              backgroundColor: statusType === 'running' ? '#16a34a' : statusType === 'upcoming' ? '#2563eb' : '#64748b' 
-            }}
-          ></span>
-          {title} ({list.length})
-        </h2>
+      <div className="table-section">
+        <h2 className="section-heading">{title}</h2>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {list.map((contest) => {
-            const isRunning = statusType === 'running';
-            const isUpcoming = statusType === 'upcoming';
-            const isEnded = statusType === 'ended';
+        <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="oj-table">
+              <thead>
+                <tr>
+                  <th>Contest Name</th>
+                  <th style={{ width: '180px' }}>Start</th>
+                  <th style={{ width: '140px' }}>Duration</th>
+                  <th style={{ width: '140px' }}>Type</th>
+                  {isUpcoming && <th style={{ width: '150px' }}>Registration</th>}
+                  {isUpcoming && <th style={{ width: '120px', textAlign: 'right' }}>Action</th>}
+                  {isRunning && <th style={{ width: '180px' }}>Ends In</th>}
+                  {isRunning && <th style={{ width: '120px', textAlign: 'right' }}>Enter</th>}
+                  {isEnded && <th style={{ width: '180px' }}>Ended</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((contest) => {
+                  const count = entryCounts[contest.id];
 
-            const badgeColor = isRunning 
-              ? { bg: '#dcfce7', text: '#16a34a' } 
-              : isUpcoming 
-              ? { bg: '#eff6ff', text: '#2563eb' } 
-              : { bg: '#f1f5f9', text: '#475569' };
-
-            return (
-              <div 
-                key={contest.id} 
-                className="contest-row-card"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '1.25rem 1.5rem',
-                  border: isRunning ? '1px solid hsla(217, 91%, 60%, 0.15)' : '1px solid #e2e8f0',
-                  boxShadow: isRunning ? '0 4px 12px rgba(37, 99, 235, 0.04)' : '0 1px 3px rgba(0, 0, 0, 0.02)',
-                  transition: 'transform 0.15s ease',
-                  backgroundColor: '#ffffff'
-                }}
-              >
-                <div 
-                  className="contest-row-thumb"
-                  style={{
-                    backgroundColor: isRunning ? '#2563eb' : '#64748b',
-                    fontWeight: 700,
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '8px',
-                    fontSize: '1rem'
-                  }}
-                >
-                  AI OLP
-                </div>
-                
-                <div className="contest-row-details" style={{ marginLeft: '1.5rem', flex: 1 }}>
-                  <div className="contest-row-title-container" style={{ gap: '0.75rem', marginBottom: '0.4rem' }}>
-                    <h3 className="contest-row-title" style={{ fontSize: '1.2rem', margin: 0, fontWeight: 700 }}>
-                      {contest.title}
-                    </h3>
-                    <span 
-                      className="badge" 
-                      style={{
-                        fontSize: '0.75rem',
-                        padding: '0.2rem 0.5rem',
-                        fontWeight: 600,
-                        borderRadius: '4px',
-                        backgroundColor: badgeColor.bg,
-                        color: badgeColor.text,
-                        border: 'none'
-                      }}
-                    >
-                      Thi {getEntryPolicyText(contest.entry_policy)}
-                    </span>
-                  </div>
-                  
-                  <div className="contest-row-meta" style={{ gap: '1.5rem', color: '#64748b' }}>
-                    <span className="contest-row-meta-item">
-                      <Clock size={14} style={{ color: '#94a3b8' }} />
-                      {formatDateTime(contest.start_time)} - {formatDateTime(contest.end_time)}
-                    </span>
-                    <span className="contest-row-meta-item">
-                      <MapPin size={14} style={{ color: '#94a3b8' }} />
-                      Online
-                    </span>
-                  </div>
-                </div>
-
-                <div className="contest-row-action">
-                  <Link 
-                    to={`/contests/${contest.id}`} 
-                    className="btn"
-                    style={{
-                      backgroundColor: isRunning ? '#2563eb' : '#f1f5f9',
-                      color: isRunning ? '#ffffff' : '#475569',
-                      padding: '0.6rem 1.2rem',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      borderRadius: '6px',
-                      border: 'none',
-                      textDecoration: 'none',
-                      display: 'inline-block'
-                    }}
-                  >
-                    {isUpcoming ? 'Chi tiết' : isEnded ? 'Bảng xếp hạng' : 'Vào thi'}
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
+                  return (
+                    <tr key={contest.id}>
+                      <td>
+                        <Link to={`/contests/${contest.id}`} style={{ color: 'hsl(var(--primary))', textDecoration: 'none', fontWeight: 500 }}>
+                          {contest.title}
+                        </Link>
+                        <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.15rem' }}>
+                          {contest.slug}
+                        </div>
+                      </td>
+                      <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
+                        {formatDateTime(contest.start_time)}
+                      </td>
+                      <td style={{ color: '#334155' }}>
+                        {formatDuration(contest.start_time, contest.end_time)}
+                      </td>
+                      <td>
+                        <span className="badge badge-secondary">{getEntryPolicyText(contest.entry_policy)}</span>
+                      </td>
+                      {isUpcoming && (
+                        <>
+                          <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
+                            {count === undefined ? 'Loading...' : count < 0 ? '-' : `${count} ${contest.entry_policy === 'team' ? 'teams' : 'contestants'}`}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <Link to={`/contests/${contest.id}`} className="btn btn-secondary btn-sm">
+                              Register
+                            </Link>
+                          </td>
+                        </>
+                      )}
+                      {isRunning && (
+                        <>
+                          <td>
+                            <CountdownTicker endTime={contest.end_time} />
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <Link to={`/contests/${contest.id}`} className="btn btn-primary btn-sm">
+                              Enter
+                            </Link>
+                          </td>
+                        </>
+                      )}
+                      {isEnded && (
+                        <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
+                          {formatDateTime(contest.end_time)}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="container" style={{ paddingTop: '2.5rem', paddingBottom: '4rem' }}>
-      
-      {/* Header Banner */}
-      <div className="home-banner" style={{ minHeight: '160px', padding: '2rem 3rem', marginBottom: '2.5rem' }}>
-        <div className="home-banner-grid-bg"></div>
-        <div className="home-banner-glow"></div>
-        
-        <div className="home-banner-content">
-          <span className="home-banner-badge" style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399' }}>Danh Sách Cuộc Thi</span>
-          <h1 className="home-banner-title" style={{ fontSize: '2.25rem', marginBottom: '0.5rem' }}>Các Kì Thi AI</h1>
-          <p className="home-banner-subtitle" style={{ fontSize: '1rem', opacity: 0.9 }}>
-            Tham gia tranh tài ở các kì thi giải thuật AI đầy kịch tính để nâng tầm năng lực lập trình của bản thân.
-          </p>
-        </div>
-        
-        <div style={{ position: 'absolute', right: '5%', bottom: '10%', opacity: 0.15, pointerEvents: 'none' }}>
-          <Calendar size={120} color="#ffffff" />
-        </div>
+    <div className="container" style={{ paddingTop: '1rem', paddingBottom: '4rem' }}>
+      <div className="page-header">
+        <h1 className="page-title">Contest</h1>
+        <p className="page-subtitle">
+          Track upcoming, running, and completed contests on AI Olympic Online Judge.
+        </p>
       </div>
 
       {isLoading && (
         <div className="flex flex-col items-center justify-center" style={{ minHeight: '300px' }}>
           <div className="spinner"></div>
-          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Đang tải danh sách cuộc thi...</p>
+          <p style={{ marginTop: '1rem', color: 'hsl(var(--text-muted))' }}>Loading contest list...</p>
         </div>
       )}
 
       {!isLoading && error && (
         <div className="alert alert-danger">
-          Không thể kết nối máy chủ để tải cuộc thi. Vui lòng kiểm tra lại kết nối.
+          Could not connect to the server to load contests. Please check your connection.
         </div>
       )}
 
       {!isLoading && !error && publicContests.length === 0 && (
         <div className="panel flex flex-col items-center justify-center text-center" style={{ padding: '4rem 2rem' }}>
           <Calendar size={48} style={{ color: '#94a3b8', marginBottom: '1rem' }} />
-          <h3 style={{ margin: 0, color: '#475569' }}>Chưa có cuộc thi nào</h3>
+          <h3 style={{ margin: 0, color: '#475569' }}>No contests yet</h3>
           <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            Hệ thống chưa có cuộc thi nào được công bố. Vui lòng quay lại sau!
+            No contests have been published yet. Please check back later.
           </p>
         </div>
       )}
 
       {!isLoading && !error && publicContests.length > 0 && (
-        <div>
-          {renderContestSection('Đang diễn ra', activeContests, 'running')}
-          {renderContestSection('Sắp diễn ra', upcomingContests, 'upcoming')}
-          {renderContestSection('Đã kết thúc', endedContests, 'ended')}
-        </div>
+        <>
+          {renderContestSection('Running', groupedContests.running, 'running')}
+          {renderContestSection('Upcoming', groupedContests.upcoming, 'upcoming')}
+          {renderContestSection('Completed', groupedContests.ended, 'ended')}
+        </>
       )}
-
     </div>
   );
 };
