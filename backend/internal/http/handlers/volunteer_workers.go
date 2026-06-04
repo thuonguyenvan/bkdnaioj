@@ -59,7 +59,8 @@ func (h *VolunteerWorkerHandler) Register(c echo.Context) error {
 		MaxWorkers:   maxWorkers,
 	})
 	if err != nil {
-		return mw.ErrInternal("register failed")
+		// Temporarily expose error for debugging
+		return mw.ErrInternal("register failed: " + err.Error())
 	}
 	return c.JSON(http.StatusCreated, dto.VolunteerWorkerToResponse(worker))
 }
