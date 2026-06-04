@@ -10,10 +10,11 @@ Nền tảng Online Judge dành cho các cuộc thi Trí tuệ Nhân tạo (AI C
 ├── backend/            # Go API Server + Python Workers
 │   ├── cmd/api/        # HTTP API entrypoint
 │   ├── cmd/seed/       # Seeder tạo tài khoản & cuộc thi mẫu
-│   ├── internal/       # Config, HTTP, Security, Repo, Queue
+│   ├── internal/       # Config, HTTP, Security, Repo, Queue, Scheduler
 │   ├── db/             # Code truy vấn DB được sinh bởi sqlc
 │   ├── migrations/     # Goose SQL migrations (bảng DB)
 │   ├── workers/        # Python worker chạy chấm bài & sandbox Docker
+│   ├── demo/           # Benchmark scripts (leaderboard, scheduling, sandbox)
 │   ├── Makefile        # Scripts khởi động nhanh
 │   ├── Dockerfile      # Dockerfile cho API Server
 │   └── docker-compose.yml
@@ -21,6 +22,9 @@ Nền tảng Online Judge dành cho các cuộc thi Trí tuệ Nhân tạo (AI C
 │   ├── src/            # Mã nguồn giao diện & logic API client
 │   ├── package.json
 │   └── vite.config.ts
+├── volunteer-agent/    # Volunteer Judge Worker Agent (pip package)
+│   ├── app/            # CLI, runner, capabilities, artifact cache
+│   └── pyproject.toml  # Published: pip install olpai-volunteer-agent
 ├── draft/              # Thư mục chứa dữ liệu test mẫu (Tabular & Adversarial Attack)
 │   ├── btc_upload/     # File BTC cấu hình đề bài mẫu
 │   ├── contestant_submissions/ # File nộp mẫu của thí sinh
@@ -102,6 +106,66 @@ Khi muốn dừng kiểm thử hoặc tắt hệ thống:
      cd backend
      docker compose down
      ```
+
+---
+
+## 🤝 Volunteer Judge Worker
+
+Bất kỳ máy tính nào đáp ứng yêu cầu đều có thể tham gia mạng lưới chấm bài phân tán, giúp giảm tải cho server chính.
+
+### Yêu cầu tối thiểu
+
+* **Python 3.11+**
+* **RAM** 4 GB+, **Disk** 10 GB free
+* **Docker** *(tuỳ chọn — chỉ cần cho final phase inference)*
+
+### Cài đặt
+
+```bash
+pip install olpai-volunteer-agent
+```
+
+### Các bước tham gia
+
+**Bước 1: Đăng ký**
+```bash
+olpai-volunteer setup
+# → Nhập Platform URL: https://api.bkdnaioj.app
+# → Nhập tên máy (ví dụ: my-laptop)
+# → Hệ thống tự benchmark và đăng ký → ghi lại Worker ID
+```
+
+**Bước 2: Chờ Admin phê duyệt**
+
+Admin vào `/admin/workers` → Approve → copy token.
+
+**Bước 3: Lưu token và chạy**
+```bash
+olpai-volunteer approve-token <TOKEN-FROM-ADMIN>
+
+# Chạy foreground (dev/test)
+olpai-volunteer start
+
+# Hoặc cài service tự khởi động khi boot
+olpai-volunteer service install
+olpai-volunteer service start
+```
+
+### Các lệnh hữu ích
+
+```bash
+olpai-volunteer doctor        # Kiểm tra môi trường
+olpai-volunteer benchmark     # Đo hiệu suất CPU/disk
+olpai-volunteer status        # Xem config và trạng thái
+olpai-volunteer logs -f       # Theo dõi logs realtime
+olpai-volunteer cache --clear # Xoá cache artifact cũ
+```
+
+### Lưu ý
+
+* Máy không có Docker vẫn chấm được output-only submissions (public_test, private_test).
+* Hệ thống tự phát hiện năng lực máy và chỉ gán job phù hợp — không cần cấu hình thêm.
+* Xem đầy đủ tài liệu tại **[/docs](https://www.bkdnaioj.app/docs)** hoặc `volunteer-agent/README.md`.
 
 ---
 
