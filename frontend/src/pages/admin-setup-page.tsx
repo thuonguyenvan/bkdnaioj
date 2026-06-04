@@ -6,20 +6,27 @@ import { api, API_BASE_URL, type Contest, type Task, type ContestEntry, type Pha
 import {
   Settings, CheckCircle2, XCircle, Plus, Upload, ArrowLeft, Trash2, AlertTriangle,
   LayoutGrid, FileText, Layers, Users, Volume2, LifeBuoy, UploadCloud,
-  ChevronDown, ChevronUp, Edit, ExternalLink
+  ChevronDown, ChevronUp, Edit, ExternalLink, Pin
 } from 'lucide-react';
 
 const REQUIRED_TASK_ASSETS = ['judge.py'];
 const REQUIRED_EVALUATION_ASSETS = ['ground_truth', 'inputs'];
+const PHASE_KEY_ORDER: Record<PhaseDef['key'], number> = {
+  public_test: 1,
+  final_public: 2,
+  private_test: 3,
+  final_private: 4,
+};
+const PHASE_KEYS_IN_DISPLAY_ORDER: PhaseDef['key'][] = ['public_test', 'final_public', 'private_test', 'final_private'];
 
 const buildSubmissionSchema = () => ({
   non_final: {
-    description: 'Upload output artifact theo yêu cầu đề bài',
+    description: 'Upload the output artifact required by the problem',
     examples: ['submission.zip', 'adversarial_images.zip', 'predictions.jsonl'],
     max_files: 10,
   },
   final: {
-    description: 'Upload checkpoint/code inference theo yêu cầu đề bài',
+    description: 'Upload checkpoint or inference code required by the problem',
     examples: ['final_submission.zip'],
     max_files: 10,
     inference_entrypoint: 'infer.py',
@@ -261,7 +268,7 @@ export const AdminSetupPage: React.FC = () => {
               evaluation_set_id: evalSetId,
               slug: `${newTask.slug}-${def.key}-${Date.now().toString().slice(-4)}`,
               title: `${newTask.title} - ${def.title}`,
-              description: `Vòng thi ${def.title} cho bài tập ${newTask.title}`,
+              description: `Phase ${def.title} for task ${newTask.title}`,
               open_time: openTime,
               close_time: closeTime,
               judge_key: refP?.judge_key || 'judge.py',
@@ -453,7 +460,7 @@ export const AdminSetupPage: React.FC = () => {
     e.preventDefault();
     setTaskError(null);
     if (!taskTitle) {
-      setTaskError('Tên bài tập là bắt buộc.');
+      setTaskError('Task name is required.');
       return;
     }
     const payload = {
@@ -471,7 +478,7 @@ export const AdminSetupPage: React.FC = () => {
       });
     } else {
       if (!taskSlug) {
-        setTaskError('Slug định danh là bắt buộc.');
+        setTaskError('Identifier slug is required.');
         return;
       }
       createTaskMutation.mutate({
@@ -517,17 +524,17 @@ export const AdminSetupPage: React.FC = () => {
 
   const handlePdfUploadForTask = async (taskId: string, file: File) => {
     if (file.type !== 'application/pdf') {
-      alert('Chỉ chấp nhận tệp định dạng PDF.');
+      alert('Only PDF files are accepted.');
       return;
     }
     try {
       setUploadingPdfTaskId(taskId);
       await api.uploadTaskStatement(taskId, file);
       refetchTasks();
-      alert('Tải lên đề bài PDF thành công!');
+      alert('Problem statement PDF uploaded successfully!');
     } catch (err) {
       const error = err as { response?: { data?: { message?: string } } };
-      alert(error?.response?.data?.message || 'Không thể tải lên tệp đề bài.');
+      alert(error?.response?.data?.message || 'Could not upload the problem statement file.');
     } finally {
       setUploadingPdfTaskId(null);
     }
@@ -756,13 +763,13 @@ export const AdminSetupPage: React.FC = () => {
     return (
       <div className="container flex flex-col items-center justify-center" style={{ minHeight: '300px' }}>
         <div className="spinner"></div>
-        <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Loading admin panel...</p>
+        <p style={{ marginTop: '1rem', color: 'hsl(var(--text-muted))' }}>Loading admin panel...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)', maxHeight: 'calc(100vh - 70px)', overflow: 'hidden', width: '100%', backgroundColor: '#f8fafc' }}>
+    <div style={{ display: 'flex', minHeight: 'calc(100vh - 64px)', maxHeight: 'calc(100vh - 64px)', overflow: 'hidden', width: '100%', backgroundColor: '#f8fafc' }}>
       {/* Left Sidebar */}
       <aside
         style={{
@@ -790,7 +797,7 @@ export const AdminSetupPage: React.FC = () => {
                 marginBottom: '0.5rem',
               }}
             >
-              BAN TỔ CHỨC
+              ORGANIZER
             </div>
             <div
               style={{
@@ -810,13 +817,13 @@ export const AdminSetupPage: React.FC = () => {
           {/* Navigation links */}
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             {[
-              { id: 'checklist', label: 'Tổng quan & Publish', icon: LayoutGrid },
-              { id: 'tasks', label: 'Bài tập (Tasks)', icon: FileText },
-              { id: 'phases', label: 'Cấu hình (Phases)', icon: Layers },
-              { id: 'entries', label: 'Thí sinh đăng ký', icon: Users },
-              { id: 'announcements', label: 'Thông báo', icon: Volume2 },
-              { id: 'tickets', label: 'Hỗ trợ (Tickets)', icon: LifeBuoy },
-              { id: 'settings', label: 'Cài đặt cuộc thi', icon: Settings },
+              { id: 'checklist', label: 'Overview & Publish', icon: LayoutGrid },
+              { id: 'tasks', label: 'Tasks', icon: FileText },
+              { id: 'phases', label: 'Phases', icon: Layers },
+              { id: 'entries', label: 'Registered Contestants', icon: Users },
+              { id: 'announcements', label: 'Announcements', icon: Volume2 },
+              { id: 'tickets', label: 'Support Tickets', icon: LifeBuoy },
+              { id: 'settings', label: 'Contest Settings', icon: Settings },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = subTab === item.id;
@@ -831,8 +838,8 @@ export const AdminSetupPage: React.FC = () => {
                     padding: '0.75rem 1rem',
                     borderRadius: '8px',
                     color: isActive ? '#ffffff' : '#94a3b8',
-                    backgroundColor: isActive ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                    borderLeft: isActive ? '4px solid #3b82f6' : '4px solid transparent',
+                    backgroundColor: isActive ? 'hsla(var(--primary), 0.08)' : 'transparent',
+                    borderLeft: isActive ? '4px solid hsl(var(--primary))' : '4px solid transparent',
                     cursor: 'pointer',
                     fontWeight: isActive ? 600 : 500,
                     fontSize: '0.9rem',
@@ -851,7 +858,7 @@ export const AdminSetupPage: React.FC = () => {
                     }
                   }}
                 >
-                  <Icon size={18} style={{ color: isActive ? '#3b82f6' : '#64748b' }} />
+                  <Icon size={18} style={{ color: isActive ? 'hsl(var(--primary))' : '#64748b' }} />
                   {item.label}
                 </div>
               );
@@ -861,7 +868,7 @@ export const AdminSetupPage: React.FC = () => {
 
         {/* Footer staff status */}
         <div style={{ padding: '0.5rem', borderTop: '1px solid #1e293b', paddingTop: '1rem' }}>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' }}>Đăng nhập với vai trò</div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.25rem' }}>Logged in as</div>
           <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#e2e8f0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
             Jury Staff / Admin
           </div>
@@ -874,7 +881,7 @@ export const AdminSetupPage: React.FC = () => {
           flex: 1,
           padding: '2rem 3rem',
           overflowY: 'auto',
-          height: 'calc(100vh - 70px)',
+          height: 'calc(100vh - 64px)',
           backgroundColor: '#f8fafc',
           display: 'flex',
           flexDirection: 'column',
@@ -893,13 +900,13 @@ export const AdminSetupPage: React.FC = () => {
 
             {/* Title & Description */}
             <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              {subTab === 'checklist' && 'Tổng quan & Publish cuộc thi'}
-              {subTab === 'tasks' && 'Quản lý bài tập (Tasks)'}
-              {subTab === 'entries' && 'Danh sách đăng ký thi'}
-              {subTab === 'announcements' && 'Quản lý thông báo'}
-              {subTab === 'tickets' && 'Trung tâm hỗ trợ (Tickets)'}
-              {subTab === 'phases' && 'Cấu hình giai đoạn (Phases)'}
-              {subTab === 'settings' && 'Cài đặt chi tiết cuộc thi'}
+              {subTab === 'checklist' && 'Contest Overview & Publish'}
+              {subTab === 'tasks' && 'Task Management'}
+              {subTab === 'entries' && 'Registration List'}
+              {subTab === 'announcements' && 'Announcement Management'}
+              {subTab === 'tickets' && 'Support Center (Tickets)'}
+              {subTab === 'phases' && 'Phase Configuration'}
+              {subTab === 'settings' && 'Contest Details Settings'}
 
               {/* Status Badge */}
               <span
@@ -920,13 +927,13 @@ export const AdminSetupPage: React.FC = () => {
               </span>
             </h1>
             <p style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '0.35rem', marginBottom: 0 }}>
-              {subTab === 'checklist' && 'Kiểm tra trạng thái tài nguyên, cập nhật cấu hình và kích hoạt cuộc thi.'}
-              {subTab === 'tasks' && 'Tạo, xóa và thiết lập submission contract cùng tài nguyên chấm bài.'}
-              {subTab === 'entries' && 'Kiểm duyệt trạng thái đăng ký của các thí sinh (Official, Virtual, Practice).'}
-              {subTab === 'announcements' && 'Tạo và quản lý các thông báo quan trọng gửi đến các thí sinh.'}
-              {subTab === 'tickets' && 'Tiếp nhận, xử lý và phân công giải quyết các yêu cầu hỗ trợ từ thí sinh.'}
-              {subTab === 'phases' && 'Thiết lập các mốc thời gian diễn ra các phase chính thức/thử nghiệm.'}
-              {subTab === 'settings' && 'Chỉnh sửa thông tin chung, cài đặt normalization hoặc xóa cuộc thi.'}
+              {subTab === 'checklist' && 'Review resource status, update configuration, and publish the contest.'}
+              {subTab === 'tasks' && 'Create, delete, and configure submission contracts and judging resources.'}
+              {subTab === 'entries' && 'Review contestant registration status (Official, Virtual, Practice).'}
+              {subTab === 'announcements' && 'Create and manage important announcements for contestants.'}
+              {subTab === 'tickets' && 'Receive, process, and assign contestant support requests.'}
+              {subTab === 'phases' && 'Configure timelines for official and test phases.'}
+              {subTab === 'settings' && 'Edit general information, normalization settings, or delete the contest.'}
             </p>
           </div>
 
@@ -956,7 +963,7 @@ export const AdminSetupPage: React.FC = () => {
             {/* Contest Status */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trạng thái cuộc thi</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contest Status</div>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: contest?.status === 'running' ? '#22c55e' : '#f59e0b', display: 'inline-block' }}></span>
                   <span style={{ textTransform: 'capitalize' }}>{contest?.status}</span>
@@ -970,7 +977,7 @@ export const AdminSetupPage: React.FC = () => {
             {/* Total Tasks */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bài tập thử thách</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Challenge Tasks</div>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem' }}>
                   {tasks.length} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>Tasks</span>
                 </div>
@@ -983,9 +990,9 @@ export const AdminSetupPage: React.FC = () => {
             {/* Registrations count */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Thí sinh đăng ký</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Registered Contestants</div>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem' }}>
-                  {contestEntries.length} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>Đội/Cá nhân</span>
+                  {contestEntries.length} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>Teams/Individuals</span>
                 </div>
               </div>
               <div style={{ width: '44px', height: '44px', borderRadius: '8px', backgroundColor: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -996,7 +1003,7 @@ export const AdminSetupPage: React.FC = () => {
             {/* Tickets count */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Yêu cầu hỗ trợ</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Support Requests</div>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem' }}>
                   {tickets.length} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#64748b' }}>Tickets</span>
                 </div>
@@ -1123,14 +1130,14 @@ export const AdminSetupPage: React.FC = () => {
           {/* Create / Edit Task Form */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.25rem', marginTop: 0 }}>
-              {editingTask ? `Chỉnh sửa: ${editingTask.title}` : 'Thêm bài tập mới'}
+              {editingTask ? `Edit: ${editingTask.title}` : 'Add New Task'}
             </h3>
             {taskError && (
               <div className="alert alert-danger" style={{ fontSize: '0.8rem', padding: '0.75rem', borderRadius: '6px' }}>{taskError}</div>
             )}
             <form onSubmit={handleSaveTask} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Tên bài tập *</label>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Task Name *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -1148,12 +1155,12 @@ export const AdminSetupPage: React.FC = () => {
 
               {editingTask ? (
                 <div style={{ fontSize: '0.8rem', color: '#64748b', backgroundColor: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <strong>Slug định danh:</strong> <code style={{ color: '#0f172a' }}>{taskSlug}</code>
-                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem' }}>Không thể thay đổi slug định danh của bài tập đã tạo.</div>
+                  <strong>Identifier Slug:</strong> <code style={{ color: '#0f172a' }}>{taskSlug}</code>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem' }}>The identifier slug cannot be changed after the task is created.</div>
                 </div>
               ) : (
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Slug định danh *</label>
+                  <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Identifier Slug *</label>
                   <input
                     type="text"
                     className="form-input"
@@ -1166,7 +1173,7 @@ export const AdminSetupPage: React.FC = () => {
               )}
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Mô tả ngắn</label>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Short Description</label>
                 <textarea
                   className="form-input"
                   style={{ height: '70px', resize: 'vertical', padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
@@ -1188,7 +1195,7 @@ export const AdminSetupPage: React.FC = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Thứ tự sắp xếp (Sort Order)</label>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Sort Order</label>
                 <input
                   type="number"
                   className="form-input"
@@ -1199,7 +1206,7 @@ export const AdminSetupPage: React.FC = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Link Dataset huấn luyện (Drive, Kaggle...)</label>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Training Dataset Link (Drive, Kaggle...)</label>
                 <input
                   type="text"
                   className="form-input"
@@ -1218,20 +1225,20 @@ export const AdminSetupPage: React.FC = () => {
                   id="higher_is_better"
                   style={{ cursor: 'pointer' }}
                 />
-                <label htmlFor="higher_is_better" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>Điểm càng cao càng tốt</label>
+                <label htmlFor="higher_is_better" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>Higher score is better</label>
               </div>
 
               <div className="form-group" style={{ marginBottom: 0, padding: '0.85rem', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
                 <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569', marginBottom: '0.6rem', display: 'block' }}>Submission contract</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.78rem', color: '#475569', lineHeight: 1.35 }}>
                   <div>
-                    <strong style={{ color: '#0f172a' }}>Non-final:</strong> thí sinh nộp output artifact đã sinh sẵn.
+                    <strong style={{ color: '#0f172a' }}>Non-final:</strong> contestants submit a pre-generated output artifact.
                   </div>
                   <div>
-                    <strong style={{ color: '#0f172a' }}>Final:</strong> thí sinh nộp ZIP có `infer.py` và checkpoint/code; hệ thống chạy inference từ asset `inputs`.
+                    <strong style={{ color: '#0f172a' }}>Final:</strong> contestants submit a ZIP containing `infer.py` and checkpoint/code; the system runs inference from the `inputs` asset.
                   </div>
                   <div>
-                    <strong style={{ color: '#0f172a' }}>BTC upload một lần ở cấp task:</strong>
+                    <strong style={{ color: '#0f172a' }}>Organizer uploads once at task level:</strong>
                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.45rem' }}>
                       {REQUIRED_TASK_ASSETS.map(asset => (
                         <span key={asset} className="font-mono" style={{ padding: '0.2rem 0.45rem', backgroundColor: '#e0f2fe', color: '#075985', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -1241,7 +1248,7 @@ export const AdminSetupPage: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <strong style={{ color: '#0f172a' }}>BTC upload cho mỗi public/private set:</strong>
+                    <strong style={{ color: '#0f172a' }}>Organizer uploads for each public/private set:</strong>
                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.45rem' }}>
                       {REQUIRED_EVALUATION_ASSETS.map(asset => (
                         <span key={asset} className="font-mono" style={{ padding: '0.2rem 0.45rem', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -1260,7 +1267,7 @@ export const AdminSetupPage: React.FC = () => {
                   style={{ flex: 1, padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem' }}
                   disabled={createTaskMutation.isPending || updateTaskMutation.isPending}
                 >
-                  {createTaskMutation.isPending || updateTaskMutation.isPending ? 'Đang lưu...' : (editingTask ? 'Cập nhật bài tập' : 'Thêm bài tập')}
+                  {createTaskMutation.isPending || updateTaskMutation.isPending ? 'Saving...' : (editingTask ? 'Update Task' : 'Add Task')}
                 </button>
                 {editingTask && (
                   <button
@@ -1269,7 +1276,7 @@ export const AdminSetupPage: React.FC = () => {
                     className="btn btn-secondary"
                     style={{ padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', backgroundColor: '#ef4444', color: '#ffffff', border: '1px solid #ef4444' }}
                   >
-                    Hủy
+                    Cancel
                   </button>
                 )}
               </div>
@@ -1280,7 +1287,7 @@ export const AdminSetupPage: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {tasks.length === 0 ? (
               <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '3rem 2rem', textAlign: 'center', color: '#64748b', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                Chưa có bài tập nào được thêm vào cuộc thi này.
+                No tasks have been added to this contest yet.
               </div>
             ) : (
               tasks.map(t => {
@@ -1301,10 +1308,10 @@ export const AdminSetupPage: React.FC = () => {
                             Metric: {t.score_label}
                           </span>
                           <span style={{ fontSize: '0.7rem', backgroundColor: t.higher_is_better ? '#dcfce7' : '#fee2e2', color: t.higher_is_better ? '#15803d' : '#b91c1c', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
-                            {t.higher_is_better ? 'Càng cao càng tốt' : 'Càng thấp càng tốt'}
+                            {t.higher_is_better ? 'Higher is better' : 'Lower is better'}
                           </span>
                           <span style={{ fontSize: '0.7rem', backgroundColor: '#f3e8ff', color: '#6b21a8', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
-                            Thứ tự: {t.sort_order}
+                            Order: {t.sort_order}
                           </span>
                         </div>
                         {t.description && (
@@ -1316,9 +1323,9 @@ export const AdminSetupPage: React.FC = () => {
                               href={t.dataset_url}
                               target="_blank"
                               rel="noreferrer"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem', color: '#2563eb', textDecoration: 'underline', fontWeight: 600 }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem', color: 'hsl(var(--primary))', textDecoration: 'underline', fontWeight: 600 }}
                             >
-                              <ExternalLink size={12} /> Dataset huấn luyện
+                              <ExternalLink size={12} /> Training Dataset
                             </a>
                           </div>
                         )}
@@ -1330,7 +1337,7 @@ export const AdminSetupPage: React.FC = () => {
                           className="btn btn-secondary flex items-center gap-1"
                           style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px' }}
                         >
-                          <Edit size={13} /> Sửa
+                          <Edit size={13} /> Edit
                         </button>
                         <button
                           type="button"
@@ -1343,7 +1350,7 @@ export const AdminSetupPage: React.FC = () => {
                           className="btn btn-secondary flex items-center gap-1"
                           style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px', backgroundColor: isExpanded ? '#cbd5e1' : '#f1f5f9' }}
                         >
-                          Quản lý File & Test Sets {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          Manage Files & Test Sets {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                         </button>
                         <button
                           type="button"
@@ -1356,7 +1363,7 @@ export const AdminSetupPage: React.FC = () => {
                           style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px' }}
                           disabled={deleteTaskMutation.isPending}
                         >
-                          <Trash2 size={13} /> Xóa
+                          <Trash2 size={13} /> Delete
                         </button>
                       </div>
                     </div>
@@ -1367,11 +1374,11 @@ export const AdminSetupPage: React.FC = () => {
                         {/* PDF Statement upload block */}
                         <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem' }}>
                           <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', marginBottom: '0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Đề bài (Problem Statement PDF)</span>
+                            <span>Problem Statement PDF</span>
                             {t.problem_statement_url ? (
-                              <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Đã tải lên đề bài PDF</span>
+                              <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Problem statement PDF uploaded</span>
                             ) : (
-                              <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600 }}>Chưa có đề bài PDF</span>
+                              <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600 }}>No problem statement PDF</span>
                             )}
                           </div>
                           
@@ -1396,7 +1403,7 @@ export const AdminSetupPage: React.FC = () => {
                               disabled={uploadingPdfTaskId === t.id}
                             >
                               <UploadCloud size={14} />
-                              {uploadingPdfTaskId === t.id ? 'Đang tải lên...' : t.problem_statement_url ? 'Cập nhật đề bài PDF' : 'Tải lên đề bài PDF'}
+                              {uploadingPdfTaskId === t.id ? 'Uploading...' : t.problem_statement_url ? 'Update Problem PDF' : 'Upload Problem PDF'}
                             </button>
                             {t.problem_statement_url && (
                               <a
@@ -1405,7 +1412,7 @@ export const AdminSetupPage: React.FC = () => {
                                 rel="noreferrer"
                                 style={{ fontSize: '0.8rem', textDecoration: 'underline', color: 'hsl(var(--primary))' }}
                               >
-                                Xem PDF đề bài hiện tại
+                                View Current Problem PDF
                               </a>
                             )}
                           </div>
@@ -1457,35 +1464,35 @@ export const AdminSetupPage: React.FC = () => {
                         <div>
                           {sets.length === 0 ? (
                             <div style={{ padding: '1rem', backgroundColor: '#ffffff', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
-                              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 0.75rem 0' }}>Chưa khởi tạo bộ dữ liệu đánh giá cho bài tập này.</p>
+                              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 0.75rem 0' }}>No evaluation sets have been initialized for this task.</p>
                               <button
                                 onClick={() => initializeEvaluationSets(t)}
                                 className="btn btn-secondary flex items-center gap-1"
                                 style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem', margin: '0 auto' }}
                                 disabled={createEvaluationSetMutation.isPending}
                               >
-                                <Plus size={12} /> Khởi tạo public/private eval sets
+                                <Plus size={12} /> Initialize public/private eval sets
                               </button>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                               {(!sets.some(s => s.key === 'public') || !sets.some(s => s.key === 'private')) && (
                                 <div style={{ padding: '0.85rem', border: '1px solid #fde68a', backgroundColor: '#fffbeb', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '0.8rem', color: '#92400e' }}>Task này chưa có đủ public/private evaluation sets.</span>
+                                  <span style={{ fontSize: '0.8rem', color: '#92400e' }}>This task does not have complete public/private evaluation sets.</span>
                                   <button
                                     onClick={() => initializeEvaluationSets(t)}
                                     className="btn btn-secondary"
                                     style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
                                   >
-                                    Bổ sung eval sets
+                                    Add eval sets
                                   </button>
                                 </div>
                               )}
                               {sets.map((s) => (
                                 <div key={s.id} style={{ border: '1px solid #e2e8f0', padding: '0.85rem', borderRadius: '8px', backgroundColor: '#ffffff' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                                    <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                                      Bộ dữ liệu chấm: {s.title}
+                                    <span style={{ fontWeight: 700, fontSize: '0.78rem', color: 'hsl(var(--primary))', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                                      Evaluation set: {s.title}
                                     </span>
                                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: '#94a3b8' }}>
                                       ID: {s.id}
@@ -1538,7 +1545,7 @@ export const AdminSetupPage: React.FC = () => {
 
                               {uploadProgress !== 'idle' && (
                                 <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', marginTop: '0.25rem' }}>
-                                  Trạng thái upload: <strong style={{ color: '#0f172a' }}>{uploadProgress}</strong>
+                                  Upload status: <strong style={{ color: '#0f172a' }}>{uploadProgress}</strong>
                                 </div>
                               )}
                             </div>
@@ -1557,20 +1564,20 @@ export const AdminSetupPage: React.FC = () => {
       {subTab === 'entries' && (
         <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Danh sách đăng ký thi</h3>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Registration List</h3>
           </div>
           <div style={{ overflowX: 'auto' }}>
             {contestEntries.length === 0 ? (
-              <p style={{ padding: '3rem 2rem', textAlign: 'center', color: '#64748b', margin: 0 }}>Chưa có thí sinh hoặc đội thi nào đăng ký cuộc thi này.</p>
+              <p style={{ padding: '3rem 2rem', textAlign: 'center', color: '#64748b', margin: 0 }}>No contestants or teams have registered for this contest yet.</p>
             ) : (
               <table className="oj-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tên hiển thị / Tên Đội</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hình thức</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Chế độ tham gia</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trạng thái duyệt</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '220px', textAlign: 'right' }}>Thao tác</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Display Name / Team Name</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Participation Mode</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Approval Status</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '220px', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1612,7 +1619,7 @@ export const AdminSetupPage: React.FC = () => {
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px' }}
                               disabled={approveEntryMutation.isPending}
                             >
-                              Phê duyệt
+                              Approve
                             </button>
                           )}
                           {(e.status === 'pending' || e.status === 'approved' || e.status === 'active') && (
@@ -1622,7 +1629,7 @@ export const AdminSetupPage: React.FC = () => {
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px' }}
                               disabled={disqualifyEntryMutation.isPending}
                             >
-                              Hủy tư cách
+                              Disqualify
                             </button>
                           )}
                         </div>
@@ -1640,7 +1647,7 @@ export const AdminSetupPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '700px' }}>
           {/* Edit Details Panel */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.5rem', marginTop: 0 }}>Cấu hình thông tin cuộc thi</h3>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.5rem', marginTop: 0 }}>Contest Information Settings</h3>
 
             {settingsError && (
               <div className="alert alert-danger" style={{ fontSize: '0.85rem', padding: '0.75rem', borderRadius: '6px' }}>
@@ -1671,7 +1678,7 @@ export const AdminSetupPage: React.FC = () => {
               });
             }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Tên cuộc thi</label>
+                <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Contest Name</label>
                 <input
                   type="text"
                   className="form-input"
@@ -1683,7 +1690,7 @@ export const AdminSetupPage: React.FC = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Mô tả chi tiết</label>
+                <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Detailed Description</label>
                 <textarea
                   className="form-input"
                   style={{ minHeight: '100px', padding: '0.6rem 0.85rem', fontSize: '0.9rem' }}
@@ -1694,7 +1701,7 @@ export const AdminSetupPage: React.FC = () => {
 
               <div className="grid-2" style={{ gap: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Thời gian bắt đầu</label>
+                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Start Time</label>
                   <input
                     type="datetime-local"
                     className="form-input"
@@ -1706,7 +1713,7 @@ export const AdminSetupPage: React.FC = () => {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Thời gian kết thúc</label>
+                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>End Time</label>
                   <input
                     type="datetime-local"
                     className="form-input"
@@ -1720,29 +1727,29 @@ export const AdminSetupPage: React.FC = () => {
 
               <div className="grid-2" style={{ gap: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Đối tượng đăng ký</label>
+                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Registration Policy</label>
                   <select
                     className="form-input"
                     style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', height: 'auto' }}
                     value={settingsEntryPolicy}
                     onChange={(e) => setSettingsEntryPolicy(e.target.value as any)}
                   >
-                    <option value="individual">Cá nhân (Individual)</option>
-                    <option value="team">Đội nhóm (Team Only)</option>
-                    <option value="both">Cả hai (Individual & Team)</option>
+                    <option value="individual">Individual</option>
+                    <option value="team">Team Only</option>
+                    <option value="both">Individual & Team</option>
                   </select>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Chế độ hiển thị</label>
+                  <label className="form-label" style={{ fontSize: '0.85rem', color: '#475569' }}>Visibility</label>
                   <select
                     className="form-input"
                     style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', height: 'auto' }}
                     value={settingsVisibility}
                     onChange={(e) => setSettingsVisibility(e.target.value as any)}
                   >
-                    <option value="public">Công khai (Public)</option>
-                    <option value="private">Riêng tư (Private - Code đăng ký)</option>
+                    <option value="public">Public</option>
+                    <option value="private">Private - registration code</option>
                   </select>
                 </div>
               </div>
@@ -1755,7 +1762,7 @@ export const AdminSetupPage: React.FC = () => {
                     onChange={(e) => setSettingsRequireApproval(e.target.checked)}
                     style={{ cursor: 'pointer' }}
                   />
-                  Yêu cầu Ban tổ chức duyệt khi đăng ký
+                  Require organizer approval for registration
                 </label>
               </div>
 
@@ -1767,7 +1774,7 @@ export const AdminSetupPage: React.FC = () => {
                     onChange={(e) => setSettingsScaleScores(e.target.checked)}
                     style={{ cursor: 'pointer' }}
                   />
-                  Chuẩn hóa điểm số (Scale scores về tối đa 100 điểm)
+                  Normalize scores to a 100-point scale
                 </label>
               </div>
 
@@ -1777,7 +1784,7 @@ export const AdminSetupPage: React.FC = () => {
                 style={{ marginTop: '0.5rem', padding: '0.6rem 1.25rem', borderRadius: '8px', fontSize: '0.9rem', alignSelf: 'flex-start' }}
                 disabled={updateContestMutation.isPending}
               >
-                {updateContestMutation.isPending ? 'Đang lưu cấu hình...' : 'Lưu cài đặt'}
+                {updateContestMutation.isPending ? 'Saving settings...' : 'Save Settings'}
               </button>
             </form>
           </div>
@@ -1785,10 +1792,10 @@ export const AdminSetupPage: React.FC = () => {
           {/* Danger Zone Panel */}
           <div style={{ backgroundColor: '#fff5f5', borderRadius: '12px', border: '1px solid #fee2e2', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <h3 style={{ color: '#dc2626', fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-              <AlertTriangle size={20} /> Vùng nguy hiểm (Danger Zone)
+              <AlertTriangle size={20} /> Danger Zone
             </h3>
             <p style={{ fontSize: '0.85rem', color: '#7f1d1d', margin: 0, lineHeight: 1.4 }}>
-              Khi xóa cuộc thi, toàn bộ dữ liệu bao gồm các giai đoạn (phases), bài tập (tasks), mã nguồn nộp chấm, danh sách đăng ký và các cuộc hội thoại hỗ trợ sẽ bị xóa vĩnh viễn khỏi hệ thống. Thao tác này không thể khôi phục.
+              Deleting this contest permanently removes phases, tasks, submissions, registrations, and support conversations. This action cannot be undone.
             </p>
             <button
               type="button"
@@ -1815,7 +1822,7 @@ export const AdminSetupPage: React.FC = () => {
               }}
               disabled={deleteContestMutation.isPending}
             >
-              {deleteContestMutation.isPending ? 'Đang xóa cuộc thi...' : 'Xóa cuộc thi vĩnh viễn'}
+              {deleteContestMutation.isPending ? 'Deleting contest...' : 'Permanently Delete Contest'}
             </button>
           </div>
         </div>
@@ -1826,10 +1833,10 @@ export const AdminSetupPage: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1.2fr', gap: '1.5rem', alignItems: 'start' }}>
           {/* Announcements list */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.25rem', marginTop: 0 }}>Danh sách thông báo đã đăng</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.25rem', marginTop: 0 }}>Posted Announcements</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {announcements.length === 0 ? (
-                <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Chưa có thông báo nào được đăng.</p>
+                <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>No announcements have been posted yet.</p>
               ) : (
                 [...announcements]
                   .sort((a, b) => {
@@ -1843,7 +1850,7 @@ export const AdminSetupPage: React.FC = () => {
                       style={{
                         padding: '1.25rem',
                         borderRadius: '8px',
-                        border: ann.is_pinned ? '1px solid #3b82f6' : '1px solid #e2e8f0',
+                        border: ann.is_pinned ? '1px solid hsl(var(--primary))' : '1px solid #e2e8f0',
                         backgroundColor: ann.is_pinned ? '#f0f7ff' : '#ffffff',
                         boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
                         position: 'relative',
@@ -1853,14 +1860,14 @@ export const AdminSetupPage: React.FC = () => {
                         <div>
                           <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                             {ann.is_pinned && (
-                              <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', backgroundColor: '#3b82f6', color: '#ffffff', borderRadius: '4px', fontWeight: 700 }}>
-                                GHIM
+                              <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.35rem', backgroundColor: 'hsl(var(--primary))', color: '#ffffff', borderRadius: '4px', fontWeight: 700, display: 'inline-flex', alignItems: 'center' }} title="Pinned">
+                                <Pin size={12} fill="currentColor" />
                               </span>
                             )}
                             {ann.title}
                           </span>
                           <span style={{ fontFamily: 'var(--font-mono)', color: '#64748b', fontSize: '0.7rem', display: 'block', marginTop: '0.2rem' }}>
-                            ID: {ann.id} | Đăng lúc: {new Date(ann.created_at).toLocaleString()}
+                            ID: {ann.id} | Posted at: {new Date(ann.created_at).toLocaleString()}
                           </span>
                         </div>
                         <div style={{ display: 'flex', gap: '0.35rem' }}>
@@ -1874,7 +1881,7 @@ export const AdminSetupPage: React.FC = () => {
                             className="btn btn-secondary"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', borderRadius: '4px' }}
                           >
-                            Sửa
+                            Edit
                           </button>
                           <button
                             onClick={() => {
@@ -1885,7 +1892,7 @@ export const AdminSetupPage: React.FC = () => {
                             className="btn btn-danger"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', borderRadius: '4px' }}
                           >
-                            Xóa
+                            Delete
                           </button>
                         </div>
                       </div>
@@ -1901,7 +1908,7 @@ export const AdminSetupPage: React.FC = () => {
           {/* Form Create/Edit */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.25rem', marginTop: 0 }}>
-              {editingAnnId ? 'Cập nhật thông báo' : 'Tạo thông báo mới'}
+              {editingAnnId ? 'Update Announcement' : 'Create New Announcement'}
             </h3>
             {annError && <div className="alert alert-danger" style={{ fontSize: '0.8rem', padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem' }}>{annError}</div>}
             {annSuccess && <div className="alert alert-success" style={{ fontSize: '0.8rem', padding: '0.75rem', borderRadius: '6px', marginBottom: '1rem' }}>{annSuccess}</div>}
@@ -1928,25 +1935,25 @@ export const AdminSetupPage: React.FC = () => {
               }
             }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Tiêu đề *</label>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Title *</label>
                 <input
                   type="text"
                   className="form-input"
                   style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
                   value={annTitle}
                   onChange={(e) => setAnnTitle(e.target.value)}
-                  placeholder="Tiêu đề thông báo..."
+                  placeholder="Announcement title..."
                   required
                 />
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Nội dung thông báo *</label>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Announcement Content *</label>
                 <textarea
                   className="form-input"
                   value={annContent}
                   onChange={(e) => setAnnContent(e.target.value)}
-                  placeholder="Hỗ trợ Markdown hoặc chữ thường..."
+                  placeholder="Markdown or plain text supported..."
                   required
                   style={{ height: '150px', resize: 'vertical', padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
                 />
@@ -1960,7 +1967,7 @@ export const AdminSetupPage: React.FC = () => {
                   id="ann_is_pinned"
                   style={{ cursor: 'pointer' }}
                 />
-                <label htmlFor="ann_is_pinned" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>Ghim thông báo lên trên đầu</label>
+                <label htmlFor="ann_is_pinned" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>Pin announcement to top</label>
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1970,7 +1977,7 @@ export const AdminSetupPage: React.FC = () => {
                   style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', fontSize: '0.85rem' }}
                   disabled={createAnnouncementMutation.isPending || updateAnnouncementMutation.isPending}
                 >
-                  {editingAnnId ? 'Cập nhật' : 'Đăng thông báo'}
+                  {editingAnnId ? 'Update' : 'Post Announcement'}
                 </button>
                 {editingAnnId && (
                   <button
@@ -1984,7 +1991,7 @@ export const AdminSetupPage: React.FC = () => {
                     className="btn btn-secondary"
                     style={{ padding: '0.5rem', borderRadius: '8px', fontSize: '0.85rem' }}
                   >
-                    Hủy
+                    Cancel
                   </button>
                 )}
               </div>
@@ -1996,18 +2003,18 @@ export const AdminSetupPage: React.FC = () => {
       {subTab === 'tickets' && (
         <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Trung tâm hỗ trợ (Tickets)</h3>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Support Center (Tickets)</h3>
             
             {/* Filter by status */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>Lọc trạng thái:</label>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>Filter status:</label>
               <select
                 className="form-input"
                 style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', width: '150px', borderRadius: '6px', height: 'auto' }}
                 value={ticketFilterStatus}
                 onChange={(e) => setTicketFilterStatus(e.target.value)}
               >
-                <option value="">Tất cả Tickets</option>
+                <option value="">All Tickets</option>
                 <option value="open">Open</option>
                 <option value="in_progress">In Progress</option>
                 <option value="resolved">Resolved</option>
@@ -2019,19 +2026,19 @@ export const AdminSetupPage: React.FC = () => {
           <div style={{ overflowX: 'auto' }}>
             {tickets.length === 0 ? (
               <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b' }}>
-                Không tìm thấy yêu cầu hỗ trợ nào.
+                No support requests found.
               </div>
             ) : (
               <table className="oj-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Thời gian gửi</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phân loại & Độ ưu tiên</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Đội thi ID</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Chủ đề & Nội dung</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bài nộp liên kết</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Trạng thái xử lý</th>
-                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '180px' }}>Phân công & Phê duyệt</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Submitted At</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Category & Priority</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Team ID</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subject & Content</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Linked Submission</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Processing Status</th>
+                    <th style={{ padding: '0.85rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '180px' }}>Assignment & Resolution</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2123,7 +2130,7 @@ export const AdminSetupPage: React.FC = () => {
                           {/* Assignment status */}
                           <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                             <span style={{ color: '#64748b' }}>
-                              {ticket.assigned_to ? `Phân công: ${ticket.assigned_to}` : 'Chưa phân công'}
+                              {ticket.assigned_to ? `Assigned: ${ticket.assigned_to}` : 'Unassigned'}
                             </span>
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
                               <button
@@ -2135,7 +2142,7 @@ export const AdminSetupPage: React.FC = () => {
                                 style={{ padding: '0.15rem 0.3rem', fontSize: '0.7rem', flex: 1, borderRadius: '4px' }}
                                 disabled={updateTicketMutation.isPending || ticket.assigned_to === 'Jury Staff'}
                               >
-                                Nhận việc
+                                Take Ticket
                               </button>
                               {ticket.assigned_to && (
                                 <button
@@ -2147,7 +2154,7 @@ export const AdminSetupPage: React.FC = () => {
                                   style={{ padding: '0.15rem 0.3rem', fontSize: '0.7rem', color: '#ef4444', borderRadius: '4px' }}
                                   disabled={updateTicketMutation.isPending}
                                 >
-                                  Hủy
+                                  Cancel
                                 </button>
                               )}
                             </div>
@@ -2160,7 +2167,7 @@ export const AdminSetupPage: React.FC = () => {
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', width: '100%', borderRadius: '6px', justifyContent: 'center' }}
                               disabled={resolveTicketMutation.isPending}
                             >
-                              Giải quyết xong
+                              Resolve
                             </button>
                           )}
                         </div>
@@ -2179,35 +2186,37 @@ export const AdminSetupPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Unified Contest Phases Management Panel */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.35rem', marginTop: 0 }}>Quản lý các giai đoạn cuộc thi (Phases)</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.35rem', marginTop: 0 }}>Manage Contest Phases</h3>
             <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.25rem', marginTop: 0, lineHeight: 1.4 }}>
-              Cài đặt các Phase chạy tự động (phân chia mốc thời gian, bộ test công khai/bí mật, giới hạn nộp bài và chế độ hiển thị bảng xếp hạng).
+              Configure automated phases, timelines, public/private test sets, submission limits, and leaderboard display.
             </p>
             
             <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
               <table className="oj-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mã Phase</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tên giai đoạn</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '80px' }}>Thứ tự</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lịch trình mở - đóng</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Script chấm</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '80px' }}>Giới hạn</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Chế độ nộp</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '110px' }}>Hiện điểm</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '120px', textAlign: 'right' }}>Thao tác</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase Key</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase Name</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '80px' }}>Order</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Open - Close Schedule</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Judge Script</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '80px' }}>Limit</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Submission Mode</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '110px' }}>Show Scores</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em', width: '120px', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {phaseDefs.length === 0 ? (
                     <tr>
                       <td colSpan={9} style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
-                        Chưa có phase nào được định nghĩa. Hãy nhấn nút tự động thêm các Phase mẫu phía dưới.
+                        No phases have been defined. Use the button below to add missing predefined phases.
                       </td>
                     </tr>
                   ) : (
-                    phaseDefs.map(def => {
+                    [...phaseDefs]
+                      .sort((a, b) => (PHASE_KEY_ORDER[a.key] ?? a.sort_order) - (PHASE_KEY_ORDER[b.key] ?? b.sort_order))
+                      .map(def => {
                       const repPhase = getRepresentativePhase(def.id);
                       const openTime = repPhase?.open_time;
                       const closeTime = repPhase?.close_time;
@@ -2235,20 +2244,20 @@ export const AdminSetupPage: React.FC = () => {
                               </span>
                             ) : (
                               <span style={{ display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#fef3c7', color: '#b45309' }}>
-                                Chưa cài lịch
+                                No schedule set
                               </span>
                             )}
                           </td>
                           <td style={{ padding: '0.85rem 1rem', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#475569' }}>{repPhase?.judge_key || '-'}</td>
-                          <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{repPhase?.submission_limit !== null && repPhase?.submission_limit !== undefined ? `${repPhase.submission_limit} lần` : 'Không giới hạn'}</td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{repPhase?.submission_limit !== null && repPhase?.submission_limit !== undefined ? `${repPhase.submission_limit} times` : 'Unlimited'}</td>
                           <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>
                             {repPhase?.leaderboard_mode ? (
-                              repPhase.leaderboard_mode === 'best' ? 'Lấy điểm cao nhất' : 'Lấy bài nộp cuối'
+                              repPhase.leaderboard_mode === 'best' ? 'Best score' : 'Latest submission'
                             ) : (
                               '-'
                             )}
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{repPhase ? (repPhase.display_scores ? 'Có' : 'Không') : '-'}</td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{repPhase ? (repPhase.display_scores ? 'Yes' : 'No') : '-'}</td>
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
                               <button
@@ -2276,7 +2285,7 @@ export const AdminSetupPage: React.FC = () => {
                                 className="btn btn-secondary"
                                 style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', borderRadius: '4px' }}
                               >
-                                Sửa
+                                Edit
                               </button>
                               <button
                                 type="button"
@@ -2293,7 +2302,7 @@ export const AdminSetupPage: React.FC = () => {
                                 className="btn btn-danger"
                                 style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', borderRadius: '4px' }}
                               >
-                                Xóa
+                                Delete
                               </button>
                             </div>
                           </td>
@@ -2309,7 +2318,7 @@ export const AdminSetupPage: React.FC = () => {
               <button
                 type="button"
                 onClick={async () => {
-                  const availableKeys: ('public_test' | 'private_test' | 'final_public' | 'final_private')[] = ['public_test', 'private_test', 'final_public', 'final_private'];
+                  const availableKeys = PHASE_KEYS_IN_DISPLAY_ORDER;
                   const existingKeys = phaseDefs.map(d => d.key);
                   const missingKeys = availableKeys.filter(k => !existingKeys.includes(k));
                   if (missingKeys.length === 0) {
@@ -2322,7 +2331,7 @@ export const AdminSetupPage: React.FC = () => {
                     await api.createPhaseDef(contestId!, {
                       key: keyToCreate,
                       title: titleToCreate,
-                      sort_order: phaseDefs.length + 1
+                      sort_order: PHASE_KEY_ORDER[keyToCreate]
                     });
                     queryClient.invalidateQueries({ queryKey: ['phaseDefs', contestId] });
                   } catch (err: any) {
@@ -2332,7 +2341,7 @@ export const AdminSetupPage: React.FC = () => {
                 className="btn btn-secondary flex items-center gap-1"
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '8px' }}
               >
-                <Plus size={12} /> Tự động khởi tạo các Phase mẫu còn thiếu
+                <Plus size={12} /> Add Missing Predefined Phases
               </button>
             </div>
           </div>
@@ -2369,7 +2378,7 @@ export const AdminSetupPage: React.FC = () => {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
-                    Cấu hình mốc thời gian & chế độ chấm
+                    Timeline & Judging Configuration
                   </h3>
                   <button
                     type="button"
@@ -2379,14 +2388,14 @@ export const AdminSetupPage: React.FC = () => {
                     className="btn btn-secondary"
                     style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
                   >
-                    Đóng
+                    Close
                   </button>
                 </div>
 
                 <form onSubmit={handleSaveGlobalPhase} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Tên giai đoạn *</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Phase Name *</label>
                       <input
                         type="text"
                         className="form-input"
@@ -2398,7 +2407,7 @@ export const AdminSetupPage: React.FC = () => {
                     </div>
 
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Thứ tự sắp xếp *</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Sort Order *</label>
                       <input
                         type="number"
                         className="form-input"
@@ -2412,7 +2421,7 @@ export const AdminSetupPage: React.FC = () => {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Thời gian mở Phase *</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Phase Open Time *</label>
                       <input
                         type="datetime-local"
                         className="form-input"
@@ -2424,7 +2433,7 @@ export const AdminSetupPage: React.FC = () => {
                     </div>
 
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Thời gian đóng Phase *</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Phase Close Time *</label>
                       <input
                         type="datetime-local"
                         className="form-input"
@@ -2438,7 +2447,7 @@ export const AdminSetupPage: React.FC = () => {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Key file chấm bài (Jury script) *</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Judge file key *</label>
                       <input
                         type="text"
                         className="form-input"
@@ -2451,29 +2460,29 @@ export const AdminSetupPage: React.FC = () => {
                     </div>
 
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Giới hạn lượt nộp bài</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Submission Limit</label>
                       <input
                         type="number"
                         className="form-input"
                         style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
                         value={editingPhaseSubmissionLimit}
                         onChange={(e) => setEditingPhaseSubmissionLimit(e.target.value)}
-                        placeholder="Để trống: không giới hạn"
+                        placeholder="Leave blank for unlimited"
                       />
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem', alignItems: 'center' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Chế độ lấy điểm xếp hạng</label>
+                      <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Leaderboard Scoring Mode</label>
                       <select
                         className="form-input"
                         style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', height: 'auto' }}
                         value={editingPhaseLeaderboardMode}
                         onChange={(e) => setEditingPhaseLeaderboardMode(e.target.value as any)}
                       >
-                        <option value="best">Lấy điểm cao nhất (Best score)</option>
-                        <option value="latest">Lấy điểm bài nộp cuối (Latest score)</option>
+                        <option value="best">Best score (Best score)</option>
+                        <option value="latest">Latest score</option>
                       </select>
                     </div>
 
@@ -2485,7 +2494,7 @@ export const AdminSetupPage: React.FC = () => {
                         id="modal_display_scores"
                         style={{ cursor: 'pointer' }}
                       />
-                      <label htmlFor="modal_display_scores" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>Hiển thị điểm lên bảng xếp hạng</label>
+                      <label htmlFor="modal_display_scores" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>Show scores on leaderboard</label>
                     </div>
                   </div>
 
@@ -2498,7 +2507,7 @@ export const AdminSetupPage: React.FC = () => {
                       className="btn btn-secondary"
                       style={{ padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem' }}
                     >
-                      Hủy bỏ
+                      Cancel
                     </button>
                     <button
                       type="submit"
@@ -2506,7 +2515,7 @@ export const AdminSetupPage: React.FC = () => {
                       style={{ padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem' }}
                       disabled={globalSaveLoading}
                     >
-                      {globalSaveLoading ? 'Đang lưu cấu hình...' : 'Lưu & Đồng bộ (Sync)'}
+                      {globalSaveLoading ? 'Saving settings...' : 'Save & Sync'}
                     </button>
                   </div>
                 </form>
