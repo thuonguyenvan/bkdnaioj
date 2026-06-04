@@ -20,9 +20,11 @@ func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 	// Supabase pooler (transaction mode, port 6543) does not support prepared stmts.
-	// Detect by checking if port is 6543 or host contains "pooler".
+	// SimpleProtocol sends all params as text strings — PostgreSQL handles casting
+	// (e.g. []byte → text → jsonb). More compatible than QueryExecModeExec which
+	// sends []byte as bytea, breaking JSONB columns.
 	if strings.Contains(dsn, "pooler") || strings.Contains(dsn, ":6543") {
-		cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+		cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	}
 
 	cfg.MaxConns = 20
