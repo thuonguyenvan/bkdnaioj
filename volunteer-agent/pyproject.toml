@@ -24,6 +24,10 @@ gpu = ["pynvml>=11.0"]
 [project.scripts]
 olpai-volunteer = "app.cli:app"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
