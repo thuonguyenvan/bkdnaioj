@@ -71,6 +71,7 @@ type Querier interface {
 	GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error)
 	GetEvaluationSetByID(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
 	GetEvaluationSetByTaskAndKey(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
+	GetGlobalPhaseRanking(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error)
 	GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error)
 	GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error)
 	// ── Incremental leaderboard queries (Phase 04) ──────────────────────────────
@@ -124,6 +125,7 @@ type Querier interface {
 	MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
 	MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Submission, error)
 	RecomputeContestPhaseLeaderboard(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
+	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error
 	RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
 	RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error

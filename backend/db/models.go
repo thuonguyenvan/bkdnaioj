@@ -1219,6 +1219,18 @@ type EvaluationSetAsset struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type GlobalPhaseRanking struct {
+	PhaseKey    ContestPhaseKey    `json:"phase_key"`
+	UserID      uuid.UUID          `json:"user_id"`
+	Rank        *int32             `json:"rank"`
+	DisplayName string             `json:"display_name"`
+	UserEmail   string             `json:"user_email"`
+	TotalScore  string             `json:"total_score"`
+	TaskCount   int32              `json:"task_count"`
+	Details     []byte             `json:"details"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type JobExecutionLog struct {
 	ID                      uuid.UUID          `json:"id"`
 	SubmissionID            uuid.UUID          `json:"submission_id"`

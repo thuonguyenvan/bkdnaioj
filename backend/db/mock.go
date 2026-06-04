@@ -11,27 +11,27 @@ import (
 // Each method delegates to its corresponding Func field if non-nil,
 // otherwise returns zero value + nil error.
 type MockQuerier struct {
-	ApproveVolunteerWorkerFunc      func(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
-	CountWorkerActiveClaimsFunc     func(ctx context.Context, workerID uuid.UUID) (int64, error)
-	CreateVolunteerWorkerFunc       func(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
-	CreateWorkerClaimFunc           func(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
-	DeactivateVolunteerWorkerFunc   func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	DeleteVolunteerWorkerFunc       func(ctx context.Context, id uuid.UUID) error
-	DeleteWorkerClaimFunc           func(ctx context.Context, arg DeleteWorkerClaimParams) error
-	GetSubmissionForWorkerFunc      func(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error)
-	GetVolunteerWorkerByIDFunc      func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	GetVolunteerWorkerByTokenFunc   func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	GetWorkerClaimBySubmissionFunc  func(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error)
-	IncrementWorkerCompletedFunc    func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	IncrementWorkerFailedFunc       func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
-	IncrementWorkerFailedByIDFunc   func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	ListStaleWorkerClaims2Func      func(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
-	ListVolunteerWorkersFunc        func(ctx context.Context) ([]VolunteerWorker, error)
-	MarkSubmissionDoneFunc          func(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
-	MarkSubmissionFailedFunc        func(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
-	MarkSubmissionRunningFunc       func(ctx context.Context, id uuid.UUID) (Submission, error)
-	RejectVolunteerWorkerFunc       func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
-	UpdateWorkerHeartbeatFunc       func(ctx context.Context, arg UpdateWorkerHeartbeatParams) (VolunteerWorker, error)
+	ApproveVolunteerWorkerFunc            func(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
+	CountWorkerActiveClaimsFunc           func(ctx context.Context, workerID uuid.UUID) (int64, error)
+	CreateVolunteerWorkerFunc             func(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
+	CreateWorkerClaimFunc                 func(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
+	DeactivateVolunteerWorkerFunc         func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	DeleteVolunteerWorkerFunc             func(ctx context.Context, id uuid.UUID) error
+	DeleteWorkerClaimFunc                 func(ctx context.Context, arg DeleteWorkerClaimParams) error
+	GetSubmissionForWorkerFunc            func(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error)
+	GetVolunteerWorkerByIDFunc            func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	GetVolunteerWorkerByTokenFunc         func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	GetWorkerClaimBySubmissionFunc        func(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error)
+	IncrementWorkerCompletedFunc          func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	IncrementWorkerFailedFunc             func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
+	IncrementWorkerFailedByIDFunc         func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	ListStaleWorkerClaims2Func            func(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
+	ListVolunteerWorkersFunc              func(ctx context.Context) ([]VolunteerWorker, error)
+	MarkSubmissionDoneFunc                func(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
+	MarkSubmissionFailedFunc              func(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
+	MarkSubmissionRunningFunc             func(ctx context.Context, id uuid.UUID) (Submission, error)
+	RejectVolunteerWorkerFunc             func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	UpdateWorkerHeartbeatFunc             func(ctx context.Context, arg UpdateWorkerHeartbeatParams) (VolunteerWorker, error)
 	AddEntryMemberFunc                    func(ctx context.Context, arg AddEntryMemberParams) error
 	AddTeamMemberFunc                     func(ctx context.Context, arg AddTeamMemberParams) error
 	AnswerClarificationFunc               func(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
@@ -68,6 +68,7 @@ type MockQuerier struct {
 	GetContestBySlugFunc                  func(ctx context.Context, slug string) (Contest, error)
 	GetContestEntryByIDFunc               func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
 	GetContestPhaseLeaderboardFunc        func(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
+	GetGlobalPhaseRankingFunc             func(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error)
 	GetEvaluationSetByIDFunc              func(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
 	GetEvaluationSetByTaskAndKeyFunc      func(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
 	GetPhaseByIDFunc                      func(ctx context.Context, id uuid.UUID) (Phase, error)
@@ -123,6 +124,7 @@ type MockQuerier struct {
 	UpsertTaskPhaseLeaderboardFunc        func(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
 	RecomputeTaskPhaseLeaderboardFunc     func(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
 	RecomputeContestPhaseLeaderboardFunc  func(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
+	RecomputeGlobalPhaseRankingFunc       func(ctx context.Context, phaseKey ContestPhaseKey) error
 }
 
 var _ Querier = (*MockQuerier)(nil)
@@ -375,6 +377,13 @@ func (m *MockQuerier) GetContestEntryByID(ctx context.Context, id uuid.UUID) (Co
 func (m *MockQuerier) GetContestPhaseLeaderboard(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error) {
 	if m.GetContestPhaseLeaderboardFunc != nil {
 		return m.GetContestPhaseLeaderboardFunc(ctx, arg)
+	}
+	return nil, nil
+}
+
+func (m *MockQuerier) GetGlobalPhaseRanking(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error) {
+	if m.GetGlobalPhaseRankingFunc != nil {
+		return m.GetGlobalPhaseRankingFunc(ctx, arg)
 	}
 	return nil, nil
 }
@@ -764,6 +773,13 @@ func (m *MockQuerier) RecomputeContestPhaseLeaderboard(ctx context.Context, arg 
 	return nil
 }
 
+func (m *MockQuerier) RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error {
+	if m.RecomputeGlobalPhaseRankingFunc != nil {
+		return m.RecomputeGlobalPhaseRankingFunc(ctx, phaseKey)
+	}
+	return nil
+}
+
 func (m *MockQuerier) ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error) {
 	if m.ApproveVolunteerWorkerFunc != nil {
 		return m.ApproveVolunteerWorkerFunc(ctx, arg)
@@ -868,7 +884,6 @@ func (m *MockQuerier) GetVolunteerWorkerByToken(ctx context.Context, apiToken *s
 	}
 	return VolunteerWorker{}, nil
 }
-
 
 func (m *MockQuerier) ListVolunteerWorkers(ctx context.Context) ([]VolunteerWorker, error) {
 	if m.ListVolunteerWorkersFunc != nil {
