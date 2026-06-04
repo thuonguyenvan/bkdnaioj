@@ -48,9 +48,8 @@ def setup() -> None:
 
     s = cfg.load()
 
-    # 1. API URL (pre-configured, allow override)
-    api_url = _ask("Platform URL", s.api_url)
-    s.api_url = api_url.rstrip("/")
+    # 1. API URL — fixed, no prompt
+    s.api_url = "https://api.bkdnaioj.app"
 
     # 2. Worker name
     worker_name = _ask("Display name for this machine", s.worker_name)

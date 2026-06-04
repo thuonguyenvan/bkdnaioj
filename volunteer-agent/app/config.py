@@ -52,6 +52,11 @@ def load() -> Settings:
             setattr(s, k, attr_type(v))
 
     s.api_url = s.api_url.rstrip("/")
+
+    # Migrate: if config has old localhost default, reset to production URL
+    if s.api_url in ("http://localhost:8080", "http://localhost:8080/"):
+        s.api_url = "https://api.bkdnaioj.app"
+
     return s
 
 
