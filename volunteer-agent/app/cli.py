@@ -205,31 +205,87 @@ def doctor() -> None:
 # ── benchmark ─────────────────────────────────────────────────────────────────
 
 def _benchmark() -> dict:
-    """Run lightweight local benchmarks, return results dict."""
-    import math
-    _echo("  CPU benchmark...")
-    t = time.perf_counter()
-    _ = sum(math.sqrt(i) for i in range(500_000))
-    cpu_ms = round((time.perf_counter() - t) * 1000, 1)
-    _echo(f"    CPU score: {cpu_ms}ms (lower = faster)")
+    """Run local benchmarks, return throughput-based results (ops/sec, bytes/sec)."""
+    import math, tempfile, os, zipfile, io, subprocess
+    results: dict = {}
 
+    # CPU: ops/sec via sqrt loop
+    _echo("  CPU benchmark...")
+    N = 500_000
+    t = time.perf_counter()
+    _ = sum(math.sqrt(i) for i in range(N))
+    elapsed = time.perf_counter() - t
+    results["cpu_ops_per_sec"] = int(N / elapsed)
+    results["cpu_sqrt500k_ms"] = round(elapsed * 1000, 1)  # backward compat
+    _echo(f"    CPU: {results['cpu_ops_per_sec']:,} ops/sec")
+
+    # Memory bandwidth
+    _echo("  Memory bandwidth...")
+    try:
+        import numpy as np
+        arr = np.random.rand(10_000_000)  # 80 MB float64
+        t = time.perf_counter()
+        _ = arr.copy()
+        elapsed = time.perf_counter() - t
+        results["memory_bandwidth_bytes_per_sec"] = int(arr.nbytes / elapsed)
+        _echo(f"    Memory: {results['memory_bandwidth_bytes_per_sec'] // 1024 // 1024} MB/s")
+    except ImportError:
+        results["memory_bandwidth_bytes_per_sec"] = 0
+        _echo("    Memory: skipped (numpy not installed)")
+
+    # Disk throughput
     _echo("  Disk benchmark...")
-    import tempfile, os
+    data = b"x" * (10 * 1024 * 1024)  # 10 MB
     with tempfile.NamedTemporaryFile(delete=False) as f:
         fname = f.name
-        data = b"x" * (10 * 1024 * 1024)  # 10MB
         t = time.perf_counter()
         f.write(data)
         f.flush()
-        write_ms = round((time.perf_counter() - t) * 1000, 1)
+        os.fsync(f.fileno())
+        elapsed = time.perf_counter() - t
+        results["disk_write_bytes_per_sec"] = int(len(data) / elapsed)
     t = time.perf_counter()
     with open(fname, "rb") as f:
         _ = f.read()
-    read_ms = round((time.perf_counter() - t) * 1000, 1)
+    results["disk_read_bytes_per_sec"] = int(len(data) / (time.perf_counter() - t))
     os.unlink(fname)
-    _echo(f"    Disk write: {write_ms}ms  read: {read_ms}ms (10MB)")
+    _echo(f"    Disk write: {results['disk_write_bytes_per_sec'] // 1024 // 1024} MB/s  "
+          f"read: {results['disk_read_bytes_per_sec'] // 1024 // 1024} MB/s")
 
-    return {"cpu_sqrt500k_ms": cpu_ms, "disk_write_10mb_ms": write_ms, "disk_read_10mb_ms": read_ms}
+    # Unzip throughput (use random data — incompressible = realistic)
+    _echo("  Unzip benchmark...")
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data.bin", os.urandom(5 * 1024 * 1024))  # 5 MB random
+    zip_bytes = zip_buf.getvalue()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as zf:
+        zfname = zf.name
+        zf.write(zip_bytes)
+    t = time.perf_counter()
+    with zipfile.ZipFile(zfname) as zf:
+        zf.extractall(tempfile.mkdtemp())
+    results["unzip_bytes_per_sec"] = int(len(zip_bytes) / (time.perf_counter() - t))
+    os.unlink(zfname)
+    _echo(f"    Unzip: {results['unzip_bytes_per_sec'] // 1024} KB/s")
+
+    # Docker startup (2 runs, use 2nd — image cached)
+    _echo("  Docker startup benchmark...")
+    try:
+        subprocess.run(["docker", "run", "--rm", "hello-world"],
+                       capture_output=True, timeout=60)  # warm-up / pull
+        t = time.perf_counter()
+        r = subprocess.run(["docker", "run", "--rm", "hello-world"],
+                           capture_output=True, timeout=30)
+        results["docker_startup_seconds"] = round(time.perf_counter() - t, 2)
+        results["sandbox_passed"] = r.returncode == 0
+        _echo(f"    Docker startup: {results['docker_startup_seconds']}s  "
+              f"sandbox_passed={results['sandbox_passed']}")
+    except Exception as e:
+        results["docker_startup_seconds"] = -1.0
+        results["sandbox_passed"] = False
+        _echo(f"    Docker: unavailable ({e})")
+
+    return results
 
 
 @app.command()
