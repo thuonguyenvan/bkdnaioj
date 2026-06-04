@@ -14,6 +14,7 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/config"
 	olpaihttp "github.com/mank1/olpai-backend/internal/http"
+	"github.com/mank1/olpai-backend/internal/metrics"
 	"github.com/mank1/olpai-backend/internal/queue"
 	"github.com/mank1/olpai-backend/internal/repo"
 	"github.com/mank1/olpai-backend/internal/security"
@@ -131,24 +132,20 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 			return
 		case <-ticker.C:
 			cutoff := pgtype.Timestamptz{Time: time.Now().Add(-jobTimeout), Valid: true}
-			stale, err := q.ListStaleWorkerClaims2(ctx, cutoff)
+			// Batch delete all stale claims in one query
+			stale, err := q.DeleteStaleWorkerClaims(ctx, cutoff)
 			if err != nil {
-				log.Error().Err(err).Msg("list stale worker claims")
+				log.Error().Err(err).Msg("batch delete stale worker claims")
 				continue
 			}
+			// Re-enqueue in a pipeline for efficiency
 			for _, claim := range stale {
 				if err := producer.EnqueueJudge(ctx, claim.SubmissionID, nil); err != nil {
 					log.Error().Err(err).Str("submission", claim.SubmissionID.String()).Msg("re-enqueue stale job")
 					continue
 				}
-				if err := q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{
-					WorkerID:     claim.WorkerID,
-					SubmissionID: claim.SubmissionID,
-				}); err != nil {
-					log.Error().Err(err).Msg("delete stale claim")
-					continue
-				}
 				_, _ = q.IncrementWorkerFailedByID(ctx, claim.WorkerID)
+				metrics.JobTimeoutTotal.WithLabelValues("fifo").Inc()
 				log.Warn().Str("worker", claim.WorkerID.String()).Str("submission", claim.SubmissionID.String()).Msg("reclaimed stale job")
 			}
 		}

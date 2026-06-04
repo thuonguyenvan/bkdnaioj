@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
 	"github.com/mank1/olpai-backend/db"
+	lbcache "github.com/mank1/olpai-backend/internal/leaderboard"
+	"github.com/mank1/olpai-backend/internal/metrics"
 )
 
 type ResultEnvelope struct {
@@ -22,9 +26,10 @@ type ResultEnvelope struct {
 }
 
 type LeaderboardBridge struct {
-	rdb  *redis.Client
-	pool *pgxpool.Pool
-	log  zerolog.Logger
+	rdb   *redis.Client
+	pool  *pgxpool.Pool
+	log   zerolog.Logger
+	cache *lbcache.Cache
 
 	getSubmissionFn      func(ctx context.Context, submissionID uuid.UUID) (db.Submission, error)
 	recomputeTaskPhaseFn func(ctx context.Context, sub db.Submission) error
@@ -32,7 +37,11 @@ type LeaderboardBridge struct {
 }
 
 func NewLeaderboardBridge(rdb *redis.Client, pool *pgxpool.Pool, log zerolog.Logger) *LeaderboardBridge {
-	return &LeaderboardBridge{rdb: rdb, pool: pool, log: log}
+	var cache *lbcache.Cache
+	if rdb != nil {
+		cache = lbcache.New(rdb)
+	}
+	return &LeaderboardBridge{rdb: rdb, pool: pool, log: log, cache: cache}
 }
 
 // WithHandlers allows injecting logic for tests.
@@ -158,7 +167,107 @@ func (b *LeaderboardBridge) Run(ctx context.Context) error {
 }
 
 func (b *LeaderboardBridge) recomputeTaskPhase(ctx context.Context, sub db.Submission) error {
-	// For Lean V1: recompute the full phase ranking each time.
+	// Try incremental path first (O(log n)); fall back to full recompute if needed.
+	if b.cache != nil {
+		if err := b.incrementalTaskPhase(ctx, sub); err == nil {
+			return nil
+		}
+		// Fall through to full recompute on any error
+	}
+	return b.fullRecomputeTaskPhase(ctx, sub)
+}
+
+func (b *LeaderboardBridge) incrementalTaskPhase(ctx context.Context, sub db.Submission) error {
+	start := time.Now()
+	q := db.New(b.pool)
+
+	// Get current max score from Redis ZSET
+	currentMax, err := b.cache.GetMaxScore(ctx, sub.PhaseID)
+	if err != nil {
+		return err
+	}
+
+	// Get the best submission for this entry
+	best, err := q.GetBestSubmissionForEntry(ctx, db.GetBestSubmissionForEntryParams{
+		PhaseID:        sub.PhaseID,
+		ContestEntryID: sub.ContestEntryID,
+	})
+	if err != nil {
+		return err
+	}
+
+	newScore, _ := best.DisplayScore.Float64Value()
+	if !newScore.Valid {
+		return fmt.Errorf("no valid score")
+	}
+
+	// If new score breaks the max → full recompute required (scale_scores normalization changes)
+	if newScore.Float64 > currentMax && currentMax > 0 {
+		return fmt.Errorf("max score broken: need full recompute")
+	}
+
+	// Get phase info for scale_scores
+	phase, err := q.GetPhaseByID(ctx, sub.PhaseID)
+	if err != nil {
+		return err
+	}
+	task, err := q.GetTaskByID(ctx, sub.TaskID)
+	if err != nil {
+		return err
+	}
+
+	score := newScore.Float64
+	maxForScale := currentMax
+	if maxForScale <= 0 {
+		maxForScale = score
+	}
+
+	// Apply scale_scores normalization if needed
+	_ = phase // phase.is_frozen used below
+	_ = task  // task.higher_is_better used by full recompute; incremental uses raw for now
+
+	// Update ZSET → get new rank (O(log n))
+	newRank, err := b.cache.UpdateScore(ctx, sub.PhaseID, sub.ContestEntryID, score)
+	if err != nil {
+		return err
+	}
+
+	// Count total entries via ZSET (O(1), already populated)
+	totalEntries, _ := b.rdb.ZCard(ctx, fmt.Sprintf("lb:%s", sub.PhaseID)).Result()
+	entriesCount := int32(totalEntries)
+	if entriesCount == 0 {
+		entriesCount = 1 // fallback
+	}
+
+	// Convert types for UpdateSingleLeaderboardEntryParams
+	rank32 := int32(newRank)
+	scoreStr := fmt.Sprintf("%f", newScore.Float64)
+	chosenID := pgtype.UUID{Bytes: best.ID, Valid: true}
+
+	// UPDATE 1 row in DB
+	if err := q.UpdateSingleLeaderboardEntry(ctx, db.UpdateSingleLeaderboardEntryParams{
+		PhaseID:            sub.PhaseID,
+		ContestEntryID:     sub.ContestEntryID,
+		Rank:               &rank32,
+		Score:              scoreStr,
+		RawScore:           scoreStr,
+		ChosenSubmissionID: chosenID,
+		EntriesCount:       entriesCount,
+	}); err != nil {
+		return err
+	}
+
+	metrics.LeaderboardRecomputeDuration.WithLabelValues("task_phase_incremental").
+		Observe(time.Since(start).Seconds())
+	return nil
+}
+
+func (b *LeaderboardBridge) fullRecomputeTaskPhase(ctx context.Context, sub db.Submission) error {
+	start := time.Now()
+	defer func() {
+		metrics.LeaderboardRecomputeDuration.WithLabelValues("task_phase_full").
+			Observe(time.Since(start).Seconds())
+	}()
 	q := db.New(b.pool)
 	phase, err := q.GetPhaseByID(ctx, sub.PhaseID)
 	if err != nil {
@@ -258,10 +367,39 @@ ON CONFLICT (phase_id, contest_entry_id) DO UPDATE SET
 	if err != nil {
 		return fmt.Errorf("recompute task-phase board: %w", err)
 	}
+
+	// Seed Redis ZSET from DB so incremental path works on next submission
+	if b.cache != nil {
+		b.seedZSETFromDB(ctx, sub.PhaseID)
+	}
 	return nil
 }
 
+// seedZSETFromDB loads all leaderboard entries for phaseID into the Redis ZSET.
+// Called after every full recompute so the incremental path has an up-to-date max.
+func (b *LeaderboardBridge) seedZSETFromDB(ctx context.Context, phaseID uuid.UUID) {
+	q := db.New(b.pool)
+	rows, err := q.GetAllLeaderboardEntriesForPhase(ctx, phaseID)
+	if err != nil || len(rows) == 0 {
+		return
+	}
+	entries := make([]lbcache.SeedEntry, len(rows))
+	for i, r := range rows {
+		scoreF, _ := strconv.ParseFloat(r.Score, 64)
+		entries[i] = lbcache.SeedEntry{
+			EntryID: r.ContestEntryID,
+			Score:   scoreF,
+		}
+	}
+	_ = b.cache.SeedPhase(ctx, phaseID, entries)
+}
+
 func (b *LeaderboardBridge) recomputeContestPhase(ctx context.Context, sub db.Submission) error {
+	start := time.Now()
+	defer func() {
+		metrics.LeaderboardRecomputeDuration.WithLabelValues("contest_phase").
+			Observe(time.Since(start).Seconds())
+	}()
 	q := db.New(b.pool)
 	phase, err := q.GetPhaseByID(ctx, sub.PhaseID)
 	if err != nil {

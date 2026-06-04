@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/mank1/olpai-backend/internal/metrics"
 )
 
 const (
@@ -43,12 +45,18 @@ func (p *Producer) EnqueueJudge(ctx context.Context, submissionID uuid.UUID, tra
 	if err != nil {
 		return fmt.Errorf("marshal judge envelope: %w", err)
 	}
-	return p.rdb.XAdd(ctx, &redis.XAddArgs{
+	if err := p.rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: StreamJobsJudge,
 		MaxLen: 100_000,
 		Approx: true,
 		Values: map[string]any{"payload": string(payload)},
-	}).Err()
+	}).Err(); err != nil {
+		return err
+	}
+	if n, err := p.rdb.XLen(ctx, StreamJobsJudge).Result(); err == nil {
+		metrics.QueueDepth.WithLabelValues(StreamJobsJudge).Set(float64(n))
+	}
+	return nil
 }
 
 // EnsureConsumerGroup creates the consumer group if it does not exist.
@@ -93,6 +101,15 @@ func (p *Producer) DequeueOne(ctx context.Context) (*JudgeEnvelope, string, erro
 		return nil, "", fmt.Errorf("unmarshal envelope: %w", err)
 	}
 	return &env, msg.ID, nil
+}
+
+// PeekPendingJobs reads up to n pending messages from the stream WITHOUT consuming them.
+// Uses XRANGE which does not affect consumer group state.
+func (p *Producer) PeekPendingJobs(ctx context.Context, n int) ([]redis.XMessage, error) {
+	if p == nil || p.rdb == nil {
+		return nil, nil
+	}
+	return p.rdb.XRangeN(ctx, StreamJobsJudge, "-", "+", int64(n)).Result()
 }
 
 // Ack acknowledges a message as processed.

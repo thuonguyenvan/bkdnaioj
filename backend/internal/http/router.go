@@ -10,9 +10,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/handlers"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/metrics"
 	"github.com/mank1/olpai-backend/internal/queue"
 	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/mank1/olpai-backend/internal/storage"
@@ -30,6 +33,8 @@ type Deps struct {
 
 // NewRouter builds the Echo instance with middlewares and all route groups.
 func NewRouter(d *Deps) *echo.Echo {
+	metrics.Register()
+
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
@@ -45,6 +50,7 @@ func NewRouter(d *Deps) *echo.Echo {
 
 	e.GET("/healthz", healthz(d))
 	e.GET("/readyz", readyz(d))
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	q := db.New(d.Pool)
 	api := e.Group("/api/v1")
@@ -197,6 +203,7 @@ func registerVolunteerWorkers(api *echo.Group, q *db.Queries, jwtMgr *security.J
 	worker := api.Group("/worker", mw.WorkerAuth(q))
 	worker.POST("/heartbeat", h.Heartbeat)
 	worker.GET("/jobs/next", h.NextJob)
+	worker.POST("/jobs/claim-next", h.ClaimNext)
 	worker.POST("/jobs/:id/result", h.SubmitResult)
 
 	// Admin API: requires JWT + admin role

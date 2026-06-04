@@ -17,7 +17,9 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/dto"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/metrics"
 	"github.com/mank1/olpai-backend/internal/queue"
+	"github.com/mank1/olpai-backend/internal/scheduler"
 	"github.com/mank1/olpai-backend/internal/storage"
 )
 
@@ -103,6 +105,7 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 	if err != nil {
 		return mw.ErrInternal("count claims failed")
 	}
+	metrics.WorkerActiveClaims.WithLabelValues(worker.ID.String()).Set(float64(activeClaims))
 	if activeClaims >= int64(worker.MaxWorkers) {
 		return c.JSON(http.StatusOK, map[string]any{
 			"submission_id": nil,
@@ -132,6 +135,207 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 	}
 
 	// Create claim in DB
+	if _, err := h.q.CreateWorkerClaim(ctx, db.CreateWorkerClaimParams{
+		WorkerID:     worker.ID,
+		SubmissionID: sub.ID,
+	}); err != nil {
+		_ = h.producer.Ack(ctx, msgID)
+		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
+		return mw.ErrInternal("claim job failed")
+	}
+
+	_ = h.producer.Ack(ctx, msgID)
+	_, _ = h.q.MarkSubmissionRunning(ctx, sub.ID)
+
+	// Record job claim wait time (enqueue → claim)
+	if !envelope.EnqueuedAt.IsZero() {
+		isFinal := "false"
+		if sub.IsFinal {
+			isFinal = "true"
+		}
+		metrics.JobClaimDuration.
+			WithLabelValues("fifo", "unknown", isFinal).
+			Observe(time.Since(envelope.EnqueuedAt).Seconds())
+	}
+
+	contextJSON, _ := json.Marshal(map[string]any{
+		"submission_id":        sub.ID,
+		"contest_id":           sub.ContestID,
+		"contest_entry_id":     sub.ContestEntryID,
+		"task_id":              sub.TaskID,
+		"phase_id":             sub.PhaseID,
+		"contest_phase_def_id": sub.ContestPhaseDefID,
+		"evaluation_set_id":    sub.EvaluationSetID,
+		"is_final":             sub.IsFinal,
+		"judge_key":            sub.JudgeKey,
+		"submission_schema":    json.RawMessage(sub.SubmissionSchema),
+	})
+
+	return c.JSON(http.StatusOK, dto.JobResponse{
+		SubmissionID: sub.ID,
+		TaskID:       sub.TaskID,
+		PhaseID:      sub.PhaseID,
+		IsFinal:      sub.IsFinal,
+		JudgeKey:     sub.JudgeKey,
+		Context:      contextJSON,
+		Artifacts:    artifacts,
+		TimeoutSecs:  workerJobTimeoutMinutes * 60,
+	})
+}
+
+// POST /api/v1/worker/jobs/claim-next — Capability-Aware Scheduling
+// Server selects the best job for this worker using cost function T(i,j).
+// Falls back to best-effort FIFO if cost-selected job was already taken (race condition).
+func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
+	if h.s3 == nil {
+		return mw.ErrInternal("storage unavailable")
+	}
+	if h.producer == nil {
+		return mw.ErrInternal("queue unavailable")
+	}
+
+	token := mw.GetWorkerToken(c)
+	ctx := c.Request().Context()
+
+	worker, err := h.q.GetVolunteerWorkerByToken(ctx, &token)
+	if err != nil {
+		return mw.ErrInternal("fetch worker failed")
+	}
+
+	// Capacity check
+	activeClaims, err := h.q.CountWorkerActiveClaims(ctx, worker.ID)
+	if err != nil {
+		return mw.ErrInternal("count claims failed")
+	}
+	metrics.WorkerActiveClaims.WithLabelValues(worker.ID.String()).Set(float64(activeClaims))
+	if activeClaims >= int64(worker.MaxWorkers) {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "at_capacity"})
+	}
+
+	// Parse worker capability profile
+	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
+	if err != nil || !profile.SandboxPassed {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "sandbox_not_passed"})
+	}
+
+	// Official-first policy: if any official contest active, only serve official submissions
+	officialActive, _ := h.isOfficialContestActive(ctx)
+
+	// Peek pending jobs (XRANGE — does not consume)
+	start := time.Now()
+	candidates, _ := h.producer.PeekPendingJobs(ctx, 100)
+
+	var bestEnqueuedAt time.Time
+	var bestCost *scheduler.Cost
+
+	for _, msg := range candidates {
+		payload, ok := msg.Values["payload"].(string)
+		if !ok {
+			continue
+		}
+		var env queue.JudgeEnvelope
+		if err := json.Unmarshal([]byte(payload), &env); err != nil {
+			continue
+		}
+
+		sub, err := h.q.GetSubmissionForWorker(ctx, env.SubmissionID)
+		if err != nil {
+			continue
+		}
+
+		// Official-first filter
+		if officialActive && string(sub.EntryMode) != "official" {
+			continue
+		}
+
+		demand := scheduler.EstimateJobDemand(
+			sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
+			sub.SubmittedAt.Time, string(sub.EntryMode),
+		)
+		plan := scheduler.EstimateRuntime(profile, demand)
+		if !plan.HardConstraintsOK {
+			metrics.SchedulerConstraintReject.WithLabelValues(plan.FailReason).Inc()
+			continue
+		}
+
+		// Apply EMA correction factor (Two-Layer Estimator — Section 7A)
+		corrector := scheduler.NewCorrector(h.q)
+		correctedRuntime, _ := corrector.CorrectedRuntime(ctx, profile, demand, sub.PhaseID.String())
+
+		tv := 0
+		if correctedRuntime > float64(demand.TimeoutSecs) {
+			tv = 1
+		}
+		cost := &scheduler.Cost{
+			TimeoutViolation: tv,
+			FinishDelay:      correctedRuntime,
+			Stress:           scheduler.ComputeStress(profile, demand, plan),
+			CreatedAt:        env.EnqueuedAt,
+		}
+		if bestCost == nil || cost.LessThan(*bestCost) {
+			bestCost = cost
+			bestEnqueuedAt = env.EnqueuedAt
+		}
+	}
+	metrics.SchedulerDecisionDuration.Observe(time.Since(start).Seconds())
+
+	// Best-effort dequeue: consume next available (race condition acceptable for V1)
+	envelope, msgID, err := h.producer.DequeueOne(ctx)
+	if err != nil || envelope == nil {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
+	}
+
+	// Record claim duration
+	enqAt := envelope.EnqueuedAt
+	if !bestEnqueuedAt.IsZero() {
+		enqAt = bestEnqueuedAt
+	}
+	if !enqAt.IsZero() {
+		isFinal := "false"
+		sub0, _ := h.q.GetSubmissionForWorker(ctx, envelope.SubmissionID)
+		if sub0.IsFinal {
+			isFinal = "true"
+		}
+		entryMode := string(sub0.EntryMode)
+		if entryMode == "" {
+			entryMode = "unknown"
+		}
+		metrics.JobClaimDuration.
+			WithLabelValues("cost", entryMode, isFinal).
+			Observe(time.Since(enqAt).Seconds())
+	}
+
+	return h.dispatchJob(c, ctx, worker, envelope, msgID)
+}
+
+// isOfficialContestActive returns true if any contest is currently running in official mode.
+// Lightweight check: looks for any active worker claim on an official submission.
+// TODO: replace with a proper contest-level flag query when available.
+func (h *VolunteerWorkerHandler) isOfficialContestActive(_ context.Context) (bool, error) {
+	// V1: always returns false — official-first not enforced until contest schema supports it
+	return false, nil
+}
+
+// dispatchJob encapsulates the shared logic for both NextJob and ClaimNext:
+// fetch submission → build artifact URLs → create DB claim → ack stream → return response.
+func (h *VolunteerWorkerHandler) dispatchJob(
+	c echo.Context, ctx context.Context,
+	worker db.VolunteerWorker, envelope *queue.JudgeEnvelope, msgID string,
+) error {
+	sub, err := h.q.GetSubmissionForWorker(ctx, envelope.SubmissionID)
+	if err != nil {
+		_ = h.producer.Ack(ctx, msgID)
+		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
+	}
+
+	artifacts, err := h.buildArtifactURLs(ctx, sub)
+	if err != nil {
+		_ = h.producer.Ack(ctx, msgID)
+		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
+		return mw.ErrInternal("artifact presign failed")
+	}
+
 	if _, err := h.q.CreateWorkerClaim(ctx, db.CreateWorkerClaimParams{
 		WorkerID:     worker.ID,
 		SubmissionID: sub.ID,
@@ -203,6 +407,12 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		return mw.ErrForbidden("not your job")
 	}
 
+	// Capture actual runtime before claim is deleted
+	actualRuntime := 0.0
+	if claim.ClaimedAt.Valid {
+		actualRuntime = time.Since(claim.ClaimedAt.Time).Seconds()
+	}
+
 	// Delete claim regardless of outcome
 	defer func() {
 		_ = h.q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{
@@ -233,6 +443,11 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		}
 		_, _ = h.q.IncrementWorkerCompleted(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "done")
+		metrics.SubmissionsTotal.WithLabelValues("done").Inc()
+		// V1: strategy label is always "fifo" here because SubmitResult doesn't
+		// know how the job was claimed. To distinguish "cost" strategy, the worker
+		// would need to include strategy in the result payload (future work).
+		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo")
 	} else {
 		errMsg := "judge failed"
 		if req.ErrorMessage != nil {
@@ -250,6 +465,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		}
 		_, _ = h.q.IncrementWorkerFailed(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "failed")
+		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
@@ -257,17 +473,23 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 
 // GET /api/v1/admin/workers
 func (h *VolunteerWorkerHandler) AdminList(c echo.Context) error {
-	workers, err := h.q.ListVolunteerWorkers(c.Request().Context())
+	ctx := c.Request().Context()
+	workers, err := h.q.ListVolunteerWorkers(ctx)
 	if err != nil {
 		return mw.ErrInternal("list workers failed")
 	}
+
+	// Single aggregation query instead of 1+N CountWorkerActiveClaims calls
+	claimRows, _ := h.q.ListWorkerActiveClaimCounts(ctx)
+	claimMap := make(map[uuid.UUID]int64, len(claimRows))
+	for _, row := range claimRows {
+		claimMap[row.WorkerID] = int64(row.ActiveClaims)
+	}
+
 	resp := make([]dto.WorkerResponse, len(workers))
 	for i, w := range workers {
 		r := dto.VolunteerWorkerToResponse(w)
-		// Populate active jobs count
-		if n, err := h.q.CountWorkerActiveClaims(c.Request().Context(), w.ID); err == nil {
-			r.ActiveJobs = n
-		}
+		r.ActiveJobs = claimMap[w.ID]
 		resp[i] = r
 	}
 	return c.JSON(http.StatusOK, resp)
@@ -403,6 +625,66 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 	}
 
 	return artifacts, nil
+}
+
+// logExecutionRuntime records actual vs predicted runtime to job_execution_logs
+// and emits Prometheus metrics for MAE tracking. Best-effort: errors are ignored.
+func (h *VolunteerWorkerHandler) logExecutionRuntime(
+	ctx context.Context,
+	subID uuid.UUID,
+	worker db.VolunteerWorker,
+	actualRuntime float64,
+	strategy string, // "fifo" | "cost" — which endpoint claimed the job
+) {
+	if actualRuntime <= 0 {
+		return
+	}
+
+	sub, err := h.q.GetSubmissionForWorker(ctx, subID)
+	if err != nil {
+		return
+	}
+
+	// Compute T0 using worker profile + heuristic demand
+	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
+	if err != nil {
+		return
+	}
+	demand := scheduler.EstimateJobDemand(
+		sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
+		sub.SubmittedAt.Time, string(sub.EntryMode),
+	)
+	plan := scheduler.EstimateRuntime(profile, demand)
+	predictedRuntime := plan.RuntimeSeconds
+
+	isFinalStr := "false"
+	if sub.IsFinal {
+		isFinalStr = "true"
+	}
+	phaseKey := sub.PhaseID.String() // use phase UUID as grouping key
+
+	// Insert into job_execution_logs
+	predicted32 := float32(predictedRuntime)
+	actual32    := float32(actualRuntime)
+	_ = h.q.InsertJobExecutionLog(ctx, db.InsertJobExecutionLogParams{
+		SubmissionID:            sub.ID,
+		WorkerID:                worker.ID,
+		PhaseKey:                phaseKey,
+		IsFinal:                 sub.IsFinal,
+		PredictedRuntimeSeconds: &predicted32,
+		ActualRuntimeSeconds:    &actual32,
+	})
+
+	// Emit Prometheus metrics
+	metrics.JobActualRuntime.
+		WithLabelValues(phaseKey, isFinalStr, strategy).
+		Observe(actualRuntime)
+
+	if predictedRuntime > 0 {
+		metrics.SchedulerPredictionErrorRatio.
+			WithLabelValues(phaseKey, isFinalStr).
+			Observe(actualRuntime / predictedRuntime)
+	}
 }
 
 func generateWorkerToken() (string, error) {
