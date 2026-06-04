@@ -962,3 +962,11 @@ func (m *MockQuerier) GetCorrectionFactor(ctx context.Context, arg GetCorrection
 func (m *MockQuerier) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error {
 	return nil
 }
+
+func (m *MockQuerier) GetAllActiveWorkersWithEarliestAvailable(ctx context.Context) ([]GetAllActiveWorkersWithEarliestAvailableRow, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error) {
+	return VolunteerWorkerClaim{}, nil
+}

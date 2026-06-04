@@ -42,6 +42,8 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
 	CreateWorkerClaim(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
+	// Creates a claim with predicted finish time for global best finish time scheduling.
+	CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error)
 	DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	DeleteAnnouncement(ctx context.Context, id uuid.UUID) error
 	DeleteContest(ctx context.Context, id uuid.UUID) error
@@ -55,6 +57,10 @@ type Querier interface {
 	DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
 	DeleteWorkerClaim(ctx context.Context, arg DeleteWorkerClaimParams) error
 	DisqualifyContestEntry(ctx context.Context, id uuid.UUID) (ContestEntry, error)
+	// ── Global Best Finish Time Scheduling ──────────────────────────────────────
+	// Returns all active workers and when they will next have a free slot.
+	// earliest_available_at = now() if worker has free capacity, else min(predicted_finish_at).
+	GetAllActiveWorkersWithEarliestAvailable(ctx context.Context) ([]GetAllActiveWorkersWithEarliestAvailableRow, error)
 	// Used to seed Redis ZSET on startup from existing DB state.
 	GetAllLeaderboardEntriesForPhase(ctx context.Context, phaseID uuid.UUID) ([]GetAllLeaderboardEntriesForPhaseRow, error)
 	// Returns the chosen submission_id and its display_score for an entry in a phase.

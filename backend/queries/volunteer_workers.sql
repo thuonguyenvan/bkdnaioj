@@ -94,3 +94,27 @@ FROM (
 DELETE FROM volunteer_worker_claims
 WHERE claimed_at < $1
 RETURNING worker_id, submission_id;
+
+-- ── Global Best Finish Time Scheduling ──────────────────────────────────────
+
+-- name: GetAllActiveWorkersWithEarliestAvailable :many
+-- Returns all active workers and when they will next have a free slot.
+-- earliest_available_at = now() if worker has free capacity, else min(predicted_finish_at).
+SELECT
+    w.id,
+    w.capabilities,
+    w.max_workers,
+    CASE
+        WHEN COUNT(c.id) < w.max_workers THEN now()
+        ELSE MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
+    END AS earliest_available_at
+FROM volunteer_workers w
+LEFT JOIN volunteer_worker_claims c ON c.worker_id = w.id
+WHERE w.status = 'active'
+GROUP BY w.id, w.capabilities, w.max_workers;
+
+-- name: CreateWorkerClaimWithFinish :one
+-- Creates a claim with predicted finish time for global best finish time scheduling.
+INSERT INTO volunteer_worker_claims (worker_id, submission_id, predicted_finish_at)
+VALUES ($1, $2, $3)
+RETURNING *;

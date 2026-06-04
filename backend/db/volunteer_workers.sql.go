@@ -91,6 +91,32 @@ func (q *Queries) CreateVolunteerWorker(ctx context.Context, arg CreateVolunteer
 	return i, err
 }
 
+const createWorkerClaimWithFinish = `-- name: CreateWorkerClaimWithFinish :one
+INSERT INTO volunteer_worker_claims (worker_id, submission_id, predicted_finish_at)
+VALUES ($1, $2, $3)
+RETURNING id, worker_id, submission_id, claimed_at, predicted_finish_at
+`
+
+type CreateWorkerClaimWithFinishParams struct {
+	WorkerID          uuid.UUID          `json:"worker_id"`
+	SubmissionID      uuid.UUID          `json:"submission_id"`
+	PredictedFinishAt pgtype.Timestamptz `json:"predicted_finish_at"`
+}
+
+// Creates a claim with predicted finish time for global best finish time scheduling.
+func (q *Queries) CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error) {
+	row := q.db.QueryRow(ctx, createWorkerClaimWithFinish, arg.WorkerID, arg.SubmissionID, arg.PredictedFinishAt)
+	var i VolunteerWorkerClaim
+	err := row.Scan(
+		&i.ID,
+		&i.WorkerID,
+		&i.SubmissionID,
+		&i.ClaimedAt,
+		&i.PredictedFinishAt,
+	)
+	return i, err
+}
+
 const deactivateVolunteerWorker = `-- name: DeactivateVolunteerWorker :one
 UPDATE volunteer_workers
 SET status     = 'inactive',
@@ -161,6 +187,57 @@ DELETE FROM volunteer_workers WHERE id = $1
 func (q *Queries) DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteVolunteerWorker, id)
 	return err
+}
+
+const getAllActiveWorkersWithEarliestAvailable = `-- name: GetAllActiveWorkersWithEarliestAvailable :many
+
+SELECT
+    w.id,
+    w.capabilities,
+    w.max_workers,
+    CASE
+        WHEN COUNT(c.id) < w.max_workers THEN now()
+        ELSE MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
+    END AS earliest_available_at
+FROM volunteer_workers w
+LEFT JOIN volunteer_worker_claims c ON c.worker_id = w.id
+WHERE w.status = 'active'
+GROUP BY w.id, w.capabilities, w.max_workers
+`
+
+type GetAllActiveWorkersWithEarliestAvailableRow struct {
+	ID                  uuid.UUID   `json:"id"`
+	Capabilities        []byte      `json:"capabilities"`
+	MaxWorkers          int16       `json:"max_workers"`
+	EarliestAvailableAt interface{} `json:"earliest_available_at"`
+}
+
+// ── Global Best Finish Time Scheduling ──────────────────────────────────────
+// Returns all active workers and when they will next have a free slot.
+// earliest_available_at = now() if worker has free capacity, else min(predicted_finish_at).
+func (q *Queries) GetAllActiveWorkersWithEarliestAvailable(ctx context.Context) ([]GetAllActiveWorkersWithEarliestAvailableRow, error) {
+	rows, err := q.db.Query(ctx, getAllActiveWorkersWithEarliestAvailable)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllActiveWorkersWithEarliestAvailableRow
+	for rows.Next() {
+		var i GetAllActiveWorkersWithEarliestAvailableRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Capabilities,
+			&i.MaxWorkers,
+			&i.EarliestAvailableAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getVolunteerWorkerByID = `-- name: GetVolunteerWorkerByID :one

@@ -134,10 +134,11 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 		return mw.ErrInternal("artifact presign failed")
 	}
 
-	// Create claim in DB
-	if _, err := h.q.CreateWorkerClaim(ctx, db.CreateWorkerClaimParams{
-		WorkerID:     worker.ID,
-		SubmissionID: sub.ID,
+	// Create claim in DB (FIFO path — predicted_finish_at unknown)
+	if _, err := h.q.CreateWorkerClaimWithFinish(ctx, db.CreateWorkerClaimWithFinishParams{
+		WorkerID:          worker.ID,
+		SubmissionID:      sub.ID,
+		PredictedFinishAt: pgtype.Timestamptz{}, // not known for FIFO path
 	}); err != nil {
 		_ = h.producer.Ack(ctx, msgID)
 		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
@@ -221,12 +222,21 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	// Official-first policy: if any official contest active, only serve official submissions
 	officialActive, _ := h.isOfficialContestActive(ctx)
 
+	now := time.Now()
+
+	// Query ALL active workers for global best finish time check (Section 8-9 design doc).
+	// Fallback gracefully if query fails — scheduler still works, just without global check.
+	workerRows, _ := h.q.GetAllActiveWorkersWithEarliestAvailable(ctx)
+	allWorkers := scheduler.BuildWorkerAvailability(workerRows)
+	requestingAvailableAt := now // requesting worker has a free slot (capacity check passed above)
+
 	// Peek pending jobs (XRANGE — does not consume)
 	start := time.Now()
 	candidates, _ := h.producer.PeekPendingJobs(ctx, 100)
 
 	var bestEnqueuedAt time.Time
 	var bestCost *scheduler.Cost
+	var bestRuntime float64
 
 	for _, msg := range candidates {
 		payload, ok := msg.Values["payload"].(string)
@@ -262,6 +272,19 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		corrector := scheduler.NewCorrector(h.q)
 		correctedRuntime, _ := corrector.CorrectedRuntime(ctx, profile, demand, sub.PhaseID.String())
 
+		// Global best finish time check (Section 8-9 design doc):
+		// Only assign if requesting worker will finish this job at least as fast
+		// as any other worker (including busy ones about to become free).
+		// Fallback: if allWorkers is empty (query failed), skip this check.
+		if len(allWorkers) > 0 {
+			if !scheduler.IsGloballyBestWorker(
+				profile, requestingAvailableAt, allWorkers, demand, now,
+			) {
+				// Another worker (e.g. GPU) can finish sooner — skip this job
+				continue
+			}
+		}
+
 		tv := 0
 		if correctedRuntime > float64(demand.TimeoutSecs) {
 			tv = 1
@@ -275,6 +298,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		if bestCost == nil || cost.LessThan(*bestCost) {
 			bestCost = cost
 			bestEnqueuedAt = env.EnqueuedAt
+			bestRuntime = correctedRuntime
 		}
 	}
 	metrics.SchedulerDecisionDuration.Observe(time.Since(start).Seconds())
@@ -305,7 +329,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			Observe(time.Since(enqAt).Seconds())
 	}
 
-	return h.dispatchJob(c, ctx, worker, envelope, msgID)
+	return h.dispatchJob(c, ctx, worker, envelope, msgID, bestRuntime)
 }
 
 // isOfficialContestActive returns true if any contest is currently running in official mode.
@@ -316,11 +340,12 @@ func (h *VolunteerWorkerHandler) isOfficialContestActive(_ context.Context) (boo
 	return false, nil
 }
 
-// dispatchJob encapsulates the shared logic for both NextJob and ClaimNext:
-// fetch submission → build artifact URLs → create DB claim → ack stream → return response.
+// dispatchJob encapsulates the shared logic for both NextJob and ClaimNext.
+// predictedRuntime: estimated seconds to complete (0 = unknown, from FIFO path).
 func (h *VolunteerWorkerHandler) dispatchJob(
 	c echo.Context, ctx context.Context,
 	worker db.VolunteerWorker, envelope *queue.JudgeEnvelope, msgID string,
+	predictedRuntime float64,
 ) error {
 	sub, err := h.q.GetSubmissionForWorker(ctx, envelope.SubmissionID)
 	if err != nil {
@@ -336,9 +361,20 @@ func (h *VolunteerWorkerHandler) dispatchJob(
 		return mw.ErrInternal("artifact presign failed")
 	}
 
-	if _, err := h.q.CreateWorkerClaim(ctx, db.CreateWorkerClaimParams{
-		WorkerID:     worker.ID,
-		SubmissionID: sub.ID,
+	// Store predicted_finish_at for global best finish time scheduling.
+	// Used by other workers to know when this worker will next be available.
+	var predictedFinishAt pgtype.Timestamptz
+	if predictedRuntime > 0 {
+		predictedFinishAt = pgtype.Timestamptz{
+			Time:  time.Now().Add(time.Duration(predictedRuntime * float64(time.Second))),
+			Valid: true,
+		}
+	}
+
+	if _, err := h.q.CreateWorkerClaimWithFinish(ctx, db.CreateWorkerClaimWithFinishParams{
+		WorkerID:          worker.ID,
+		SubmissionID:      sub.ID,
+		PredictedFinishAt: predictedFinishAt,
 	}); err != nil {
 		_ = h.producer.Ack(ctx, msgID)
 		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)

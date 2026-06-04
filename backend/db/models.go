@@ -1425,8 +1425,9 @@ type VolunteerWorker struct {
 }
 
 type VolunteerWorkerClaim struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkerID     uuid.UUID          `json:"worker_id"`
-	SubmissionID uuid.UUID          `json:"submission_id"`
-	ClaimedAt    pgtype.Timestamptz `json:"claimed_at"`
+	ID                uuid.UUID          `json:"id"`
+	WorkerID          uuid.UUID          `json:"worker_id"`
+	SubmissionID      uuid.UUID          `json:"submission_id"`
+	ClaimedAt         pgtype.Timestamptz `json:"claimed_at"`
+	PredictedFinishAt pgtype.Timestamptz `json:"predicted_finish_at"`
 }
