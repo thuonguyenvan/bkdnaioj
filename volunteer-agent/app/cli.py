@@ -83,10 +83,19 @@ def setup() -> None:
     _echo(f"  Python: {caps.get('python_version','?').split()[0]}")
 
     # Docker install offer (needed for final phase inference sandbox)
+    import shutil as _shutil
+    docker_binary = bool(_shutil.which("docker"))
     if not caps.get("docker_available"):
         _echo()
-        _warn("Docker not found. Docker is required to judge final-phase submissions.")
-        install_docker = _ask("Install Docker now? (y/n)", "y").lower().startswith("y")
+        if docker_binary:
+            _warn("Docker is installed but daemon is not running.")
+            _warn("On Colab/containers without --privileged, Docker daemon cannot start.")
+            _warn("This worker will handle output-only jobs (public_test, private_test).")
+            _warn("For final inference jobs, use a cloud VM or RunPod with Docker support.")
+            install_docker = False
+        else:
+            _warn("Docker not found. Docker is required to judge final-phase submissions.")
+            install_docker = _ask("Install Docker now? (y/n)", "y").lower().startswith("y")
         if install_docker:
             _install_docker()
             # Re-check after install
