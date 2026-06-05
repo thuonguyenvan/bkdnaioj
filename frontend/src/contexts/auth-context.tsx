@@ -8,7 +8,6 @@ interface AuthContextType {
   register: (payload: any) => Promise<any>;
   logout: () => void;
   isAdmin: boolean;
-  isJury: boolean;
   isContestant: boolean;
 }
 
@@ -74,7 +73,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isAdmin = user?.role === 'admin';
-  const isJury = user?.role === 'jury' || user?.role === 'admin';
   const isContestant = user?.role === 'contestant';
 
   return (
@@ -86,7 +84,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         isAdmin,
-        isJury,
         isContestant,
       }}
     >

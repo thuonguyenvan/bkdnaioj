@@ -12,8 +12,8 @@ interface RichAnnouncement extends Announcement {
 
 export const NewsfeedPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { isAdmin, isJury } = useAuth();
-  const isStaff = isAdmin || isJury;
+  const { isAdmin } = useAuth();
+  const isStaff = isAdmin;
 
   // Creation form states
   const [annTitle, setAnnTitle] = useState('');

@@ -46,7 +46,7 @@ const getPhaseLabel = (def?: PhaseDef, fallback?: string) => {
 
 export const PhaseHubPage: React.FC = () => {
   const { contestId, phaseKey } = useParams<{ contestId: string, phaseKey: string }>();
-  const { user, isAdmin, isJury } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
 
   const getPdfUrl = (url: string | null | undefined) => {
@@ -626,7 +626,7 @@ export const PhaseHubPage: React.FC = () => {
                     )}
                   </div>
 
-                  {(isAdmin || isJury) && (
+                  {isAdmin && (
                     <div>
                       <input type="file" ref={pdfInputRef} accept="application/pdf" style={{ display: 'none' }} onChange={handlePdfUpload} />
                       <button onClick={() => pdfInputRef.current?.click()} className="btn btn-secondary" style={{ padding: '0.4rem 0.7rem', fontSize: '0.8rem' }} disabled={uploadingPdf}>
@@ -870,7 +870,7 @@ export const PhaseHubPage: React.FC = () => {
               </span>
             </h3>
             <div className="flex gap-2">
-              {(isAdmin || isJury) && activePhase && standingsMode === 'task' && (
+              {isAdmin && activePhase && standingsMode === 'task' && (
                 <button
                   onClick={() => {
                     if (activePhase.is_frozen) {
@@ -888,7 +888,7 @@ export const PhaseHubPage: React.FC = () => {
                 </button>
               )}
 
-              {(isAdmin || isJury) && activePhase && standingsMode === 'task' && (
+              {isAdmin && activePhase && standingsMode === 'task' && (
                 <button
                   onClick={() => recomputeLeaderboardMutation.mutate(activePhase.id)}
                   className="btn btn-secondary flex items-center gap-2"
@@ -900,7 +900,7 @@ export const PhaseHubPage: React.FC = () => {
                 </button>
               )}
 
-              {(isAdmin || isJury) && standingsMode === 'overall' && currentDef && (
+              {isAdmin && standingsMode === 'overall' && currentDef && (
                 <button
                   onClick={() => recomputeOverallLeaderboardMutation.mutate()}
                   className="btn btn-secondary flex items-center gap-2"

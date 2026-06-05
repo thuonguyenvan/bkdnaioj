@@ -26,7 +26,7 @@ const getPhaseLabel = (def: PhaseDef) => PHASE_LABELS[def.key] || def.key.replac
 
 export const ContestDetailPage: React.FC = () => {
   const { contestId } = useParams<{ contestId: string }>();
-  const { user, isAdmin, isJury } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -472,7 +472,7 @@ export const ContestDetailPage: React.FC = () => {
     const info = getPhaseStatus(def);
     const statusClass = info.status === 'active' ? 'badge-success' : info.status === 'ended' ? 'badge-secondary' : 'badge-info';
     const statusText = info.status === 'active' ? 'Active' : info.status === 'ended' ? 'Ended' : 'Upcoming';
-    const canEnter = (isAdmin || isJury) || info.status !== 'locked' || approvedEntries.length > 0;
+    const canEnter = isAdmin || info.status !== 'locked' || approvedEntries.length > 0;
 
     return { def, startTime, endTime, statusClass, statusText, canEnter };
   });
@@ -651,7 +651,7 @@ export const ContestDetailPage: React.FC = () => {
           <div>
             <h1 className="page-title">{contest.title}</h1>
           </div>
-          {(isAdmin || isJury) && (
+          {isAdmin && (
             <Link to={`/admin/contests/${contest.id}/setup`} className="btn btn-secondary flex items-center gap-2" style={{ padding: '0.4rem 0.8rem' }}>
               <Settings size={16} /> Admin Setup
             </Link>
@@ -770,7 +770,7 @@ export const ContestDetailPage: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-4">
-          {!(isAdmin || isJury) && (
+          {!isAdmin && (
             <div className="panel">
               <h3 style={{ fontSize: '1rem', margin: '0 0 1rem 0', color: isRegistered ? 'hsl(var(--success))' : 'hsl(var(--text-main))', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {isRegistered ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
@@ -1002,7 +1002,7 @@ export const ContestDetailPage: React.FC = () => {
                       </div>
                     )}
 
-                    {(isAdmin || isJury) && !item.answer && (
+                    {isAdmin && !item.answer && (
                       <div style={{ marginTop: '1rem', borderTop: '1px solid hsl(var(--border))', paddingTop: '0.75rem' }}>
                         {answeringId === item.id ? (
                           <div className="flex flex-col gap-2">
@@ -1037,7 +1037,7 @@ export const ContestDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {!(isAdmin || isJury) && (
+          {!isAdmin && (
             <div className="panel">
               <h3 style={{ margin: '0 0 1rem 0' }}>Ask Clarification</h3>
               {qaError && <div className="alert alert-danger" style={{ fontSize: '0.8rem' }}>{qaError}</div>}
@@ -1070,7 +1070,7 @@ export const ContestDetailPage: React.FC = () => {
       )}
 
       {activeContestTab === 'tickets' && (
-        (isAdmin || isJury) ? (
+        isAdmin ? (
           <div className="panel flex flex-col items-center justify-center text-center" style={{ minHeight: '280px', borderStyle: 'dashed' }}>
             <Settings size={42} style={{ color: 'hsl(var(--warning))', marginBottom: '1rem', opacity: 0.8 }} />
             <h3>Administrative Support Dispatcher</h3>

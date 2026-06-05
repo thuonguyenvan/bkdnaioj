@@ -76,7 +76,7 @@ func (h *TaskHandler) getUserRole(c echo.Context) string {
 
 func (h *TaskHandler) checkContestAccess(c echo.Context, contestID uuid.UUID) error {
 	role := h.getUserRole(c)
-	if role == "admin" || role == "jury" {
+	if role == "admin" {
 		return nil
 	}
 

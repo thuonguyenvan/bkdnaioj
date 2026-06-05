@@ -56,7 +56,7 @@ func (h *AdminHandler) UpdateUserRole(c echo.Context) error {
 		return mw.ErrBadRequest("invalid user id")
 	}
 	var body struct {
-		Role string `json:"role" validate:"required,oneof=contestant jury admin"`
+		Role string `json:"role" validate:"required,oneof=contestant admin"`
 	}
 	if err := c.Bind(&body); err != nil {
 		return mw.ErrBadRequest("invalid body")

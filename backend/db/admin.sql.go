@@ -57,7 +57,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const listUsersAdmin = `-- name: ListUsersAdmin :many
-SELECT id, email, full_name, role, created_at FROM users
+SELECT id, email, full_name, username, role, created_at FROM users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -71,6 +71,7 @@ type ListUsersAdminRow struct {
 	ID        uuid.UUID          `json:"id"`
 	Email     string             `json:"email"`
 	FullName  string             `json:"full_name"`
+	Username  *string            `json:"username"`
 	Role      UserRole           `json:"role"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
@@ -88,6 +89,7 @@ func (q *Queries) ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) 
 			&i.ID,
 			&i.Email,
 			&i.FullName,
+			&i.Username,
 			&i.Role,
 			&i.CreatedAt,
 		); err != nil {

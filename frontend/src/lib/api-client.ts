@@ -26,7 +26,7 @@ export interface User {
   email: string;
   full_name: string;
   username?: string;
-  role: 'admin' | 'jury' | 'contestant';
+  role: 'admin' | 'contestant';
 }
 
 export interface Contest {

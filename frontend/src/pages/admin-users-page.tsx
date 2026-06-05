@@ -49,7 +49,7 @@ export const AdminUsersPage: React.FC = () => {
       <div className="page-header">
         <h1 className="page-title">Users & Roles</h1>
         <p className="page-subtitle">
-          Assign platform roles (Admin, Jury, Contestant) to user accounts.
+          Assign platform roles (Admin, Contestant) to user accounts.
         </p>
       </div>
 
@@ -80,15 +80,17 @@ export const AdminUsersPage: React.FC = () => {
               <thead>
                 <tr>
                   <th>User Name</th>
+                  <th>Username</th>
                   <th>Email Address</th>
                   <th>Current Role</th>
-                  <th style={{ textAlign: 'right', width: '360px' }}>Role Actions</th>
+                  <th style={{ textAlign: 'right', width: '280px' }}>Role Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id}>
                     <td style={{ fontWeight: 600, color: '#0f172a' }}>{u.full_name}</td>
+                    <td className="font-mono" style={{ fontSize: '0.82rem', color: '#475569' }}>{u.username ?? '—'}</td>
                     <td className="font-mono" style={{ fontSize: '0.82rem', color: '#475569' }}>{u.email}</td>
                     <td>
                       <span
@@ -99,8 +101,8 @@ export const AdminUsersPage: React.FC = () => {
                           fontSize: '0.75rem',
                           fontWeight: 700,
                           textTransform: 'uppercase',
-                          backgroundColor: u.role === 'admin' ? '#fee2e2' : u.role === 'jury' ? '#fef3c7' : '#dcfce7',
-                          color: u.role === 'admin' ? '#b91c1c' : u.role === 'jury' ? '#b45309' : '#15803d',
+                          backgroundColor: u.role === 'admin' ? '#fee2e2' : '#dcfce7',
+                          color: u.role === 'admin' ? '#b91c1c' : '#15803d',
                         }}
                       >
                         {u.role}
@@ -115,15 +117,6 @@ export const AdminUsersPage: React.FC = () => {
                             disabled={updateUserRoleMutation.isPending}
                           >
                             Set Admin
-                          </button>
-                        )}
-                        {u.role !== 'jury' && (
-                          <button
-                            onClick={() => updateUserRoleMutation.mutate({ id: u.id, role: 'jury' })}
-                            className="btn btn-secondary btn-sm"
-                            disabled={updateUserRoleMutation.isPending}
-                          >
-                            Set Jury
                           </button>
                         )}
                         {u.role !== 'contestant' && (

@@ -48,7 +48,7 @@ func registerClarifications(api *echo.Group, q *db.Queries, jwtMgr *security.JWT
 	api.POST("/contests/:id/clarifications", h.Create, auth)
 	api.GET("/contests/:id/clarifications", h.List, auth)
 	api.GET("/clarifications/:id", h.Get, auth)
-	jury := api.Group("", auth, mw.RequireRole("admin", "jury"))
+	jury := api.Group("", auth, mw.RequireRole("admin"))
 	jury.POST("/clarifications/:id/answer", h.Answer)
 	jury.PATCH("/clarifications/:id", h.Update)
 }
@@ -58,7 +58,7 @@ func registerTickets(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager
 	auth := mw.JWTAuth(jwtMgr)
 	api.POST("/tickets", h.Create, auth)
 	api.GET("/tickets/me", h.ListMine, auth)
-	staff := api.Group("/tickets", auth, mw.RequireRole("admin", "jury"))
+	staff := api.Group("/tickets", auth, mw.RequireRole("admin"))
 	staff.GET("", h.ListAll)
 	staff.PATCH("/:id", h.Update)
 	staff.POST("/:id/resolve", h.Resolve)

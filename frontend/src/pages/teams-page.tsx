@@ -6,9 +6,9 @@ import { useAuth } from '../contexts/auth-context';
 import { Users, UserPlus, Trash2, Plus, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 export const TeamsPage: React.FC = () => {
-  const { user, isAdmin, isJury } = useAuth();
+  const { user, isAdmin } = useAuth();
 
-  if (isAdmin || isJury) {
+  if (isAdmin) {
     return <Navigate to="/" replace />;
   }
   const queryClient = useQueryClient();

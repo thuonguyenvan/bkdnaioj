@@ -141,7 +141,7 @@ func registerTasks(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, 
 	admin.DELETE("/tasks/:id", h.Delete)
 
 	// Support both admin and jury to upload the task statement
-	staff := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin", "jury"))
+	staff := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	staff.POST("/tasks/:id/statement", h.UploadStatement)
 }
 
@@ -153,7 +153,7 @@ func registerEvaluationSets(api *echo.Group, q *db.Queries, jwtMgr *security.JWT
 	api.GET("/evaluation-sets/:id/assets", h.ListAssets)
 	admin := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	admin.POST("/tasks/:task_id/evaluation-sets", h.Create)
-	jury := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin", "jury"))
+	jury := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	jury.POST("/tasks/:task_id/assets:initiate", h.InitiateTaskAssets)
 	jury.POST("/tasks/:task_id/assets/complete", h.CompleteTaskAssets)
 	jury.POST("/evaluation-sets/:id/assets:initiate", h.InitiateAssets)
@@ -168,7 +168,7 @@ func registerPhases(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager,
 	admin.POST("/tasks/:id/phases", h.Create)
 	admin.DELETE("/phases/:id", h.Delete)
 	admin.PATCH("/phases/:id", h.Update)
-	jury := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin", "jury"))
+	jury := api.Group("", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	jury.POST("/phases/:id/freeze", h.Freeze)
 	jury.POST("/phases/:id/unfreeze", h.Unfreeze)
 }
@@ -186,7 +186,7 @@ func registerEntries(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager
 	api.POST("/entries/:id/members", emh.Add, auth)
 	api.DELETE("/entries/:id/members/:user_id", emh.Remove, auth)
 
-	jury := api.Group("", auth, mw.RequireRole("admin", "jury"))
+	jury := api.Group("", auth, mw.RequireRole("admin"))
 	jury.POST("/entries/:id/approve", eh.Approve)
 	jury.POST("/entries/:id/disqualify", eh.Disqualify)
 }

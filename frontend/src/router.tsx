@@ -56,7 +56,7 @@ const ProtectedRoute: React.FC = () => {
 };
 
 const AdminRoute: React.FC = () => {
-  const { user, loading, isAdmin, isJury } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
 
   if (loading) {
     return (
@@ -66,7 +66,7 @@ const AdminRoute: React.FC = () => {
     );
   }
 
-  if (!user || (!isAdmin && !isJury)) {
+  if (!user || !isAdmin) {
     return <Navigate to="/" replace />;
   }
 
