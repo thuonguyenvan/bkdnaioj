@@ -41,7 +41,19 @@ def _check_docker() -> bool:
 
 def _collect_gpu() -> list[dict]:
     try:
-        import pynvml  # type: ignore
+        try:
+            import pynvml  # type: ignore
+        except ImportError:
+            # Auto-install pynvml if nvidia-smi is available
+            import shutil, subprocess, sys
+            if shutil.which("nvidia-smi"):
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "pynvml", "-q"],
+                    check=True, capture_output=True
+                )
+                import pynvml  # type: ignore
+            else:
+                return []
         pynvml.nvmlInit()
         gpus = []
         for i in range(pynvml.nvmlDeviceGetCount()):
