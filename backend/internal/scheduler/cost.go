@@ -34,7 +34,9 @@ func safeDivide(a, b float64) float64 {
 // RAM constraint uses per-slot quota: AvailableRAMBytes / MaxParallelJobs.
 func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 	// Hard constraints
-	if !w.SandboxPassed {
+	// sandbox (Docker) is only required for final inference jobs.
+	// Output-only jobs run as bare subprocess — no Docker needed.
+	if !w.SandboxPassed && d.IsFinal {
 		return ExecutionPlan{HardConstraintsOK: false, FailReason: "no_sandbox"}
 	}
 	if w.CPUOpsPerSec <= 0 {
