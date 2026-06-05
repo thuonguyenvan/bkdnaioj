@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
+import { MarkdownContent } from '../components/markdown-content';
 import { api, API_BASE_URL, type Contest, type Task, type ContestEntry, type PhaseDef, type Phase, type EvaluationSet } from '../lib/api-client';
 import {
   Settings, CheckCircle2, XCircle, Plus, Upload, ArrowLeft, Trash2, AlertTriangle,
@@ -1896,9 +1897,7 @@ export const AdminSetupPage: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      <p style={{ fontSize: '0.85rem', margin: 0, whiteSpace: 'pre-line', color: '#334155', lineHeight: 1.5 }}>
-                        {ann.content}
-                      </p>
+                      <MarkdownContent content={ann.content} style={{ fontSize: '0.85rem' }} />
                     </div>
                   ))
               )}

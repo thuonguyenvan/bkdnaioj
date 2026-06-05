@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Contest, type Announcement } from '../lib/api-client';
 import { useAuth } from '../contexts/auth-context';
 import { Volume2, Megaphone, Clock, Award, Pin, ShieldAlert, Trash2 } from 'lucide-react';
+import { MarkdownContent } from '../components/markdown-content';
 
 interface RichAnnouncement extends Announcement {
   contestTitle: string;
@@ -257,17 +258,7 @@ export const NewsfeedPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <p 
-                    style={{ 
-                      fontSize: '0.95rem', 
-                      margin: 0, 
-                      whiteSpace: 'pre-line', 
-                      lineHeight: '1.6', 
-                      color: '#334155' 
-                    }}
-                  >
-                    {ann.content}
-                  </p>
+                  <MarkdownContent content={ann.content} style={{ fontSize: '0.95rem' }} />
                 </article>
               ))}
             </div>
