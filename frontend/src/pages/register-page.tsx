@@ -21,10 +21,10 @@ export const RegisterPage: React.FC = () => {
     setError(null);
     setSuccess(null);
 
-    if (fullName.trim().length < 2) { setError('Họ và tên phải có ít nhất 2 ký tự.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Email không hợp lệ (vd: user@gmail.com).'); return; }
-    if (password.length < 8) { setError('Mật khẩu phải có ít nhất 8 ký tự.'); return; }
-    if (password !== confirmPassword) { setError('Mật khẩu xác nhận không khớp.'); return; }
+    if (fullName.trim().length < 2) { setError('Full name must be at least 2 characters.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Invalid email (e.g. user@gmail.com).'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
 
     setSubmitting(true);
     try {
@@ -35,16 +35,16 @@ export const RegisterPage: React.FC = () => {
         username: username.trim() || undefined,
         student_id: studentId || undefined,
       });
-      setSuccess('Đăng ký thành công! Đang chuyển hướng...');
+      setSuccess('Account created! Redirecting...');
       setTimeout(() => { navigate('/login'); }, 2000);
     } catch (err: any) {
       const msg: string = err?.response?.data?.message || '';
-      if (msg.includes('Email') && msg.includes('email')) setError('Email không hợp lệ.');
-      else if (msg.includes('FullName') && msg.includes('min')) setError('Họ và tên phải có ít nhất 2 ký tự.');
-      else if (msg.includes('Password') && msg.includes('min')) setError('Mật khẩu phải có ít nhất 8 ký tự.');
-      else if (msg.includes('already') || msg.includes('duplicate') || msg.includes('23505')) setError('Email hoặc username đã được sử dụng.');
-      else if (msg.includes('rate') || msg.includes('429')) setError('Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút.');
-      else setError(msg || 'Đăng ký thất bại. Vui lòng thử lại.');
+      if (msg.includes('Email') && msg.includes('email')) setError('Invalid email.');
+      else if (msg.includes('FullName') && msg.includes('min')) setError('Full name must be at least 2 characters.');
+      else if (msg.includes('Password') && msg.includes('min')) setError('Password must be at least 8 characters.');
+      else if (msg.includes('already') || msg.includes('duplicate') || msg.includes('23505')) setError('Email or username already in use.');
+      else if (msg.includes('rate') || msg.includes('429')) setError('Too many requests, please try again in 1 minute.');
+      else setError(msg || 'Registration failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -54,9 +54,9 @@ export const RegisterPage: React.FC = () => {
     <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
       <div className="auth-card" style={{ width: '100%', maxWidth: 460 }}>
         <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.35rem' }}>Tạo tài khoản</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.35rem' }}>Create account</h2>
           <p style={{ fontSize: '0.85rem', color: 'hsl(var(--text-muted))', margin: 0 }}>
-            Đăng ký để tham gia các cuộc thi AI.
+            Sign up to join AI competitions.
           </p>
         </div>
 
@@ -75,40 +75,40 @@ export const RegisterPage: React.FC = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Họ và tên</label>
+            <label className="form-label">Full name</label>
             <input
               type="text"
               className="form-input"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
-              placeholder="Nguyễn Văn A"
+              placeholder="John Doe"
             />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div className="form-group">
               <label className="form-label">
-                Username <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(tuỳ chọn)</span>
+                Username <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(optional)</span>
               </label>
               <input
                 type="text"
                 className="form-input"
                 value={username}
                 onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
-                placeholder="vd: nguyenvana"
+                placeholder="e.g. johndoe"
                 minLength={3}
                 maxLength={60}
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Mã sinh viên <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(tuỳ chọn)</span></label>
+              <label className="form-label">Student ID <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(optional)</span></label>
               <input
                 type="text"
                 className="form-input"
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
-                placeholder="VD: 21IT001"
+                placeholder="e.g. 21IT001"
               />
             </div>
           </div>
@@ -127,36 +127,36 @@ export const RegisterPage: React.FC = () => {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div className="form-group">
-              <label className="form-label">Mật khẩu</label>
+              <label className="form-label">Password</label>
               <input
                 type="password"
                 className="form-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                placeholder="Ít nhất 8 ký tự"
+                placeholder="At least 8 characters"
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Xác nhận mật khẩu</label>
+              <label className="form-label">Confirm password</label>
               <input
                 type="password"
                 className="form-input"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                placeholder="Nhập lại mật khẩu"
+                placeholder="Re-enter password"
               />
             </div>
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.25rem' }} disabled={submitting || !!success}>
-            {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký'}
+            {submitting ? 'Creating account...' : 'Sign up'}
           </button>
         </form>
 
         <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
-          Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
+          Already have an account? <Link to="/login">Log in</Link>
         </p>
       </div>
     </div>

@@ -19,7 +19,7 @@ export const LoginPage: React.FC = () => {
       await login({ email, password });
       navigate('/');
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Email/username hoặc mật khẩu không đúng.');
+      setError(err?.response?.data?.message || 'Incorrect email/username or password.');
     } finally {
       setSubmitting(false);
     }
@@ -29,9 +29,9 @@ export const LoginPage: React.FC = () => {
     <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
       <div className="auth-card" style={{ width: '100%', maxWidth: 420 }}>
         <div style={{ marginBottom: '1.75rem', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.35rem' }}>Đăng nhập</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.35rem' }}>Log in</h2>
           <p style={{ fontSize: '0.85rem', color: 'hsl(var(--text-muted))', margin: 0 }}>
-            Chào mừng trở lại — nhập tài khoản để tiếp tục.
+            Welcome back — sign in to continue.
           </p>
         </div>
 
@@ -44,7 +44,7 @@ export const LoginPage: React.FC = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Email hoặc Username</label>
+            <label className="form-label">Email or Username</label>
             <input
               type="text"
               className="form-input"
@@ -52,15 +52,15 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="username"
-              placeholder="email@domain.com hoặc username"
+              placeholder="email@domain.com or username"
             />
           </div>
 
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-              <label className="form-label" style={{ margin: 0 }}>Mật khẩu</label>
+              <label className="form-label" style={{ margin: 0 }}>Password</label>
               <Link to="/forgot-password" style={{ fontSize: '0.8rem', color: 'hsl(var(--text-muted))' }}>
-                Quên mật khẩu?
+                Forgot password?
               </Link>
             </div>
             <input
@@ -74,12 +74,12 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }} disabled={submitting}>
-            {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            {submitting ? 'Logging in...' : 'Log in'}
           </button>
         </form>
 
         <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
-          Chưa có tài khoản? <Link to="/register">Đăng ký</Link>
+          Don't have an account? <Link to="/register">Sign up</Link>
         </p>
       </div>
     </div>
