@@ -143,10 +143,9 @@ def setup() -> None:
             cfg.save(s)
             _ok("Token saved.")
             _echo()
-            # Start immediately — invoke start() directly
             _echo("Starting worker... (Ctrl+C to stop)")
             _echo()
-            start()
+            start(workers=0)  # 0 = use max_workers from config
             break
         else:
             _warn("Token looks invalid. Try again or press Enter to skip.")
