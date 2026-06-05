@@ -103,6 +103,49 @@ func (p *Producer) DequeueOne(ctx context.Context) (*JudgeEnvelope, string, erro
 	return &env, msg.ID, nil
 }
 
+// ClaimMessage atomically removes a specific stream message and returns its envelope.
+// This is used after scheduler scoring picks a concrete candidate from XRANGE.
+func (p *Producer) ClaimMessage(ctx context.Context, msgID string) (*JudgeEnvelope, string, error) {
+	if p == nil || p.rdb == nil {
+		return nil, "", fmt.Errorf("redis not configured")
+	}
+	const script = `
+local entries = redis.call('XRANGE', KEYS[1], ARGV[1], ARGV[1])
+if #entries == 0 then
+  return nil
+end
+local fields = entries[1][2]
+local payload = nil
+for i = 1, #fields, 2 do
+  if fields[i] == 'payload' then
+    payload = fields[i + 1]
+    break
+  end
+end
+if not payload then
+  return nil
+end
+redis.call('XDEL', KEYS[1], ARGV[1])
+return payload
+`
+	result, err := p.rdb.Eval(ctx, script, []string{StreamJobsJudge}, msgID).Result()
+	if err == redis.Nil || result == nil {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("claim message: %w", err)
+	}
+	payload, ok := result.(string)
+	if !ok {
+		return nil, "", fmt.Errorf("invalid claimed payload")
+	}
+	var env JudgeEnvelope
+	if err := json.Unmarshal([]byte(payload), &env); err != nil {
+		return nil, "", fmt.Errorf("unmarshal claimed envelope: %w", err)
+	}
+	return &env, msgID, nil
+}
+
 // PeekPendingJobs reads up to n pending messages from the stream WITHOUT consuming them.
 // Uses XRANGE which does not affect consumer group state.
 func (p *Producer) PeekPendingJobs(ctx context.Context, n int) ([]redis.XMessage, error) {
@@ -136,4 +179,3 @@ func (p *Producer) EnqueueResult(ctx context.Context, submissionID uuid.UUID, ty
 		Values: map[string]any{"payload": string(payload)},
 	}).Err()
 }
-
