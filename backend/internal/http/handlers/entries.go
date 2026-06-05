@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -56,6 +57,19 @@ func (h *EntryHandler) Create(c echo.Context) error {
 			return mw.ErrNotFound("contest not found")
 		}
 		return mw.ErrInternal("fetch contest failed: " + err.Error())
+	}
+
+	// Mode vs timing: official only while upcoming/running; virtual & practice only after the contest ends.
+	contestEnded := contest.EndTime.Valid && contest.EndTime.Time.Before(time.Now())
+	switch req.EntryMode {
+	case "virtual", "practice":
+		if !contestEnded {
+			return mw.ErrBadRequest("virtual and practice modes are only available after the contest ends")
+		}
+	case "official":
+		if contestEnded {
+			return mw.ErrBadRequest("official registration is closed; the contest has ended")
+		}
 	}
 
 	status := db.EntryStatusApproved

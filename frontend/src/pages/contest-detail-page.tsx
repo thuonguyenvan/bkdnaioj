@@ -98,12 +98,15 @@ export const ContestDetailPage: React.FC = () => {
   const isRegistered = userEntries.length > 0;
 
   useEffect(() => {
+    if (!contest) return;
+    const ended = new Date(contest.end_time).getTime() < Date.now();
+    const timeAllowed = ended ? (['virtual', 'practice'] as const) : (['official'] as const);
     const regModes = userEntries.map(e => e.entry_mode);
-    const availModes = (['official', 'virtual', 'practice'] as const).filter(m => !regModes.includes(m));
+    const availModes = timeAllowed.filter(m => !regModes.includes(m));
     if (availModes.length > 0 && !availModes.includes(selectedEntryMode)) {
       setSelectedEntryMode(availModes[0]);
     }
-  }, [userEntries]);
+  }, [userEntries, contest]);
 
   // Load announcements
   const { data: announcements = [], isLoading: loadingAnnouncements } = useQuery<Announcement[]>({
@@ -475,10 +478,15 @@ export const ContestDetailPage: React.FC = () => {
   });
 
   const renderRegistrationForm = () => {
+    const contestEnded = new Date(contest.end_time).getTime() < Date.now();
+    // Official mode only while the contest is upcoming/running; virtual & practice only after it ends.
+    const timeAllowedModes = contestEnded
+      ? (['virtual', 'practice'] as const)
+      : (['official'] as const);
     const registeredModes = userEntries.map(e => e.entry_mode);
-    const availableModes = (['official', 'virtual', 'practice'] as const).filter(mode => !registeredModes.includes(mode));
+    const availableModes = timeAllowedModes.filter(mode => !registeredModes.includes(mode));
 
-    if (availableModes.length === 0 && isRegistered) {
+    if (availableModes.length === 0) {
       return null;
     }
 
@@ -537,7 +545,7 @@ export const ContestDetailPage: React.FC = () => {
             value={selectedEntryMode}
             onChange={(e) => setSelectedEntryMode(e.target.value as any)}
           >
-            {(availableModes.length > 0 ? availableModes : ['official'] as const).map(m => (
+            {availableModes.map(m => (
               <option key={m} value={m}>
                 {m === 'official' ? 'Official Contest Entry' : m === 'virtual' ? 'Virtual Replay' : 'Practice Mode'}
               </option>
