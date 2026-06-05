@@ -42,12 +42,17 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return mw.ErrInternal("failed to hash password")
 	}
 
+	var uname *string
+	if req.Username != nil && *req.Username != "" {
+		uname = req.Username
+	}
 	user, err := h.q.CreateUser(c.Request().Context(), db.CreateUserParams{
 		Email:        req.Email,
 		PasswordHash: hash,
 		FullName:     req.FullName,
 		Role:         db.UserRoleContestant,
 		StudentID:    req.StudentID,
+		Username:     uname,
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
