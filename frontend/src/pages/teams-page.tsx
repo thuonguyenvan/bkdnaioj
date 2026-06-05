@@ -342,14 +342,14 @@ export const TeamsPage: React.FC = () => {
                     Invite Teammate
                   </h3>
                   <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
-                    Add another contestant to your team by entering their username.
+                    Add another contestant by entering their username or email.
                   </p>
 
                   <form onSubmit={handleAddMember} className="flex gap-2" style={{ maxWidth: '600px' }}>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. nguyenvana"
+                      placeholder="username hoặc email@domain.com"
                       value={inviteUsername}
                       onChange={(e) => setInviteUsername(e.target.value)}
                       required

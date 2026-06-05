@@ -19,6 +19,12 @@ export const RegisterPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    // Client-side validation
+    if (fullName.trim().length < 2) { setError('Họ và tên phải có ít nhất 2 ký tự.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Email không hợp lệ (vd: user@gmail.com).'); return; }
+    if (password.length < 8) { setError('Mật khẩu phải có ít nhất 8 ký tự.'); return; }
+
     setSubmitting(true);
     try {
       await register({
@@ -29,11 +35,16 @@ export const RegisterPage: React.FC = () => {
         student_id: studentId || undefined,
       });
       setSuccess('Account registered successfully. Redirecting to login...');
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
+      setTimeout(() => { navigate('/login'); }, 2000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Registration failed. Try another email address.');
+      const msg: string = err?.response?.data?.message || '';
+      // Convert raw Go validator messages to friendly Vietnamese
+      if (msg.includes('Email') && msg.includes('email')) setError('Email không hợp lệ.');
+      else if (msg.includes('FullName') && msg.includes('min')) setError('Họ và tên phải có ít nhất 2 ký tự.');
+      else if (msg.includes('Password') && msg.includes('min')) setError('Mật khẩu phải có ít nhất 8 ký tự.');
+      else if (msg.includes('already') || msg.includes('duplicate') || msg.includes('23505')) setError('Email hoặc username đã được sử dụng.');
+      else if (msg.includes('rate') || msg.includes('429')) setError('Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút.');
+      else setError(msg || 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setSubmitting(false);
     }

@@ -135,10 +135,14 @@ func (h *TeamHandler) AddMember(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
+	// Try username first, fall back to email
 	target, err := h.q.GetUserByUsername(ctx, &req.Username)
+	if errors.Is(err, pgx.ErrNoRows) {
+		target, err = h.q.GetUserByEmail(ctx, req.Username)
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return mw.ErrNotFound("user not found: " + req.Username)
+			return mw.ErrNotFound("không tìm thấy người dùng: " + req.Username)
 		}
 		return mw.ErrInternal("lookup user failed")
 	}
