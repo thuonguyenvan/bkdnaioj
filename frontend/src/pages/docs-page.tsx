@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpen, ChevronDown, ChevronRight, Trophy, Upload, Cpu, Shield,
-  Server, BarChart2, HelpCircle, Zap, Users, FileText, Terminal
+  Server, BarChart2, HelpCircle, Zap, Users, FileText
 } from 'lucide-react';
 
 /* ── Types ──────────────────────────────────────────────── */
