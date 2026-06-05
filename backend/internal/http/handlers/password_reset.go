@@ -3,15 +3,18 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v4"
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/email"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -44,6 +47,11 @@ func (h *PasswordResetHandler) ForgotPassword(c echo.Context) error {
 	// Always return success to prevent email enumeration
 	user, err := h.q.GetUserByEmail(ctx, req.Email)
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			log.Error().Err(err).Str("email", req.Email).Msg("forgot-password: db lookup failed")
+		} else {
+			log.Info().Str("email", req.Email).Msg("forgot-password: email not found")
+		}
 		return c.JSON(http.StatusOK, map[string]string{"message": "If that email exists, a reset link has been sent."})
 	}
 
@@ -60,11 +68,16 @@ func (h *PasswordResetHandler) ForgotPassword(c echo.Context) error {
 		Token:     token,
 		ExpiresAt: pgTime(expires),
 	}); err != nil {
+		log.Error().Err(err).Msg("forgot-password: create token failed")
 		return mw.ErrInternal("could not create reset token")
 	}
 
 	resetURL := h.baseURL + "/reset-password?token=" + token
-	_ = h.mailer.SendPasswordReset(req.Email, resetURL) // fire-and-forget; don't expose errors
+	if err := h.mailer.SendPasswordReset(req.Email, resetURL); err != nil {
+		log.Error().Err(err).Str("to", req.Email).Msg("forgot-password: send email failed")
+	} else {
+		log.Info().Str("to", req.Email).Msg("forgot-password: email sent")
+	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "If that email exists, a reset link has been sent."})
 }
