@@ -86,7 +86,7 @@ def setup() -> None:
     if not caps.get("docker_available"):
         _echo()
         _warn("Docker not found. Docker is required to judge final-phase submissions.")
-        install_docker = _ask("Install Docker now? (y/n)", "n").lower().startswith("y")
+        install_docker = _ask("Install Docker now? (y/n)", "y").lower().startswith("y")
         if install_docker:
             _install_docker()
             # Re-check after install
