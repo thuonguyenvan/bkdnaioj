@@ -21,6 +21,7 @@ import (
 	"github.com/mank1/olpai-backend/internal/queue"
 	"github.com/mank1/olpai-backend/internal/scheduler"
 	"github.com/mank1/olpai-backend/internal/storage"
+	"github.com/redis/go-redis/v9"
 )
 
 const workerJobTimeoutMinutes = 10
@@ -29,11 +30,12 @@ type VolunteerWorkerHandler struct {
 	q        db.Querier
 	s3       *storage.S3
 	producer *queue.Producer
+	rdb      *redis.Client
 	val      *validator.Validate
 }
 
-func NewVolunteerWorkerHandler(q db.Querier, s3 *storage.S3, producer *queue.Producer) *VolunteerWorkerHandler {
-	return &VolunteerWorkerHandler{q: q, s3: s3, producer: producer, val: validator.New()}
+func NewVolunteerWorkerHandler(q db.Querier, s3 *storage.S3, producer *queue.Producer, rdb *redis.Client) *VolunteerWorkerHandler {
+	return &VolunteerWorkerHandler{q: q, s3: s3, producer: producer, rdb: rdb, val: validator.New()}
 }
 
 // POST /api/v1/worker/register — no auth required
@@ -726,6 +728,114 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 			WithLabelValues(phaseKey, isFinalStr).
 			Observe(actualRuntime / predictedRuntime)
 	}
+}
+
+// GET /api/v1/admin/workers/stream — SSE real-time scheduler dashboard
+func (h *VolunteerWorkerHandler) StreamScheduler(c echo.Context) error {
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	c.Response().Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Response().Writer.(http.Flusher)
+	if !ok {
+		return mw.ErrInternal("streaming not supported")
+	}
+
+	ctx := c.Request().Context()
+	send := func() {
+		snap := h.buildSchedulerSnapshot(ctx)
+		b, err := json.Marshal(snap)
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(c.Response().Writer, "data: %s\n\n", b)
+		flusher.Flush()
+	}
+
+	send()
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			send()
+		}
+	}
+}
+
+func (h *VolunteerWorkerHandler) buildSchedulerSnapshot(ctx context.Context) dto.SchedulerSnapshot {
+	snap := dto.SchedulerSnapshot{Timestamp: time.Now()}
+
+	workers, _ := h.q.ListVolunteerWorkers(ctx)
+	claimRows, _ := h.q.ListWorkerActiveClaimCounts(ctx)
+	claimMap := make(map[uuid.UUID]int64, len(claimRows))
+	for _, r := range claimRows {
+		claimMap[r.WorkerID] = int64(r.ActiveClaims)
+	}
+
+	snap.Workers = make([]dto.WorkerSnapshotItem, len(workers))
+	for i, w := range workers {
+		active := claimMap[w.ID]
+		online := w.LastSeenAt.Valid && time.Since(w.LastSeenAt.Time) < 2*time.Minute
+
+		label := "offline"
+		if online && active > 0 {
+			label = "online_busy"
+		} else if online {
+			label = "online_idle"
+		}
+
+		item := dto.WorkerSnapshotItem{
+			ID:            w.ID,
+			DisplayName:   w.DisplayName,
+			StatusLabel:   label,
+			Online:        online,
+			ActiveJobs:    active,
+			MaxWorkers:    w.MaxWorkers,
+			Capabilities:  json.RawMessage(w.Capabilities),
+			CPUUsage:      w.CpuUsage,
+			RAMUsage:      w.RamUsage,
+			JobsCompleted: w.JobsCompleted,
+			JobsFailed:    w.JobsFailed,
+		}
+		if w.LastSeenAt.Valid {
+			t := w.LastSeenAt.Time
+			item.LastSeenAt = &t
+		}
+		snap.Workers[i] = item
+	}
+
+	if h.rdb != nil {
+		snap.QueueDepth, _ = h.rdb.XLen(ctx, queue.StreamJobsJudge).Result()
+	}
+
+	logs, _ := h.q.ListRecentJobExecutionLogs(ctx, 20)
+	snap.RecentLogs = make([]dto.ScheduleLogItem, 0, len(logs))
+	for _, l := range logs {
+		name := ""
+		if l.WorkerName != nil {
+			name = *l.WorkerName
+		}
+		item := dto.ScheduleLogItem{
+			SubmissionID:     l.SubmissionID,
+			WorkerID:         l.WorkerID,
+			WorkerName:       name,
+			PhaseKey:         l.PhaseKey,
+			IsFinal:          l.IsFinal,
+			PredictedSeconds: l.PredictedRuntimeSeconds,
+			ActualSeconds:    l.ActualRuntimeSeconds,
+			ErrorRatio:       l.ErrorRatio,
+		}
+		if l.CreatedAt.Valid {
+			item.CreatedAt = l.CreatedAt.Time
+		}
+		snap.RecentLogs = append(snap.RecentLogs, item)
+	}
+
+	return snap
 }
 
 func generateWorkerToken() (string, error) {

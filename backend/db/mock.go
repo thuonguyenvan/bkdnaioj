@@ -955,6 +955,10 @@ func (m *MockQuerier) WorkerIsAtCapacity(ctx context.Context, arg WorkerIsAtCapa
 	return false, nil
 }
 
+func (m *MockQuerier) ListRecentJobExecutionLogs(ctx context.Context, limit int32) ([]ListRecentJobExecutionLogsRow, error) {
+	return nil, nil
+}
+
 func (m *MockQuerier) GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error) {
 	return GetCorrectionFactorRow{CorrectionFactor: 1.0, SampleCount: 0}, nil
 }

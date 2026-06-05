@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type VolunteerWorker } from '../lib/api-client';
 import { useAuth } from '../contexts/auth-context';
-import { CheckCircle, XCircle, Trash2, Copy, Cpu, HardDrive, Monitor } from 'lucide-react';
+import { CheckCircle, XCircle, Trash2, Copy, Cpu, HardDrive, Monitor, Activity } from 'lucide-react';
 
 export const AdminWorkersPage: React.FC = () => {
   const { user, isAdmin } = useAuth();
@@ -61,6 +61,9 @@ export const AdminWorkersPage: React.FC = () => {
             <p className="page-subtitle">
               Review volunteer workers, monitor online status, and inspect current judging capacity.
             </p>
+            <Link to="/admin/scheduler" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: 'hsl(var(--primary))', fontWeight: 600, marginTop: '0.4rem' }}>
+              <Activity size={14} /> Open Scheduler Dashboard →
+            </Link>
           </div>
           <div className="flex gap-4" style={{ color: '#64748b', fontSize: '0.85rem', paddingTop: '0.25rem' }}>
             <span>Active: <strong style={{ color: '#334155' }}>{counts.active}</strong></span>

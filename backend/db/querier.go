@@ -113,6 +113,7 @@ type Querier interface {
 	ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
 	ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
+	ListRecentJobExecutionLogs(ctx context.Context, limit int32) ([]ListRecentJobExecutionLogsRow, error)
 	ListStaleWorkerClaims2(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
 	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)

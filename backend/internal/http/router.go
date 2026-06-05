@@ -75,7 +75,7 @@ func NewRouter(d *Deps) *echo.Echo {
 	registerLeaderboards(api, q, d.JWTMgr)
 	registerStats(api, q)
 	registerAdmin(api, q, d.JWTMgr)
-	registerVolunteerWorkers(api, q, d.JWTMgr, d.Storage, d.Producer)
+	registerVolunteerWorkers(api, q, d.JWTMgr, d.Storage, d.Producer, d.Redis)
 
 	return e
 }
@@ -198,8 +198,8 @@ func registerStats(api *echo.Group, q *db.Queries) {
 	stats.GET("/tasks", h.TaskStats)
 }
 
-func registerVolunteerWorkers(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, s3 *storage.S3, producer *queue.Producer) {
-	h := handlers.NewVolunteerWorkerHandler(q, s3, producer)
+func registerVolunteerWorkers(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, s3 *storage.S3, producer *queue.Producer, rdb *redis.Client) {
+	h := handlers.NewVolunteerWorkerHandler(q, s3, producer, rdb)
 
 	// Public: register (no auth)
 	api.POST("/worker/register", h.Register)
@@ -214,6 +214,7 @@ func registerVolunteerWorkers(api *echo.Group, q *db.Queries, jwtMgr *security.J
 	// Admin API: requires JWT + admin role
 	admin := api.Group("/admin/workers", mw.JWTAuth(jwtMgr), mw.RequireRole("admin"))
 	admin.GET("", h.AdminList)
+	admin.GET("/stream", h.StreamScheduler)
 	admin.GET("/:id", h.AdminGet)
 	admin.POST("/:id/approve", h.AdminApprove)
 	admin.POST("/:id/reject", h.AdminReject)

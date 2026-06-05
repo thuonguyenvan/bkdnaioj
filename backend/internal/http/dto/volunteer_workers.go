@@ -65,6 +65,41 @@ type JobResponse struct {
 	TimeoutSecs  int             `json:"timeout_secs"`
 }
 
+// SchedulerSnapshot is the SSE payload streamed to the admin dashboard.
+type SchedulerSnapshot struct {
+	Workers    []WorkerSnapshotItem  `json:"workers"`
+	QueueDepth int64                 `json:"queue_depth"`
+	RecentLogs []ScheduleLogItem     `json:"recent_logs"`
+	Timestamp  time.Time             `json:"timestamp"`
+}
+
+type WorkerSnapshotItem struct {
+	ID            uuid.UUID       `json:"id"`
+	DisplayName   string          `json:"display_name"`
+	StatusLabel   string          `json:"status_label"` // online_idle | online_busy | offline
+	Online        bool            `json:"online"`
+	ActiveJobs    int64           `json:"active_jobs"`
+	MaxWorkers    int16           `json:"max_workers"`
+	Capabilities  json.RawMessage `json:"capabilities"`
+	CPUUsage      *int16          `json:"cpu_usage"`
+	RAMUsage      *int16          `json:"ram_usage"`
+	JobsCompleted int32           `json:"jobs_completed"`
+	JobsFailed    int32           `json:"jobs_failed"`
+	LastSeenAt    *time.Time      `json:"last_seen_at"`
+}
+
+type ScheduleLogItem struct {
+	SubmissionID     uuid.UUID  `json:"submission_id"`
+	WorkerID         uuid.UUID  `json:"worker_id"`
+	WorkerName       string     `json:"worker_name"`
+	PhaseKey         string     `json:"phase_key"`
+	IsFinal          bool       `json:"is_final"`
+	PredictedSeconds *float32   `json:"predicted_seconds"`
+	ActualSeconds    *float32   `json:"actual_seconds"`
+	ErrorRatio       *float32   `json:"error_ratio"`
+	CreatedAt        time.Time  `json:"created_at"`
+}
+
 func VolunteerWorkerToResponse(w db.VolunteerWorker) WorkerResponse {
 	r := WorkerResponse{
 		ID:            w.ID,

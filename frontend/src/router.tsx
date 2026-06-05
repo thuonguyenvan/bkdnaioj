@@ -17,6 +17,7 @@ import { RankingsPage } from './pages/rankings-page';
 import { AdminUsersPage } from './pages/admin-users-page';
 import { AdminContestCreatePage } from './pages/admin-contest-create-page';
 import { AdminWorkersPage } from './pages/admin-workers-page';
+import { SchedulerDashboardPage } from './pages/scheduler-dashboard-page';
 import { DocsPage } from './pages/docs-page';
 import { ForgotPasswordPage } from './pages/forgot-password-page';
 import { ResetPasswordPage } from './pages/reset-password-page';
@@ -104,6 +105,7 @@ export const AppRouter: React.FC = () => {
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/contests/new" element={<AdminContestCreatePage />} />
               <Route path="/admin/workers" element={<AdminWorkersPage />} />
+              <Route path="/admin/scheduler" element={<SchedulerDashboardPage />} />
             </Route>
           </Route>
         </Route>

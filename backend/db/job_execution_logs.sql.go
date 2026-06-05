@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getCorrectionFactor = `-- name: GetCorrectionFactor :one
@@ -77,4 +78,66 @@ func (q *Queries) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecut
 		arg.ActualRuntimeSeconds,
 	)
 	return err
+}
+
+const listRecentJobExecutionLogs = `-- name: ListRecentJobExecutionLogs :many
+SELECT
+    jel.id,
+    jel.submission_id,
+    jel.worker_id,
+    vw.display_name AS worker_name,
+    jel.phase_key,
+    jel.is_final,
+    jel.predicted_runtime_seconds,
+    jel.actual_runtime_seconds,
+    jel.error_ratio,
+    jel.created_at
+FROM job_execution_logs jel
+LEFT JOIN volunteer_workers vw ON vw.id = jel.worker_id
+ORDER BY jel.created_at DESC
+LIMIT $1
+`
+
+type ListRecentJobExecutionLogsRow struct {
+	ID                      uuid.UUID          `json:"id"`
+	SubmissionID            uuid.UUID          `json:"submission_id"`
+	WorkerID                uuid.UUID          `json:"worker_id"`
+	WorkerName              *string            `json:"worker_name"`
+	PhaseKey                string             `json:"phase_key"`
+	IsFinal                 bool               `json:"is_final"`
+	PredictedRuntimeSeconds *float32           `json:"predicted_runtime_seconds"`
+	ActualRuntimeSeconds    *float32           `json:"actual_runtime_seconds"`
+	ErrorRatio              *float32           `json:"error_ratio"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListRecentJobExecutionLogs(ctx context.Context, limit int32) ([]ListRecentJobExecutionLogsRow, error) {
+	rows, err := q.db.Query(ctx, listRecentJobExecutionLogs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRecentJobExecutionLogsRow
+	for rows.Next() {
+		var i ListRecentJobExecutionLogsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubmissionID,
+			&i.WorkerID,
+			&i.WorkerName,
+			&i.PhaseKey,
+			&i.IsFinal,
+			&i.PredictedRuntimeSeconds,
+			&i.ActualRuntimeSeconds,
+			&i.ErrorRatio,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

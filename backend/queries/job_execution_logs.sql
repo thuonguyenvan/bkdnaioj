@@ -8,6 +8,23 @@ INSERT INTO job_execution_logs (
     actual_runtime_seconds
 ) VALUES ($1, $2, $3, $4, $5, $6);
 
+-- name: ListRecentJobExecutionLogs :many
+SELECT
+    jel.id,
+    jel.submission_id,
+    jel.worker_id,
+    vw.display_name AS worker_name,
+    jel.phase_key,
+    jel.is_final,
+    jel.predicted_runtime_seconds,
+    jel.actual_runtime_seconds,
+    jel.error_ratio,
+    jel.created_at
+FROM job_execution_logs jel
+LEFT JOIN volunteer_workers vw ON vw.id = jel.worker_id
+ORDER BY jel.created_at DESC
+LIMIT $1;
+
 -- name: GetCorrectionFactor :one
 -- Returns median(error_ratio) for jobs in same group over last 7 days.
 -- error_ratio = actual / predicted; ratio > 1 means T0 underestimates.
