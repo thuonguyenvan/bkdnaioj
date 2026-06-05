@@ -6,6 +6,9 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+import os
+import shutil
+import subprocess
 
 import typer
 
@@ -39,6 +42,75 @@ def _ask(prompt: str, default: str = "") -> str:
     return val or default
 
 
+def _docker_info() -> tuple[bool, str]:
+    """Return whether Docker daemon is usable and the last docker-info error."""
+    try:
+        result = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=5)
+    except FileNotFoundError:
+        return False, "docker command not found"
+    except Exception as exc:
+        return False, str(exc)
+    if result.returncode == 0:
+        return True, ""
+    return False, (result.stderr or result.stdout or "docker info failed").strip()
+
+
+def _run_start_command(cmd: list[str], wait_seconds: float = 2.0) -> bool:
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    if result.returncode != 0:
+        return False
+    time.sleep(wait_seconds)
+    ok, _ = _docker_info()
+    return ok
+
+
+def _start_docker_daemon() -> tuple[bool, str]:
+    """Start Docker daemon on common Linux hosts without assuming one runtime."""
+    ok, err = _docker_info()
+    if ok:
+        return True, ""
+
+    attempts: list[tuple[str, list[str]]] = []
+    if shutil.which("systemctl"):
+        attempts.append(("systemctl", ["systemctl", "start", "docker"]))
+    if os.geteuid() != 0 and shutil.which("sudo") and shutil.which("systemctl"):
+        attempts.append(("sudo-systemctl", ["sudo", "-n", "systemctl", "start", "docker"]))
+    if shutil.which("service"):
+        attempts.append(("service", ["service", "docker", "start"]))
+    if os.geteuid() != 0 and shutil.which("sudo") and shutil.which("service"):
+        attempts.append(("sudo-service", ["sudo", "-n", "service", "docker", "start"]))
+    if shutil.which("dockerd"):
+        attempts.append(("dockerd", ["dockerd"]))
+
+    errors = [err] if err else []
+    for label, cmd in attempts:
+        try:
+            if label == "dockerd":
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(4)
+                ok, err = _docker_info()
+            else:
+                ok = _run_start_command(cmd)
+                if not ok:
+                    _, err = _docker_info()
+            if ok:
+                return True, ""
+            if err:
+                errors.append(f"{label}: {err}")
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+
+    return False, errors[-1] if errors else "Docker daemon is not running"
+
+
+def _docker_status_label(caps: dict) -> str:
+    if caps.get("docker_available"):
+        return "daemon running"
+    if shutil.which("docker"):
+        return "installed, daemon not running"
+    return "not installed"
+
+
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 @app.command()
@@ -67,28 +139,26 @@ def setup() -> None:
             _echo(f"  GPU : {g['model']} ({g['vram_gb']} GB VRAM, CUDA={g['cuda']})")
     else:
         _echo("  GPU : none detected")
-    _echo(f"  Docker: {'yes' if caps.get('docker_available') else 'no'}")
+    _echo(f"  Docker: {_docker_status_label(caps)}")
     _echo(f"  Python: {caps.get('python_version','?').split()[0]}")
 
     # Docker install offer (needed for final phase inference sandbox)
-    import shutil as _shutil
-    import subprocess as _sp, time as _time
-    docker_binary = bool(_shutil.which("docker"))
+    docker_binary = bool(shutil.which("docker"))
     if not caps.get("docker_available"):
         _echo()
         if docker_binary:
             # Binary exists but daemon not running — try to start it
             _warn("Docker installed but daemon not running. Attempting to start...")
-            _sp.Popen(["dockerd"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-            for _ in range(6):  # wait up to 6s
-                _time.sleep(1)
-                if _sp.run(["docker", "info"], capture_output=True, timeout=3).returncode == 0:
-                    caps["docker_available"] = True
-                    _ok("Docker daemon started successfully.")
-                    break
+            started, reason = _start_docker_daemon()
+            caps["docker_available"] = started
             if not caps.get("docker_available"):
-                _warn("Could not start Docker daemon (no privileged access — e.g. Colab).")
-                _warn("This worker will handle output-only jobs only.")
+                _warn("Could not start Docker daemon automatically.")
+                if reason:
+                    _warn(f"Docker reason: {reason}")
+                _warn("Final-phase sandbox jobs require Docker. This worker will handle output-only jobs until Docker is running.")
+                _echo("  Try on VPS: sudo systemctl start docker")
+            else:
+                _ok("Docker daemon started successfully.")
             install_docker = False
         else:
             _warn("Docker not found. Docker is required to judge final-phase submissions.")
@@ -215,7 +285,6 @@ def approve_token(token: str = typer.Argument(..., help="Token from admin")) -> 
 @app.command()
 def doctor() -> None:
     """Check environment readiness."""
-    import shutil
     _echo("\n=== Environment Check ===\n")
     ok = True
 
@@ -254,16 +323,14 @@ def doctor() -> None:
         ok = False
 
     # Docker
-    if shutil.which("docker"):
-        try:
-            import subprocess
-            res = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
-            if res.returncode == 0:
-                _ok("Docker: available")
-            else:
-                _warn("Docker: installed but not running")
-        except Exception:
-            _warn("Docker: not running")
+    docker_ok, docker_reason = _docker_info()
+    if docker_ok:
+        _ok("Docker: daemon running")
+    elif shutil.which("docker"):
+        _warn("Docker: installed but daemon not running")
+        if docker_reason:
+            _warn(f"Docker reason: {docker_reason}")
+        _echo("  Try on VPS: sudo systemctl start docker")
     else:
         _warn("Docker: not installed (needed for final inference phase)")
 
@@ -315,26 +382,19 @@ def _install_docker() -> None:
                 _ok("Docker Engine installed.")
 
                 # Try starting dockerd directly (needed in containers where systemctl fails)
-                daemon_running = subprocess.run(
-                    ["docker", "info"], capture_output=True, timeout=5
-                ).returncode == 0
+                daemon_running, _ = _docker_info()
 
                 if not daemon_running:
-                    _echo("  Starting Docker daemon (container mode)...")
-                    subprocess.Popen(
-                        ["dockerd"],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    time.sleep(3)  # wait for daemon to start
-                    daemon_running = subprocess.run(
-                        ["docker", "info"], capture_output=True, timeout=5
-                    ).returncode == 0
+                    _echo("  Starting Docker daemon...")
+                    daemon_running, reason = _start_docker_daemon()
 
                 if daemon_running:
                     _ok("Docker daemon is running.")
                 else:
-                    _warn("Docker installed but daemon not started. Try: dockerd &")
+                    _warn("Docker installed but daemon not started.")
+                    if reason:
+                        _warn(f"Docker reason: {reason}")
+                    _echo("  Try on VPS: sudo systemctl start docker")
 
             else:
                 _err("Docker install script returned non-zero. Install manually: https://docs.docker.com/engine/install/")
