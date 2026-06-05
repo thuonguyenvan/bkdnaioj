@@ -178,9 +178,6 @@ export const ContestsPage: React.FC = () => {
                         <Link to={`/contests/${contest.id}`} style={{ color: 'hsl(var(--primary))', textDecoration: 'none', fontWeight: 500 }}>
                           {contest.title}
                         </Link>
-                        <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.15rem' }}>
-                          {contest.slug}
-                        </div>
                       </td>
                       <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
                         {formatDateTime(contest.start_time)}

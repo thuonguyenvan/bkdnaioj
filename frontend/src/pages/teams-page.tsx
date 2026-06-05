@@ -186,9 +186,6 @@ export const TeamsPage: React.FC = () => {
                   >
                     <div>
                       <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{team.name}</div>
-                      <div className="font-mono" style={{ fontSize: '0.7rem', color: selectedTeamId === team.id ? 'hsl(var(--primary-hover))' : '#64748b', marginTop: '0.15rem' }}>
-                        /{team.slug}
-                      </div>
                     </div>
                     {team.owner_id === user?.id && (
                       <span className="team-badge-owner">
@@ -214,7 +211,7 @@ export const TeamsPage: React.FC = () => {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. Anti Gravity"
+                    placeholder="e.g. DUT.AI"
                     value={newTeamName}
                     onChange={handleNameChange}
                     required
@@ -228,7 +225,7 @@ export const TeamsPage: React.FC = () => {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. anti-gravity"
+                    placeholder="e.g. DUT.AI"
                     value={newTeamSlug}
                     onChange={(e) => setNewTeamSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                     required
@@ -256,9 +253,6 @@ export const TeamsPage: React.FC = () => {
               <div className="flex justify-between items-start" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1.25rem' }}>
                 <div>
                   <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{selectedTeam.name}</h2>
-                  <p className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', margin: '0.35rem 0 0 0' }}>
-                    Slug: /{selectedTeam.slug} | ID: {selectedTeam.id}
-                  </p>
                 </div>
                 <span className="badge badge-info" style={{ textTransform: 'uppercase', backgroundColor: '#e0f2fe', color: '#0369a1', fontSize: '0.75rem', fontWeight: 700, padding: '0.35rem 0.75rem', borderRadius: '6px' }}>
                   {teamMembers.length} members
