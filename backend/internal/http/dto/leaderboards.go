@@ -24,7 +24,7 @@ type LeaderboardRow struct {
 	DisplayName string    `json:"display_name"`
 	EntryType   string    `json:"entry_type"`
 	EntryMode   string    `json:"entry_mode"`
-	UserEmails  []string  `json:"user_emails"`
+	Usernames   []string  `json:"usernames"`
 }
 
 type GlobalRankingRow struct {
@@ -36,7 +36,7 @@ type GlobalRankingRow struct {
 	Details     json.RawMessage `json:"details"`
 }
 
-func convertUserEmails(emails interface{}) []string {
+func convertStringArray(emails interface{}) []string {
 	if emails == nil {
 		return []string{}
 	}
@@ -63,7 +63,7 @@ func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
 		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
-		UserEmails: convertUserEmails(r.UserEmails),
+		Usernames: convertStringArray(r.Usernames),
 	}
 }
 
@@ -75,7 +75,7 @@ func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRo
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
 		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
-		UserEmails: convertUserEmails(r.UserEmails),
+		Usernames: convertStringArray(r.Usernames),
 	}
 }
 

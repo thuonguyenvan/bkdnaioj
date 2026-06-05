@@ -945,10 +945,14 @@ export const ContestDetailPage: React.FC = () => {
                             <tr key={`${selectedContestPhaseStanding.phaseDef.id}-${row.entry_id}`}>
                               <td className="font-mono" style={{ fontWeight: 700 }}>{row.rank}</td>
                               <td>
-                                <div style={{ fontWeight: 700, color: '#0f172a' }}>{row.display_name}</div>
-                                {row.user_emails && row.user_emails.length > 0 && (
+                                <div style={{ fontWeight: 700, color: '#0f172a' }}>
+                                  {row.entry_type === 'individual'
+                                    ? (row.usernames?.[0] ?? row.display_name)
+                                    : row.display_name}
+                                </div>
+                                {row.entry_type === 'team' && row.usernames && row.usernames.length > 0 && (
                                   <div className="font-mono" style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.15rem' }}>
-                                    {row.user_emails.map(email => email.split('@')[0]).join(', ')}
+                                    {row.usernames.join(', ')}
                                   </div>
                                 )}
                               </td>

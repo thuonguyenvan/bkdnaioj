@@ -8,17 +8,15 @@ import {
   FileText, UploadCloud, Play, RefreshCw, ArrowLeft, Star, ShieldAlert, Lock, Unlock
 } from 'lucide-react';
 
-const formatParticipantName = (row: { display_name: string; entry_type: string; user_emails?: string[] }) => {
+const formatParticipantName = (row: { display_name: string; entry_type: string; usernames?: string[] }) => {
   if (row.entry_type === 'individual') {
-    if (row.user_emails && row.user_emails.length > 0) {
-      const email = row.user_emails[0];
-      return email.split('@')[0];
+    if (row.usernames && row.usernames.length > 0) {
+      return row.usernames[0];
     }
     return row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name;
   } else if (row.entry_type === 'team') {
-    if (row.user_emails && row.user_emails.length > 0) {
-      const members = row.user_emails.map(email => email.split('@')[0]).join(', ');
-      return `${row.display_name} (${members})`;
+    if (row.usernames && row.usernames.length > 0) {
+      return `${row.display_name} (${row.usernames.join(', ')})`;
     }
     return row.display_name;
   }
@@ -993,7 +991,7 @@ export const PhaseHubPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {(standingsMode === 'task' ? leaderboard : overallLeaderboard).map((row, index) => {
-                    const isCurrentUser = row.user_emails?.includes(user?.email || '') || row.display_name === user?.full_name;
+                    const isCurrentUser = (!!user?.username && row.usernames?.includes(user.username)) || row.display_name === user?.full_name;
                     return (
                       <tr key={index} style={{ backgroundColor: isCurrentUser ? 'hsla(var(--primary), 0.04)' : undefined }}>
                         <td className="font-mono" style={{ fontWeight: 'bold' }}>{row.rank}</td>

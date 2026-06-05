@@ -25,6 +25,7 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
+  username?: string;
   role: 'admin' | 'jury' | 'contestant';
 }
 
@@ -232,7 +233,7 @@ export interface LeaderboardRow {
   entry_id: string;
   entry_type: 'individual' | 'team';
   entry_mode: 'official' | 'virtual' | 'practice';
-  user_emails: string[];
+  usernames: string[];
 }
 
 export interface GlobalRankingDetail {

@@ -78,12 +78,12 @@ const getContestPhaseLeaderboard = `-- name: GetContestPhaseLeaderboard :many
 
 SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
        COALESCE(
-         (SELECT array_agg(u.email::text)::text[]
+         (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
           FROM contest_entry_members cem
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS user_emails
+       ) AS usernames
 FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1
@@ -116,7 +116,7 @@ type GetContestPhaseLeaderboardRow struct {
 	DisplayName       string             `json:"display_name"`
 	EntryType         EntryType          `json:"entry_type"`
 	EntryMode         EntryMode          `json:"entry_mode"`
-	UserEmails        interface{}        `json:"user_emails"`
+	Usernames         interface{}        `json:"usernames"`
 }
 
 // Contest-phase leaderboard
@@ -151,7 +151,7 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 			&i.DisplayName,
 			&i.EntryType,
 			&i.EntryMode,
-			&i.UserEmails,
+			&i.Usernames,
 		); err != nil {
 			return nil, err
 		}
@@ -240,12 +240,12 @@ const getTaskPhaseLeaderboard = `-- name: GetTaskPhaseLeaderboard :many
 
 SELECT lb.id, lb.contest_id, lb.task_id, lb.phase_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.chosen_submission_id, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
        COALESCE(
-         (SELECT array_agg(u.email::text)::text[]
+         (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
           FROM contest_entry_members cem
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS user_emails
+       ) AS usernames
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.phase_id = $1
@@ -280,7 +280,7 @@ type GetTaskPhaseLeaderboardRow struct {
 	DisplayName        string             `json:"display_name"`
 	EntryType          EntryType          `json:"entry_type"`
 	EntryMode          EntryMode          `json:"entry_mode"`
-	UserEmails         interface{}        `json:"user_emails"`
+	Usernames          interface{}        `json:"usernames"`
 }
 
 // Task-phase leaderboard
@@ -317,7 +317,7 @@ func (q *Queries) GetTaskPhaseLeaderboard(ctx context.Context, arg GetTaskPhaseL
 			&i.DisplayName,
 			&i.EntryType,
 			&i.EntryMode,
-			&i.UserEmails,
+			&i.Usernames,
 		); err != nil {
 			return nil, err
 		}
@@ -439,7 +439,7 @@ scored_submissions AS (
   SELECT
     cpd.key AS phase_key,
     u.id AS user_id,
-    split_part(u.email::text, '@', 1) AS display_name,
+    COALESCE(u.username, split_part(u.email::text, '@', 1)) AS display_name,
     u.email::text AS user_email,
     ct.title AS contest_title,
     t.title AS task_title,

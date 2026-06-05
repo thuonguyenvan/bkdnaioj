@@ -22,6 +22,7 @@ export const RegisterPage: React.FC = () => {
     setSuccess(null);
 
     if (fullName.trim().length < 2) { setError('Full name must be at least 2 characters.'); return; }
+    if (username.trim().length < 3) { setError('Username must be at least 3 characters.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Invalid email (e.g. user@gmail.com).'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
@@ -32,7 +33,7 @@ export const RegisterPage: React.FC = () => {
         email,
         password,
         full_name: fullName,
-        username: username.trim() || undefined,
+        username: username.trim(),
         student_id: studentId || undefined,
       });
       setSuccess('Account created! Redirecting...');
@@ -42,7 +43,8 @@ export const RegisterPage: React.FC = () => {
       if (msg.includes('Email') && msg.includes('email')) setError('Invalid email.');
       else if (msg.includes('FullName') && msg.includes('min')) setError('Full name must be at least 2 characters.');
       else if (msg.includes('Password') && msg.includes('min')) setError('Password must be at least 8 characters.');
-      else if (msg.includes('already') || msg.includes('duplicate') || msg.includes('23505')) setError('Email or username already in use.');
+      else if (msg.includes('username already')) setError('Username already taken.');
+      else if (msg.includes('email already') || msg.includes('duplicate') || msg.includes('23505')) setError('Email already in use.');
       else if (msg.includes('rate') || msg.includes('429')) setError('Too many requests, please try again in 1 minute.');
       else setError(msg || 'Registration failed. Please try again.');
     } finally {
@@ -88,14 +90,13 @@ export const RegisterPage: React.FC = () => {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div className="form-group">
-              <label className="form-label">
-                Username <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(optional)</span>
-              </label>
+              <label className="form-label">Username</label>
               <input
                 type="text"
                 className="form-input"
                 value={username}
                 onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                required
                 placeholder="e.g. johndoe"
                 minLength={3}
                 maxLength={60}

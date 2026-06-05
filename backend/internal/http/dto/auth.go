@@ -13,7 +13,7 @@ type RegisterRequest struct {
 	Email     string  `json:"email"      validate:"required,email,max=255"`
 	Password  string  `json:"password"   validate:"required,min=8,max=128"`
 	FullName  string  `json:"full_name"  validate:"required,min=2,max=255"`
-	Username  *string `json:"username,omitempty" validate:"omitempty,min=3,max=60,alphanum"`
+	Username  string  `json:"username"   validate:"required,min=3,max=60,alphanum"`
 	StudentID *string `json:"student_id,omitempty" validate:"omitempty,max=64"`
 }
 

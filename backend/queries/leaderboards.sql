@@ -3,12 +3,12 @@
 -- name: GetTaskPhaseLeaderboard :many
 SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
        COALESCE(
-         (SELECT array_agg(u.email::text)::text[]
+         (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
           FROM contest_entry_members cem
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS user_emails
+       ) AS usernames
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.phase_id = $1
@@ -36,12 +36,12 @@ RETURNING *;
 -- name: GetContestPhaseLeaderboard :many
 SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
        COALESCE(
-         (SELECT array_agg(u.email::text)::text[]
+         (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
           FROM contest_entry_members cem
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS user_emails
+       ) AS usernames
 FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1
@@ -70,7 +70,7 @@ scored_submissions AS (
   SELECT
     cpd.key AS phase_key,
     u.id AS user_id,
-    split_part(u.email::text, '@', 1) AS display_name,
+    COALESCE(u.username, split_part(u.email::text, '@', 1)) AS display_name,
     u.email::text AS user_email,
     ct.title AS contest_title,
     t.title AS task_title,

@@ -4,6 +4,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/jackc/pgx/v5"
@@ -42,21 +43,21 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return mw.ErrInternal("failed to hash password")
 	}
 
-	var uname *string
-	if req.Username != nil && *req.Username != "" {
-		uname = req.Username
-	}
+	uname := req.Username
 	user, err := h.q.CreateUser(c.Request().Context(), db.CreateUserParams{
 		Email:        req.Email,
 		PasswordHash: hash,
 		FullName:     req.FullName,
 		Role:         db.UserRoleContestant,
 		StudentID:    req.StudentID,
-		Username:     uname,
+		Username:     &uname,
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if strings.Contains(pgErr.ConstraintName, "username") {
+				return mw.ErrConflict("username already taken")
+			}
 			return mw.ErrConflict("email already registered")
 		}
 		return mw.ErrInternal("create user failed")
