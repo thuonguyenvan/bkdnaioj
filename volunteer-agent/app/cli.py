@@ -84,14 +84,23 @@ def setup() -> None:
 
     # Docker install offer (needed for final phase inference sandbox)
     import shutil as _shutil
+    import subprocess as _sp, time as _time
     docker_binary = bool(_shutil.which("docker"))
     if not caps.get("docker_available"):
         _echo()
         if docker_binary:
-            _warn("Docker is installed but daemon is not running.")
-            _warn("On Colab/containers without --privileged, Docker daemon cannot start.")
-            _warn("This worker will handle output-only jobs (public_test, private_test).")
-            _warn("For final inference jobs, use a cloud VM or RunPod with Docker support.")
+            # Binary exists but daemon not running — try to start it
+            _warn("Docker installed but daemon not running. Attempting to start...")
+            _sp.Popen(["dockerd"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            for _ in range(6):  # wait up to 6s
+                _time.sleep(1)
+                if _sp.run(["docker", "info"], capture_output=True, timeout=3).returncode == 0:
+                    caps["docker_available"] = True
+                    _ok("Docker daemon started successfully.")
+                    break
+            if not caps.get("docker_available"):
+                _warn("Could not start Docker daemon (no privileged access — e.g. Colab).")
+                _warn("This worker will handle output-only jobs only.")
             install_docker = False
         else:
             _warn("Docker not found. Docker is required to judge final-phase submissions.")
