@@ -43,6 +43,12 @@ services:
       S3_ACCESS_KEY: "${MINIO_ROOT_USER}"
       S3_SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
       LOG_LEVEL: "info"
+      SMTP_HOST: "smtp.gmail.com"
+      SMTP_PORT: "587"
+      SMTP_USER: "${SMTP_USER}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD}"
+      SMTP_FROM: "${SMTP_FROM:-${SMTP_USER}}"
+      APP_BASE_URL: "https://www.bkdnaioj.app"
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

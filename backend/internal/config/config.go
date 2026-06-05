@@ -25,6 +25,13 @@ type Config struct {
 	S3AccessKey      string        `mapstructure:"S3_ACCESS_KEY"`
 	S3SecretKey      string        `mapstructure:"S3_SECRET_KEY"`
 	LogLevel         string        `mapstructure:"LOG_LEVEL"`
+	// Email / SMTP
+	SMTPHost     string `mapstructure:"SMTP_HOST"`
+	SMTPPort     string `mapstructure:"SMTP_PORT"`
+	SMTPUser     string `mapstructure:"SMTP_USER"`
+	SMTPPassword string `mapstructure:"SMTP_PASSWORD"`
+	SMTPFrom     string `mapstructure:"SMTP_FROM"`
+	AppBaseURL   string `mapstructure:"APP_BASE_URL"`
 }
 
 // Load reads .env (if present) + environment and returns a validated Config.
@@ -38,12 +45,16 @@ func Load() (*Config, error) {
 	v.SetDefault("S3_REGION", "us-east-1")
 	v.SetDefault("S3_BUCKET", "submissions")
 	v.SetDefault("LOG_LEVEL", "info")
+	v.SetDefault("SMTP_HOST", "smtp.gmail.com")
+	v.SetDefault("SMTP_PORT", "587")
+	v.SetDefault("APP_BASE_URL", "https://www.bkdnaioj.app")
 
 	// viper needs an explicit bind for AutomaticEnv + Unmarshal to populate struct fields
 	for _, k := range []string{
 		"HTTP_ADDR", "DATABASE_URL", "REDIS_URL", "JWT_SECRET", "JWT_TTL",
 		"S3_ENDPOINT", "S3_PUBLIC_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY",
 		"LOG_LEVEL",
+		"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM", "APP_BASE_URL",
 	} {
 		_ = v.BindEnv(k)
 	}

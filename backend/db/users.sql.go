@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, full_name, role, student_id, avatar_url)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at
+RETURNING id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at, username
 `
 
 type CreateUserParams struct {
@@ -47,12 +47,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.LastVisit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at, username FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -69,12 +70,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.LastVisit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at, username FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -91,6 +93,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.LastVisit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }
@@ -111,7 +114,7 @@ SET full_name  = COALESCE($2, full_name),
     avatar_url = COALESCE($4, avatar_url),
     updated_at = now()
 WHERE id = $1
-RETURNING id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at
+RETURNING id, email, password_hash, full_name, role, student_id, avatar_url, last_visit, created_at, updated_at, username
 `
 
 type UpdateUserProfileParams struct {
@@ -140,6 +143,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.LastVisit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }

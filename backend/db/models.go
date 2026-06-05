@@ -1243,6 +1243,15 @@ type JobExecutionLog struct {
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 }
 
+type PasswordResetToken struct {
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Token     string             `json:"token"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type Phase struct {
 	ID                  uuid.UUID          `json:"id"`
 	TaskID              uuid.UUID          `json:"task_id"`
@@ -1404,6 +1413,7 @@ type User struct {
 	LastVisit    pgtype.Timestamptz `json:"last_visit"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Username     *string            `json:"username"`
 }
 
 type VolunteerWorker struct {

@@ -970,3 +970,22 @@ func (m *MockQuerier) GetAllActiveWorkersWithEarliestAvailable(ctx context.Conte
 func (m *MockQuerier) CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error) {
 	return VolunteerWorkerClaim{}, nil
 }
+
+func (m *MockQuerier) CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error) {
+	return PasswordResetToken{}, nil
+}
+func (m *MockQuerier) GetValidPasswordResetToken(ctx context.Context, token string) (GetValidPasswordResetTokenRow, error) {
+	return GetValidPasswordResetTokenRow{}, nil
+}
+func (m *MockQuerier) MarkPasswordResetTokenUsed(ctx context.Context, token string) error {
+	return nil
+}
+func (m *MockQuerier) GetUserByUsername(ctx context.Context, username *string) (User, error) {
+	return User{}, nil
+}
+func (m *MockQuerier) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	return nil
+}
+func (m *MockQuerier) UpdateUserUsername(ctx context.Context, arg UpdateUserUsernameParams) (User, error) {
+	return User{}, nil
+}

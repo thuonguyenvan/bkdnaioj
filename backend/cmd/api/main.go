@@ -13,6 +13,7 @@ import (
 
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/config"
+	"github.com/mank1/olpai-backend/internal/email"
 	olpaihttp "github.com/mank1/olpai-backend/internal/http"
 	"github.com/mank1/olpai-backend/internal/metrics"
 	"github.com/mank1/olpai-backend/internal/queue"
@@ -79,13 +80,23 @@ func main() {
 		}
 	}
 
+	var mailer *email.Mailer
+	if cfg.SMTPHost != "" && cfg.SMTPUser != "" && cfg.SMTPPassword != "" {
+		mailer = email.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPassword, cfg.SMTPFrom)
+		log.Info().Str("smtp_host", cfg.SMTPHost).Str("smtp_user", cfg.SMTPUser).Msg("email mailer configured")
+	} else {
+		log.Warn().Msg("SMTP not configured — forgot-password emails will not be sent")
+	}
+
 	e := olpaihttp.NewRouter(&olpaihttp.Deps{
-		Pool:     pool,
-		Redis:    rdb,
-		Storage:  s3,
-		Log:      log,
-		JWTMgr:   jwtMgr,
-		Producer: producer,
+		Pool:       pool,
+		Redis:      rdb,
+		Storage:    s3,
+		Log:        log,
+		JWTMgr:     jwtMgr,
+		Producer:   producer,
+		Mailer:     mailer,
+		AppBaseURL: cfg.AppBaseURL,
 	})
 
 	runCtx, runCancel := context.WithCancel(context.Background())

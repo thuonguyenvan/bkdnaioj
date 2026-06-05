@@ -18,6 +18,8 @@ import { AdminUsersPage } from './pages/admin-users-page';
 import { AdminContestCreatePage } from './pages/admin-contest-create-page';
 import { AdminWorkersPage } from './pages/admin-workers-page';
 import { DocsPage } from './pages/docs-page';
+import { ForgotPasswordPage } from './pages/forgot-password-page';
+import { ResetPasswordPage } from './pages/reset-password-page';
 
 
 // Layout shell wrapping pages with Navbar
@@ -78,6 +80,8 @@ export const AppRouter: React.FC = () => {
         <Route element={<AppLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/docs" element={<DocsPage />} />
         </Route>
 

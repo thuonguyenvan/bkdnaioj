@@ -237,6 +237,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	var bestEnqueuedAt time.Time
 	var bestCost *scheduler.Cost
 	var bestRuntime float64
+	var bestMsgID string
 
 	for _, msg := range candidates {
 		payload, ok := msg.Values["payload"].(string)
@@ -299,12 +300,16 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			bestCost = cost
 			bestEnqueuedAt = env.EnqueuedAt
 			bestRuntime = correctedRuntime
+			bestMsgID = msg.ID
 		}
 	}
 	metrics.SchedulerDecisionDuration.Observe(time.Since(start).Seconds())
 
-	// Best-effort dequeue: consume next available (race condition acceptable for V1)
-	envelope, msgID, err := h.producer.DequeueOne(ctx)
+	if bestCost == nil || bestMsgID == "" {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
+	}
+
+	envelope, msgID, err := h.producer.ClaimMessage(ctx, bestMsgID)
 	if err != nil || envelope == nil {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
 	}

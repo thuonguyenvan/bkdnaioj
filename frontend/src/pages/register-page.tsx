@@ -6,9 +6,10 @@ import { UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [studentId, setStudentId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -24,6 +25,7 @@ export const RegisterPage: React.FC = () => {
         email,
         password,
         full_name: fullName,
+        username: username.trim() || undefined,
         student_id: studentId || undefined,
       });
       setSuccess('Account registered successfully. Redirecting to login...');
@@ -85,19 +87,34 @@ export const RegisterPage: React.FC = () => {
 
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">Full Name</label>
+              <label className="form-label">Họ và tên</label>
               <input
                 type="text"
                 className="form-input"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                placeholder="Nguyen Van A"
+                placeholder="Nguyễn Văn A"
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Student ID</label>
+              <label className="form-label">
+                Username <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(tuỳ chọn)</span>
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                placeholder="vd: nguyenvana (chỉ chữ thường và số)"
+                minLength={3}
+                maxLength={60}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Mã sinh viên</label>
               <input
                 type="text"
                 className="form-input"

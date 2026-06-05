@@ -29,6 +29,7 @@ func UserToResponse(u db.User) UserResponse {
 		ID:        u.ID,
 		Email:     u.Email,
 		FullName:  u.FullName,
+		Username:  u.Username,
 		Role:      string(u.Role),
 		StudentID: u.StudentID,
 		AvatarURL: u.AvatarUrl,

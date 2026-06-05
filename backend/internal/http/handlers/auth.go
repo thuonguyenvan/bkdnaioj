@@ -79,7 +79,14 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return mw.ErrBadRequest(err.Error())
 	}
 
-	user, err := h.q.GetUserByEmail(c.Request().Context(), req.Email)
+	// Allow login with email or username
+	ctx := c.Request().Context()
+	user, err := h.q.GetUserByEmail(ctx, req.Email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Try username
+		uname := req.Email // reuse field for username attempt
+		user, err = h.q.GetUserByUsername(ctx, &uname)
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return mw.ErrUnauthorized("invalid email or password")

@@ -341,6 +341,14 @@ export const api = {
     const res = await apiClient.get('/auth/me');
     return res.data as User;
   },
+  async forgotPassword(email: string) {
+    const res = await apiClient.post('/auth/forgot-password', { email });
+    return res.data;
+  },
+  async resetPassword(token: string, password: string) {
+    const res = await apiClient.post('/auth/reset-password', { token, password });
+    return res.data;
+  },
 
   // Contests
   async getContests() {

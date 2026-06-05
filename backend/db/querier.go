@@ -30,6 +30,7 @@ type Querier interface {
 	CreateContest(ctx context.Context, arg CreateContestParams) (Contest, error)
 	CreateContestEntry(ctx context.Context, arg CreateContestEntryParams) (ContestEntry, error)
 	CreateEvaluationSet(ctx context.Context, arg CreateEvaluationSetParams) (TaskEvaluationSet, error)
+	CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error)
 	CreatePhase(ctx context.Context, arg CreatePhaseParams) (Phase, error)
 	CreatePhaseDef(ctx context.Context, arg CreatePhaseDefParams) (ContestPhaseDef, error)
 	// Creates submission row before file upload completes.
@@ -94,6 +95,8 @@ type Querier interface {
 	GetTeamBySlug(ctx context.Context, slug string) (Team, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	GetUserByUsername(ctx context.Context, username *string) (User, error)
+	GetValidPasswordResetToken(ctx context.Context, token string) (GetValidPasswordResetTokenRow, error)
 	GetVolunteerWorkerByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	GetVolunteerWorkerByToken(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	GetWorkerClaimBySubmission(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error)
@@ -125,6 +128,7 @@ type Querier interface {
 	// ── Engineering optimizations (Phase 06) ────────────────────────────────────
 	// Single aggregation to replace N+1 CountWorkerActiveClaims in AdminList.
 	ListWorkerActiveClaimCounts(ctx context.Context) ([]ListWorkerActiveClaimCountsRow, error)
+	MarkPasswordResetTokenUsed(ctx context.Context, token string) error
 	MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
 	MarkSubmissionFailed(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
 	MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error)
@@ -151,8 +155,10 @@ type Querier interface {
 	UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error)
 	UpdateTicket(ctx context.Context, arg UpdateTicketParams) (Ticket, error)
+	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (UpdateUserRoleRow, error)
+	UpdateUserUsername(ctx context.Context, arg UpdateUserUsernameParams) (User, error)
 	UpdateWorkerHeartbeat(ctx context.Context, arg UpdateWorkerHeartbeatParams) (VolunteerWorker, error)
 	UpsertContestPhaseLeaderboard(ctx context.Context, arg UpsertContestPhaseLeaderboardParams) (ContestPhaseLeaderboardEntry, error)
 	UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)

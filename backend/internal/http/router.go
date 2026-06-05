@@ -17,18 +17,21 @@ import (
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
 	"github.com/mank1/olpai-backend/internal/metrics"
 	"github.com/mank1/olpai-backend/internal/queue"
+	"github.com/mank1/olpai-backend/internal/email"
 	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/mank1/olpai-backend/internal/storage"
 )
 
 // Deps groups shared dependencies injected into handlers.
 type Deps struct {
-	Pool     *pgxpool.Pool
-	Redis    *redis.Client
-	Storage  *storage.S3
-	Log      zerolog.Logger
-	JWTMgr   *security.JWTManager
-	Producer *queue.Producer
+	Pool       *pgxpool.Pool
+	Redis      *redis.Client
+	Storage    *storage.S3
+	Log        zerolog.Logger
+	JWTMgr     *security.JWTManager
+	Producer   *queue.Producer
+	Mailer     *email.Mailer
+	AppBaseURL string
 }
 
 // NewRouter builds the Echo instance with middlewares and all route groups.
@@ -55,6 +58,7 @@ func NewRouter(d *Deps) *echo.Echo {
 	q := db.New(d.Pool)
 	api := e.Group("/api/v1")
 	registerAuth(api, q, d.JWTMgr)
+	registerPasswordReset(api, q, d.Mailer, d.AppBaseURL)
 	registerUsers(api, q, d.JWTMgr)
 	registerTeams(api, q, d.JWTMgr)
 	registerContests(api, q, d.JWTMgr)
