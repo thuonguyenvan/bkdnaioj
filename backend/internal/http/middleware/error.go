@@ -36,6 +36,9 @@ func ErrConflict(msg string) *AppError {
 func ErrInternal(msg string) *AppError {
 	return &AppError{Code: "INTERNAL_ERROR", Message: msg, Status: http.StatusInternalServerError}
 }
+func ErrTooManyRequests(msg string) *AppError {
+	return &AppError{Code: "RATE_LIMITED", Message: msg, Status: http.StatusTooManyRequests}
+}
 
 // ErrorHandler is a custom Echo error handler that renders AppError as JSON.
 func ErrorHandler(err error, c echo.Context) {

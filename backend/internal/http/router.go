@@ -3,6 +3,7 @@ package http
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -57,8 +58,8 @@ func NewRouter(d *Deps) *echo.Echo {
 
 	q := db.New(d.Pool)
 	api := e.Group("/api/v1")
-	registerAuth(api, q, d.JWTMgr)
-	registerPasswordReset(api, q, d.Mailer, d.AppBaseURL)
+	registerAuth(api, q, d.JWTMgr, d.Redis)
+	registerPasswordReset(api, q, d.Mailer, d.AppBaseURL, d.Redis)
 	registerUsers(api, q, d.JWTMgr)
 	registerTeams(api, q, d.JWTMgr)
 	registerContests(api, q, d.JWTMgr)
@@ -79,11 +80,11 @@ func NewRouter(d *Deps) *echo.Echo {
 	return e
 }
 
-func registerAuth(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {
+func registerAuth(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, rdb *redis.Client) {
 	h := handlers.NewAuthHandler(q, jwtMgr)
 	auth := api.Group("/auth")
-	auth.POST("/register", h.Register)
-	auth.POST("/login", h.Login)
+	auth.POST("/register", h.Register, mw.RateLimitIP(rdb, 3, time.Minute))
+	auth.POST("/login", h.Login, mw.RateLimitIP(rdb, 5, time.Minute))
 	auth.GET("/me", h.Me, mw.JWTAuth(jwtMgr))
 }
 

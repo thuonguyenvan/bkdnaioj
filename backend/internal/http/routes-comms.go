@@ -1,6 +1,8 @@
 package http
 
 import (
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/email"
@@ -12,10 +14,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func registerPasswordReset(api *echo.Group, q *db.Queries, mailer *email.Mailer, baseURL string) {
+func registerPasswordReset(api *echo.Group, q *db.Queries, mailer *email.Mailer, baseURL string, rdb *redis.Client) {
 	h := handlers.NewPasswordResetHandler(q, mailer, baseURL)
-	api.POST("/auth/forgot-password", h.ForgotPassword)
-	api.POST("/auth/reset-password",  h.ResetPassword)
+	api.POST("/auth/forgot-password", h.ForgotPassword, mw.RateLimitIP(rdb, 3, 5*time.Minute))
+	api.POST("/auth/reset-password", h.ResetPassword)
 }
 
 func registerSubmissions(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, rdb *redis.Client, s3 *storage.S3) {
@@ -23,7 +25,7 @@ func registerSubmissions(api *echo.Group, q *db.Queries, jwtMgr *security.JWTMan
 	auth := mw.JWTAuth(jwtMgr)
 	api.POST("/entries/:entry_id/submissions:initiate", h.InitiateUpload, auth)
 	api.POST("/submissions/:id/complete", h.CompleteUpload, auth)
-	api.POST("/entries/:entry_id/submissions", h.Create, auth)
+	api.POST("/entries/:entry_id/submissions", h.Create, auth, mw.RateLimitUser(rdb, 10, time.Minute))
 	api.GET("/submissions/:id", h.Get, auth)
 	api.GET("/entries/:id/submissions", h.ListByEntry, auth)
 	api.POST("/submissions/:id/mark-final", h.MarkFinal, auth)
