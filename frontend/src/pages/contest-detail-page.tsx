@@ -160,7 +160,7 @@ export const ContestDetailPage: React.FC = () => {
   const [selectedEntryMode, setSelectedEntryMode] = useState<'official' | 'virtual' | 'practice'>('official');
   const [showRegFormForce, setShowRegFormForce] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState('');
-  const [customDisplayName, setCustomDisplayName] = useState('');
+  const [, setCustomDisplayName] = useState('');
   const [showCreateTeamInline, setShowCreateTeamInline] = useState(false);
   const [inlineTeamName, setInlineTeamName] = useState('');
   const [inlineTeamSlug, setInlineTeamSlug] = useState('');
@@ -270,8 +270,6 @@ export const ContestDetailPage: React.FC = () => {
     if (!user) return;
     setRegisterError(null);
 
-    const displayName = customDisplayName.trim();
-
     let startAt: string | undefined;
     let endAt: string | undefined;
 
@@ -289,7 +287,7 @@ export const ContestDetailPage: React.FC = () => {
         entry_type: 'individual',
         entry_mode: selectedEntryMode,
         user_id: user.id,
-        display_name: displayName || user.full_name,
+        display_name: user.username || user.full_name,
         start_at: startAt,
         end_at: endAt,
       });
@@ -303,7 +301,7 @@ export const ContestDetailPage: React.FC = () => {
         entry_type: 'team',
         entry_mode: selectedEntryMode,
         team_id: selectedTeamId,
-        display_name: displayName || team?.name || 'Team',
+        display_name: team?.name || 'Team',
         start_at: startAt,
         end_at: endAt,
       });
@@ -618,18 +616,6 @@ export const ContestDetailPage: React.FC = () => {
             )}
           </div>
         ) : null}
-
-        <div>
-          <label className="form-label" style={{ fontSize: '0.75rem' }}>Display name</label>
-          <input
-            type="text"
-            className="form-input"
-            style={{ fontSize: '0.8rem', padding: '0.45rem 0.6rem' }}
-            placeholder={selectedRegType === 'individual' ? user?.full_name : 'Team display name'}
-            value={customDisplayName}
-            onChange={(e) => setCustomDisplayName(e.target.value)}
-          />
-        </div>
 
         <button
           onClick={handleRegister}
