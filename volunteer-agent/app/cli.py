@@ -55,19 +55,7 @@ def setup() -> None:
     worker_name = _ask("Display name for this machine", s.worker_name)
     s.worker_name = worker_name
 
-    # 3. Number of parallel workers
-    while True:
-        try:
-            raw = _ask("Number of parallel judge workers (1–32)", str(s.max_workers))
-            n = int(raw)
-            if 1 <= n <= 32:
-                s.max_workers = n
-                break
-            _warn("Please enter a number between 1 and 32.")
-        except ValueError:
-            _warn("Please enter a valid number.")
-
-    # 3. Collect hardware
+    # 3. Collect hardware FIRST (needed to recommend workers)
     _echo("\nCollecting hardware info...")
     caps = collect()
     _echo(f"  CPU : {caps.get('cpu_model','?')} — {caps.get('cpu_cores','?')} cores / {caps.get('cpu_threads','?')} threads")
@@ -123,7 +111,48 @@ def setup() -> None:
     if run_bench:
         bench_results = _benchmark()
 
-    # 5. Register
+    # 5. Recommend parallel workers based on hardware
+    _echo()
+    ram_bytes = caps.get("available_ram_bytes", 0)
+    cpu_cores = caps.get("cpu_cores", 1) or 1
+    has_docker = caps.get("docker_available", False)
+
+    # Use same heuristic values as EstimateJobDemand in Go scheduler
+    RAM_PER_OUTPUT_JOB = 256 * 1024 * 1024    # 256 MB (from scheduler/profile.go)
+    RAM_PER_FINAL_JOB  = 512 * 1024 * 1024    # 512 MB (from scheduler/profile.go)
+
+    recommended_output = max(1, min(
+        ram_bytes // RAM_PER_OUTPUT_JOB if ram_bytes else cpu_cores,
+        cpu_cores,
+        16,
+    ))
+
+    if has_docker:
+        recommended_final = max(1, min(
+            ram_bytes // RAM_PER_FINAL_JOB if ram_bytes else 1,
+            4,
+        ))
+        _echo(f"Recommended parallel workers:")
+        _echo(f"  Output-only jobs (public_test, private_test): {recommended_output}")
+        _echo(f"  Inference jobs   (final phases, Docker):      {recommended_final}")
+        _echo(f"  → Suggested: {recommended_output} (covers all job types)")
+        suggested = recommended_output
+    else:
+        _echo(f"Recommended parallel workers (output-only, no Docker): {recommended_output}")
+        suggested = recommended_output
+
+    while True:
+        try:
+            raw = _ask(f"Number of parallel judge workers (1–32)", str(suggested))
+            n = int(raw)
+            if 1 <= n <= 32:
+                s.max_workers = n
+                break
+            _warn("Please enter a number between 1 and 32.")
+        except ValueError:
+            _warn("Please enter a valid number.")
+
+    # 6. Register
     _echo(f"\nRegistering with {s.api_url} (max_workers={s.max_workers})...")
     client = APIClient(s.api_url, "")
     try:
