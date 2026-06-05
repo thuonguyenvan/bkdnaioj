@@ -1,29 +1,30 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/auth-context';
-import { UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('');
-  const [studentId, setStudentId] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName]       = useState('');
+  const [username, setUsername]       = useState('');
+  const [studentId, setStudentId]     = useState('');
+  const [error, setError]             = useState<string | null>(null);
+  const [success, setSuccess]         = useState<string | null>(null);
+  const [submitting, setSubmitting]   = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
-    // Client-side validation
     if (fullName.trim().length < 2) { setError('Họ và tên phải có ít nhất 2 ký tự.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Email không hợp lệ (vd: user@gmail.com).'); return; }
     if (password.length < 8) { setError('Mật khẩu phải có ít nhất 8 ký tự.'); return; }
+    if (password !== confirmPassword) { setError('Mật khẩu xác nhận không khớp.'); return; }
 
     setSubmitting(true);
     try {
@@ -34,11 +35,10 @@ export const RegisterPage: React.FC = () => {
         username: username.trim() || undefined,
         student_id: studentId || undefined,
       });
-      setSuccess('Account registered successfully. Redirecting to login...');
+      setSuccess('Đăng ký thành công! Đang chuyển hướng...');
       setTimeout(() => { navigate('/login'); }, 2000);
     } catch (err: any) {
       const msg: string = err?.response?.data?.message || '';
-      // Convert raw Go validator messages to friendly Vietnamese
       if (msg.includes('Email') && msg.includes('email')) setError('Email không hợp lệ.');
       else if (msg.includes('FullName') && msg.includes('min')) setError('Họ và tên phải có ít nhất 2 ký tự.');
       else if (msg.includes('Password') && msg.includes('min')) setError('Mật khẩu phải có ít nhất 8 ký tự.');
@@ -51,64 +51,42 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="container auth-wrapper">
-      <div className="auth-shell">
-        <aside className="auth-context-card">
-          <h1 className="auth-title">Join the contest platform</h1>
-          <p className="auth-subtitle">
-            Create one account for individual contests, team membership, and support requests.
+    <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
+      <div className="auth-card" style={{ width: '100%', maxWidth: 460 }}>
+        <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.35rem' }}>Tạo tài khoản</h2>
+          <p style={{ fontSize: '0.85rem', color: 'hsl(var(--text-muted))', margin: 0 }}>
+            Đăng ký để tham gia các cuộc thi AI.
           </p>
-          <div className="auth-meta-list">
-            <div className="auth-meta-item">
-              <strong>Account identity</strong>
-              <span>Your display name is used in registrations, submissions, and team rosters.</span>
-            </div>
-            <div className="auth-meta-item">
-              <strong>Team contests</strong>
-              <span>Create or join teams after registration from the Groups page.</span>
-            </div>
-            <div className="auth-meta-item">
-              <strong>Contest access</strong>
-              <span>Register for available contests after signing in.</span>
-            </div>
+        </div>
+
+        {error && (
+          <div className="alert alert-danger flex items-center gap-2" style={{ marginBottom: '1rem' }}>
+            <AlertCircle size={16} />
+            <div>{error}</div>
           </div>
-        </aside>
+        )}
+        {success && (
+          <div className="alert alert-success flex items-center gap-2" style={{ marginBottom: '1rem' }}>
+            <CheckCircle size={16} />
+            <div>{success}</div>
+          </div>
+        )}
 
-        <div className="auth-card auth-form-card">
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h2 className="auth-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <UserPlus size={22} /> Create Account
-            </h2>
-            <p className="auth-subtitle">Enter your profile and login credentials.</p>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Họ và tên</label>
+            <input
+              type="text"
+              className="form-input"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              placeholder="Nguyễn Văn A"
+            />
           </div>
 
-          {error && (
-            <div className="alert alert-danger flex items-center gap-2" style={{ marginBottom: '1rem' }}>
-              <AlertCircle size={18} />
-              <div>{error}</div>
-            </div>
-          )}
-
-          {success && (
-            <div className="alert alert-success flex items-center gap-2" style={{ marginBottom: '1rem' }}>
-              <CheckCircle size={18} />
-              <div>{success}</div>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="form-label">Họ và tên</label>
-              <input
-                type="text"
-                className="form-input"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                placeholder="Nguyễn Văn A"
-              />
-            </div>
-
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div className="form-group">
               <label className="form-label">
                 Username <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(tuỳ chọn)</span>
@@ -118,56 +96,68 @@ export const RegisterPage: React.FC = () => {
                 className="form-input"
                 value={username}
                 onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
-                placeholder="vd: nguyenvana (chỉ chữ thường và số)"
+                placeholder="vd: nguyenvana"
                 minLength={3}
                 maxLength={60}
               />
             </div>
-
             <div className="form-group">
-              <label className="form-label">Mã sinh viên</label>
+              <label className="form-label">Mã sinh viên <span style={{ color: 'hsl(var(--text-muted))', fontWeight: 400 }}>(tuỳ chọn)</span></label>
               <input
                 type="text"
                 className="form-input"
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
-                placeholder="Optional"
+                placeholder="VD: 21IT001"
               />
             </div>
+          </div>
 
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
-              <input
-                type="email"
-                className="form-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="user@domain.com"
-              />
-            </div>
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input
+              type="email"
+              className="form-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="user@domain.com"
+            />
+          </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div className="form-group">
-              <label className="form-label">Password</label>
+              <label className="form-label">Mật khẩu</label>
               <input
                 type="password"
                 className="form-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                placeholder="At least 8 characters"
+                placeholder="Ít nhất 8 ký tự"
               />
             </div>
+            <div className="form-group">
+              <label className="form-label">Xác nhận mật khẩu</label>
+              <input
+                type="password"
+                className="form-input"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                placeholder="Nhập lại mật khẩu"
+              />
+            </div>
+          </div>
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }} disabled={submitting || !!success}>
-              {submitting ? 'Creating account...' : 'Create Account'}
-            </button>
-          </form>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.25rem' }} disabled={submitting || !!success}>
+            {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký'}
+          </button>
+        </form>
 
-          <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
-            Already have an account? <Link to="/login">Log in</Link>
-          </p>
-        </div>
+        <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: 'hsl(var(--text-muted))' }}>
+          Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
+        </p>
       </div>
     </div>
   );
