@@ -21,6 +21,7 @@ class Settings:
     sandbox_timeout_s:    int  = 600
     temp_dir:             str  = ""
     log_level:            str  = "INFO"
+    native_final_allowed: bool = False
 
 
 def load() -> Settings:
@@ -45,11 +46,15 @@ def load() -> Settings:
         "sandbox_timeout_s":    os.getenv("SANDBOX_TIMEOUT_S"),
         "temp_dir":             os.getenv("TEMP_DIR"),
         "log_level":            os.getenv("LOG_LEVEL"),
+        "native_final_allowed": os.getenv("OLPAI_ALLOW_NATIVE_FINAL"),
     }
     for k, v in overrides.items():
         if v is not None:
             attr_type = type(getattr(s, k))
-            setattr(s, k, attr_type(v))
+            if attr_type is bool:
+                setattr(s, k, str(v).lower() in ("1", "true", "yes", "y", "on"))
+            else:
+                setattr(s, k, attr_type(v))
 
     s.api_url = s.api_url.rstrip("/")
 
@@ -70,6 +75,7 @@ def save(s: Settings) -> None:
         f'poll_interval_s = {s.poll_interval_s}',
         f'heartbeat_interval_s = {s.heartbeat_interval_s}',
         f'sandbox_timeout_s = {s.sandbox_timeout_s}',
+        f'native_final_allowed = {str(s.native_final_allowed).lower()}',
     ]
     if s.temp_dir:
         lines.append(f'temp_dir = "{s.temp_dir}"')

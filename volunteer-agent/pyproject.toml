@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # GPU detection — only needed on machines with NVIDIA GPU
-gpu = ["pynvml>=11.0"]
+gpu = ["nvidia-ml-py>=12.0"]
 
 [project.scripts]
 olpai-volunteer = "app.cli:app"

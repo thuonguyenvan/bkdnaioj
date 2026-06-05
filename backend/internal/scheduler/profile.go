@@ -20,11 +20,12 @@ type WorkerProfile struct {
 	NetworkDownloadBytesPerSec float64
 	DockerStartupSeconds       float64
 	SandboxPassed              bool
+	NativeFinalAllowed         bool
 	AvailableRAMBytes          int64
 	AvailableDiskBytes         int64
 	MaxParallelJobs            int
 	// GPU fields — non-zero only on NVIDIA workers with torch+CUDA benchmark
-	GPUFp32OpsPerSec  float64
+	GPUFp32OpsPerSec   float64
 	AvailableVRAMBytes int64
 }
 
@@ -60,6 +61,7 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 		UnzipBytesPerSec:     getF(bench, "unzip_bytes_per_sec"),
 		DockerStartupSeconds: getF(bench, "docker_startup_seconds"),
 		SandboxPassed:        getBool(bench, "sandbox_passed"),
+		NativeFinalAllowed:   getBool(caps, "native_final_allowed"),
 		AvailableRAMBytes:    int64(getF(caps, "available_ram_bytes")),
 		AvailableDiskBytes:   int64(getF(caps, "available_disk_bytes")),
 		MaxParallelJobs:      maxWorkers,
@@ -101,19 +103,19 @@ func EstimateJobDemand(
 		EntryMode:    entryMode,
 	}
 	if isFinal {
-		d.UnzipBytes   = 50 * 1024 * 1024   // 50 MB compressed artifact
+		d.UnzipBytes = 50 * 1024 * 1024 // 50 MB compressed artifact
 		d.NetworkBytes = 50 * 1024 * 1024
-		d.CPUOps       = 5_000_000           // fallback if no GPU
-		d.RAMBytes     = 512 * 1024 * 1024   // 512 MB
+		d.CPUOps = 5_000_000           // fallback if no GPU
+		d.RAMBytes = 512 * 1024 * 1024 // 512 MB
 		// GPU demand for model inference — heuristic, replaced by dry-run profile later
-		d.GPUOps   = 50_000_000_000          // 50 GFLOPS FP32 (typical small model)
+		d.GPUOps = 50_000_000_000            // 50 GFLOPS FP32 (typical small model)
 		d.VRAMBytes = 4 * 1024 * 1024 * 1024 // 4 GB VRAM heuristic
 	} else {
 		d.NetworkBytes = 5 * 1024 * 1024 // 5 MB prediction file
-		d.CPUOps       = 500_000
-		d.RAMBytes     = 256 * 1024 * 1024 // 256 MB
+		d.CPUOps = 500_000
+		d.RAMBytes = 256 * 1024 * 1024 // 256 MB
 		// Output-only: no GPU needed
-		d.GPUOps   = 0
+		d.GPUOps = 0
 		d.VRAMBytes = 0
 	}
 	return d

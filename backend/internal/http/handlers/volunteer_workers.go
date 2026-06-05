@@ -215,8 +215,8 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 
 	// Parse worker capability profile
 	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
-	if err != nil || !profile.SandboxPassed {
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "sandbox_not_passed"})
+	if err != nil {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "invalid_capabilities"})
 	}
 
 	// Official-first policy: if any official contest active, only serve official submissions
@@ -701,7 +701,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 
 	// Insert into job_execution_logs
 	predicted32 := float32(predictedRuntime)
-	actual32    := float32(actualRuntime)
+	actual32 := float32(actualRuntime)
 	_ = h.q.InsertJobExecutionLog(ctx, db.InsertJobExecutionLogParams{
 		SubmissionID:            sub.ID,
 		WorkerID:                worker.ID,

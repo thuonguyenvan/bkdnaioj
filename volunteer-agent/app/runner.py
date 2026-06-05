@@ -5,6 +5,8 @@ import os
 import subprocess
 import tempfile
 
+from . import config as cfg
+
 
 def _docker_available() -> bool:
     try:
@@ -96,6 +98,12 @@ class PhaseRunner:
                 except Exception:
                     pass
         else:
+            native_allowed = os.getenv("OLPAI_ALLOW_NATIVE_FINAL", "0") == "1" or cfg.load().native_final_allowed
+            if not native_allowed:
+                raise RuntimeError(
+                    "final inference requires Docker sandbox. For trusted GPU containers, "
+                    "enable trusted native final inference during setup."
+                )
             subprocess.run(
                 [
                     "python",

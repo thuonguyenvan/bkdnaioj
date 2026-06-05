@@ -34,9 +34,9 @@ func safeDivide(a, b float64) float64 {
 // RAM constraint uses per-slot quota: AvailableRAMBytes / MaxParallelJobs.
 func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 	// Hard constraints
-	// sandbox (Docker) is only required for final inference jobs.
-	// Output-only jobs run as bare subprocess — no Docker needed.
-	if !w.SandboxPassed && d.IsFinal {
+	// Final inference normally requires Docker sandbox. Trusted native workers
+	// can opt in for GPU container providers where Docker is unavailable.
+	if !w.SandboxPassed && !w.NativeFinalAllowed && d.IsFinal {
 		return ExecutionPlan{HardConstraintsOK: false, FailReason: "no_sandbox"}
 	}
 	if w.CPUOpsPerSec <= 0 {
@@ -45,7 +45,7 @@ func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 
 	// Scale capacity by parallel slots (conservative: assume all slots will be occupied)
 	slots := math.Max(1, float64(w.MaxParallelJobs))
-	effectiveCPU   := w.CPUOpsPerSec / slots
+	effectiveCPU := w.CPUOpsPerSec / slots
 	effectiveDiskW := w.DiskWriteBytesPerSec / slots
 	effectiveUnzip := w.UnzipBytesPerSec / slots
 	// Download is typically network-bound (separate NIC), less contended — keep full speed
@@ -62,14 +62,14 @@ func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 	// T_unpack = max(cpu_decompress_time, disk_write_time) — Section 7.2
 	var tUnpack float64
 	if d.UnzipBytes > 0 {
-		tUnpackCPU  := safeDivide(float64(d.UnzipBytes), effectiveUnzip)
+		tUnpackCPU := safeDivide(float64(d.UnzipBytes), effectiveUnzip)
 		tUnpackDisk := safeDivide(float64(d.UnzipBytes), effectiveDiskW)
 		tUnpack = math.Max(tUnpackCPU, tUnpackDisk)
 	}
 
 	// Docker only used for final jobs (runner.py run_final)
 	tSetup := 0.0
-	if d.IsFinal {
+	if d.IsFinal && w.SandboxPassed {
 		tSetup = w.DockerStartupSeconds
 	}
 

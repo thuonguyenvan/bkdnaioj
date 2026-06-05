@@ -2,6 +2,7 @@ from __future__ import annotations
 import platform
 import subprocess
 import sys
+import warnings
 
 import psutil
 
@@ -42,16 +43,21 @@ def _check_docker() -> bool:
 def _collect_gpu() -> list[dict]:
     try:
         try:
-            import pynvml  # type: ignore
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                import pynvml  # type: ignore
         except ImportError:
-            # Auto-install pynvml if nvidia-smi is available
+            # Auto-install NVIDIA's maintained NVML package if nvidia-smi is available.
+            # The import module remains "pynvml".
             import shutil, subprocess, sys
             if shutil.which("nvidia-smi"):
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "pynvml", "-q"],
+                    [sys.executable, "-m", "pip", "install", "nvidia-ml-py", "-q"],
                     check=True, capture_output=True
                 )
-                import pynvml  # type: ignore
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    import pynvml  # type: ignore
             else:
                 return []
         pynvml.nvmlInit()

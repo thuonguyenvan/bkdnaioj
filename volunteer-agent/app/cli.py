@@ -9,6 +9,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import warnings
 
 import typer
 
@@ -64,6 +65,70 @@ def _run_start_command(cmd: list[str], wait_seconds: float = 2.0) -> bool:
     return ok
 
 
+def _tail_text(path: Path, max_chars: int = 3000) -> str:
+    try:
+        text = path.read_text(errors="replace").strip()
+    except Exception:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def _start_dockerd_process() -> tuple[bool, str]:
+    log_path = Path(tempfile.gettempdir()) / f"olpai-dockerd-{os.getpid()}.log"
+    with log_path.open("w") as log_file:
+        proc = subprocess.Popen(
+            ["dockerd"],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+
+    for _ in range(10):
+        time.sleep(1)
+        ok, err = _docker_info()
+        if ok:
+            return True, ""
+        if proc.poll() is not None:
+            dockerd_log = _tail_text(log_path)
+            return False, dockerd_log or err or "dockerd exited before Docker became ready"
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    dockerd_log = _tail_text(log_path)
+    _, err = _docker_info()
+    return False, dockerd_log or err or "dockerd started but Docker did not become ready"
+
+
+def _looks_like_container() -> bool:
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup").read_text(errors="ignore").lower()
+    except Exception:
+        return False
+    return any(marker in cgroup for marker in ("docker", "kubepods", "containerd", "podman"))
+
+
+def _docker_failure_hint(reason: str) -> str:
+    lower = reason.lower()
+    if _looks_like_container():
+        return (
+            "This process appears to run inside a container/workspace. For final-phase sandbox jobs, "
+            "run the agent on the VPS host with Docker service enabled, or start this container with "
+            "the host Docker socket mounted: -v /var/run/docker.sock:/var/run/docker.sock. "
+            "Docker-in-Docker requires a privileged container."
+        )
+    if "permission denied" in lower:
+        return "The current user cannot access Docker. Try: sudo usermod -aG docker $USER, then log out and back in."
+    if "system has not been booted with systemd" in lower:
+        return "systemd is unavailable here. Start Docker with service docker start, or run the agent on the VPS host."
+    return "Try on VPS host: sudo systemctl enable --now docker"
+
+
 def _start_docker_daemon() -> tuple[bool, str]:
     """Start Docker daemon on common Linux hosts without assuming one runtime."""
     ok, err = _docker_info()
@@ -86,9 +151,7 @@ def _start_docker_daemon() -> tuple[bool, str]:
     for label, cmd in attempts:
         try:
             if label == "dockerd":
-                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(4)
-                ok, err = _docker_info()
+                ok, err = _start_dockerd_process()
             else:
                 ok = _run_start_command(cmd)
                 if not ok:
@@ -109,6 +172,25 @@ def _docker_status_label(caps: dict) -> str:
     if shutil.which("docker"):
         return "installed, daemon not running"
     return "not installed"
+
+
+def _ask_native_final_mode(caps: dict, current: bool) -> bool:
+    if caps.get("docker_available") or not caps.get("gpu"):
+        return current
+
+    _echo()
+    _warn("GPU is visible, but Docker sandbox is not available.")
+    _echo("Final inference can still use this GPU by running natively in this trusted environment.")
+    _echo("  1. Enable trusted native final inference (default)")
+    _echo("  2. Output-only jobs only")
+    choice = _ask("Choose worker mode", "1")
+    enabled = choice.strip() != "2"
+    if enabled:
+        _warn(
+            "Trusted native final inference is enabled. Final submissions will run directly "
+            "in this environment and can use the visible GPU, but this is not a Docker sandbox."
+        )
+    return enabled
 
 
 # ── setup ─────────────────────────────────────────────────────────────────────
@@ -156,7 +238,7 @@ def setup() -> None:
                 if reason:
                     _warn(f"Docker reason: {reason}")
                 _warn("Final-phase sandbox jobs require Docker. This worker will handle output-only jobs until Docker is running.")
-                _echo("  Try on VPS: sudo systemctl start docker")
+                _echo(f"  {_docker_failure_hint(reason)}")
             else:
                 _ok("Docker daemon started successfully.")
             install_docker = False
@@ -175,6 +257,10 @@ def setup() -> None:
             else:
                 _warn("Docker install may need a terminal restart. Re-run: olpai-volunteer doctor")
 
+    native_final_allowed = _ask_native_final_mode(caps, s.native_final_allowed)
+    s.native_final_allowed = native_final_allowed
+    caps["native_final_allowed"] = native_final_allowed
+
     # 4. Benchmark
     run_bench = _ask("\nRun quick benchmark? (y/n)", "y").lower().startswith("y")
     bench_results: dict = {}
@@ -186,6 +272,7 @@ def setup() -> None:
     ram_bytes = caps.get("available_ram_bytes", 0)
     cpu_cores = caps.get("cpu_cores", 1) or 1
     has_docker = caps.get("docker_available", False)
+    can_run_final = has_docker or native_final_allowed
 
     # Use same heuristic values as EstimateJobDemand in Go scheduler
     RAM_PER_OUTPUT_JOB = 256 * 1024 * 1024    # 256 MB (from scheduler/profile.go)
@@ -197,14 +284,15 @@ def setup() -> None:
         16,
     ))
 
-    if has_docker:
+    if can_run_final:
         recommended_final = max(1, min(
             ram_bytes // RAM_PER_FINAL_JOB if ram_bytes else 1,
             4,
         ))
+        final_mode = "Docker" if has_docker else "trusted native GPU"
         _echo(f"Recommended parallel workers:")
         _echo(f"  Output-only jobs (public_test, private_test): {recommended_output}")
-        _echo(f"  Inference jobs   (final phases, Docker):      {recommended_final}")
+        _echo(f"  Inference jobs   (final phases, {final_mode}): {recommended_final}")
         _echo(f"  → Suggested: {recommended_output} (covers all job types)")
         suggested = recommended_output
     else:
@@ -330,7 +418,7 @@ def doctor() -> None:
         _warn("Docker: installed but daemon not running")
         if docker_reason:
             _warn(f"Docker reason: {docker_reason}")
-        _echo("  Try on VPS: sudo systemctl start docker")
+        _echo(f"  {_docker_failure_hint(docker_reason)}")
     else:
         _warn("Docker: not installed (needed for final inference phase)")
 
@@ -394,7 +482,7 @@ def _install_docker() -> None:
                     _warn("Docker installed but daemon not started.")
                     if reason:
                         _warn(f"Docker reason: {reason}")
-                    _echo("  Try on VPS: sudo systemctl start docker")
+                    _echo(f"  {_docker_failure_hint(reason)}")
 
             else:
                 _err("Docker install script returned non-zero. Install manually: https://docs.docker.com/engine/install/")
@@ -501,12 +589,14 @@ def _benchmark() -> dict:
         results["sandbox_passed"] = False
         _echo(f"    Docker: unavailable ({e})")
 
-    # GPU benchmark (NVIDIA via pynvml + torch CUDA)
+    # GPU benchmark (NVIDIA via NVML + torch CUDA)
     _echo("  GPU benchmark...")
     results["gpu_fp32_ops_per_sec"] = 0.0
     results["available_vram_bytes"] = 0
     try:
-        import pynvml  # type: ignore
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            import pynvml  # type: ignore
         pynvml.nvmlInit()
         n_gpu = pynvml.nvmlDeviceGetCount()
         if n_gpu > 0:
@@ -538,7 +628,7 @@ def _benchmark() -> dict:
         else:
             _echo("    GPU: none detected")
     except Exception:
-        _echo("    GPU: none (non-NVIDIA or pynvml unavailable)")
+        _echo("    GPU: none (non-NVIDIA or NVML unavailable)")
 
     return results
 
@@ -565,6 +655,7 @@ def status() -> None:
     _echo(f"  API URL  : {s.api_url}")
     _echo(f"  Name     : {s.worker_name}")
     _echo(f"  Token    : {'set (' + s.worker_token[:8] + '...)' if s.worker_token else 'not set'}")
+    _echo(f"  Final    : {'trusted native enabled' if s.native_final_allowed else 'Docker sandbox required'}")
     _echo(f"  Poll     : every {s.poll_interval_s}s")
     _echo(f"  Heartbeat: every {s.heartbeat_interval_s}s")
 
@@ -636,12 +727,15 @@ def start(
         _err("Worker token not set. Run: olpai-volunteer setup && olpai-volunteer approve-token <TOKEN>")
         raise typer.Exit(1)
 
+    if s.native_final_allowed:
+        os.environ["OLPAI_ALLOW_NATIVE_FINAL"] = "1"
+
     n_workers = workers if workers > 0 else getattr(s, "max_workers", 1)
 
     import structlog
     log = structlog.get_logger()
     log.info("volunteer_agent_starting", api_url=s.api_url, worker_name=s.worker_name,
-             parallel_workers=n_workers)
+             parallel_workers=n_workers, native_final_allowed=s.native_final_allowed)
 
     client      = APIClient(s.api_url, s.worker_token)
     cache       = ArtifactCache()
