@@ -260,13 +260,35 @@ def _install_docker() -> None:
                 timeout=300,
             )
             if result.returncode == 0:
-                # Add current user to docker group so no sudo needed
-                import os
+                import os, time
+                # Add current user to docker group
                 user = os.environ.get("USER") or os.environ.get("LOGNAME", "")
                 if user:
                     subprocess.run(["usermod", "-aG", "docker", user], check=False)
                 _ok("Docker Engine installed.")
-                _warn("You may need to log out and back in for group permissions.")
+
+                # Try starting dockerd directly (needed in containers where systemctl fails)
+                daemon_running = subprocess.run(
+                    ["docker", "info"], capture_output=True, timeout=5
+                ).returncode == 0
+
+                if not daemon_running:
+                    _echo("  Starting Docker daemon (container mode)...")
+                    subprocess.Popen(
+                        ["dockerd"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    time.sleep(3)  # wait for daemon to start
+                    daemon_running = subprocess.run(
+                        ["docker", "info"], capture_output=True, timeout=5
+                    ).returncode == 0
+
+                if daemon_running:
+                    _ok("Docker daemon is running.")
+                else:
+                    _warn("Docker installed but daemon not started. Try: dockerd &")
+
             else:
                 _err("Docker install script returned non-zero. Install manually: https://docs.docker.com/engine/install/")
         except subprocess.TimeoutExpired:

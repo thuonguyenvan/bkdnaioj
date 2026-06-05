@@ -1,6 +1,6 @@
 [project]
 name = "olpai-volunteer-agent"
-version = "0.1.9"
+version = "0.2.0"
 description = "Volunteer judge worker agent for OLPAI"
 requires-python = ">=3.11"
 dependencies = [
