@@ -123,13 +123,33 @@ def setup() -> None:
     cfg.save(s)
     _ok(f"Config saved → {cfg.CONFIG_FILE}")
 
+    # 7. Wait for admin approval and start immediately
     _echo("\n" + "─" * 50)
-    _echo("Next steps:")
-    _echo(f"  1. Ask admin to approve Worker ID: {worker_id}")
-    _echo("  2. Admin goes to /admin/workers → Approve → copies token")
-    _echo("  3. Run:  olpai-volunteer approve-token <TOKEN>")
-    _echo("  4. Run:  olpai-volunteer start")
-    _echo("─" * 50 + "\n")
+    _echo(f"Worker ID: {worker_id}")
+    _echo("Ask admin to approve this ID at: https://www.bkdnaioj.app/admin/workers")
+    _echo("─" * 50)
+    _echo()
+
+    while True:
+        token = input("Paste token from admin (or press Enter to skip and start later): ").strip()
+        if not token:
+            _echo("\nTo start later, run:")
+            _echo(f"  olpai-volunteer approve-token <TOKEN>")
+            _echo(f"  olpai-volunteer start")
+            break
+        # Validate token looks reasonable (hex string)
+        if len(token) >= 32 and all(c in "0123456789abcdef" for c in token.lower()):
+            s.worker_token = token
+            cfg.save(s)
+            _ok("Token saved.")
+            _echo()
+            # Start immediately — invoke start() directly
+            _echo("Starting worker... (Ctrl+C to stop)")
+            _echo()
+            start()
+            break
+        else:
+            _warn("Token looks invalid. Try again or press Enter to skip.")
 
 
 # ── approve-token ─────────────────────────────────────────────────────────────
