@@ -652,7 +652,7 @@ export const api = {
     const res = await apiClient.get(`/teams/${id}/members`);
     return res.data as TeamMember[];
   },
-  async addTeamMember(id: string, payload: { user_id: string; role: 'manager' | 'member' }) {
+  async addTeamMember(id: string, payload: { username: string; role: 'manager' | 'member' }) {
     const res = await apiClient.post(`/teams/${id}/members`, payload);
     return res.data;
   },

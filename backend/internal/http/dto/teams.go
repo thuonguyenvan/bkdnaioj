@@ -18,8 +18,8 @@ type UpdateTeamRequest struct {
 }
 
 type AddMemberRequest struct {
-	UserID uuid.UUID `json:"user_id" validate:"required"`
-	Role   string    `json:"role" validate:"required,oneof=manager member"`
+	Username string `json:"username" validate:"required,min=1,max=60"`
+	Role     string `json:"role" validate:"required,oneof=manager member"`
 }
 
 type TeamResponse struct {

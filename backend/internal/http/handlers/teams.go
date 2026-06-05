@@ -128,9 +128,18 @@ func (h *TeamHandler) AddMember(c echo.Context) error {
 		return mw.ErrBadRequest(err.Error())
 	}
 
-	err = h.q.AddTeamMember(c.Request().Context(), db.AddTeamMemberParams{
+	ctx := c.Request().Context()
+	target, err := h.q.GetUserByUsername(ctx, &req.Username)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("user not found: " + req.Username)
+		}
+		return mw.ErrInternal("lookup user failed")
+	}
+
+	err = h.q.AddTeamMember(ctx, db.AddTeamMemberParams{
 		TeamID: id,
-		UserID: req.UserID,
+		UserID: target.ID,
 		Role:   db.TeamRole(req.Role),
 	})
 	if err != nil {

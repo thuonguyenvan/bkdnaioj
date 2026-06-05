@@ -16,7 +16,7 @@ export const TeamsPage: React.FC = () => {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSlug, setNewTeamSlug] = useState('');
-  const [inviteUserId, setInviteUserId] = useState('');
+  const [inviteUsername, setInviteUsername] = useState('');
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -55,17 +55,17 @@ export const TeamsPage: React.FC = () => {
   });
 
   const addMemberMutation = useMutation({
-    mutationFn: (payload: { user_id: string; role: 'manager' | 'member' }) =>
+    mutationFn: (payload: { username: string; role: 'manager' | 'member' }) =>
       api.addTeamMember(selectedTeamId!, payload),
     onSuccess: () => {
-      setInviteUserId('');
+      setInviteUsername('');
       refetchMembers();
       setActionSuccess('Teammate invited successfully!');
       setActionError(null);
       setTimeout(() => setActionSuccess(null), 3000);
     },
     onError: (err: any) => {
-      setActionError(err?.response?.data?.message || 'Failed to add member. Please verify the User UUID.');
+      setActionError(err?.response?.data?.message || 'Failed to add member. Check that the username is correct.');
       setActionSuccess(null);
     },
   });
@@ -109,9 +109,9 @@ export const TeamsPage: React.FC = () => {
 
   const handleAddMember = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteUserId.trim()) return;
+    if (!inviteUsername.trim()) return;
     addMemberMutation.mutate({
-      user_id: inviteUserId.trim(),
+      username: inviteUsername.trim(),
       role: 'member',
     });
   };
@@ -342,16 +342,16 @@ export const TeamsPage: React.FC = () => {
                     Invite Teammate
                   </h3>
                   <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
-                    Add another contestant to your team by entering their user UUID.
+                    Add another contestant to your team by entering their username.
                   </p>
 
                   <form onSubmit={handleAddMember} className="flex gap-2" style={{ maxWidth: '600px' }}>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                      value={inviteUserId}
-                      onChange={(e) => setInviteUserId(e.target.value)}
+                      placeholder="e.g. nguyenvana"
+                      value={inviteUsername}
+                      onChange={(e) => setInviteUsername(e.target.value)}
                       required
                       style={{ flex: 1, borderRadius: '6px', border: '1px solid #cbd5e1' }}
                     />
