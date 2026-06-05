@@ -9,7 +9,7 @@ import (
 // Team endpoints DTOs.
 
 type CreateTeamRequest struct {
-	Slug string `json:"slug" validate:"required,min=2,max=120,alphanumunicode"`
+	Slug string `json:"slug" validate:"required,min=2,max=120"`
 	Name string `json:"name" validate:"required,min=2,max=255"`
 }
 

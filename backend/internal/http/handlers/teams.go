@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"regexp"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -13,6 +14,8 @@ import (
 	"github.com/mank1/olpai-backend/internal/http/dto"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
 )
+
+var slugRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 // TeamHandler groups team-related handlers.
 type TeamHandler struct {
@@ -33,6 +36,9 @@ func (h *TeamHandler) Create(c echo.Context) error {
 	}
 	if err := h.val.Struct(req); err != nil {
 		return mw.ErrBadRequest(err.Error())
+	}
+	if !slugRe.MatchString(req.Slug) {
+		return mw.ErrBadRequest("slug must contain only lowercase letters, digits, and hyphens (e.g. my-team-01)")
 	}
 
 	uid := mw.GetUserID(c)
