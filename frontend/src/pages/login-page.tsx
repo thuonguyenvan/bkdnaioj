@@ -66,14 +66,15 @@ export const LoginPage: React.FC = () => {
 
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">Email Address</label>
+              <label className="form-label">Email hoặc Username</label>
               <input
-                type="email"
+                type="text"
                 className="form-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="user@domain.com"
+                autoComplete="username"
+                placeholder="email@domain.com hoặc username"
               />
             </div>
 
