@@ -81,7 +81,11 @@ export const TeamsPage: React.FC = () => {
 
   const acceptMutation = useMutation({
     mutationFn: (teamId: string) => api.acceptInvitation(teamId),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['myTeams', 'teamInvitations'] }); flash('Joined team!'); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['myTeams'] });
+      queryClient.invalidateQueries({ queryKey: ['teamInvitations'] });
+      flash('Joined team!');
+    },
     onError: (err: any) => flashErr(err?.response?.data?.message || 'Failed to accept.'),
   });
 
