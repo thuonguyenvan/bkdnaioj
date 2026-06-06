@@ -31,6 +31,13 @@ func (h *LeaderboardHandler) GlobalPhaseRanking(c echo.Context) error {
 		return mw.ErrBadRequest("invalid phase key")
 	}
 
+	if err := h.q.RecomputeGlobalPhaseRanking(ctx, phaseKey); err != nil {
+		return mw.ErrInternal("recompute global ranking failed")
+	}
+	if err := h.q.DeleteStaleGlobalRankings(ctx, phaseKey); err != nil {
+		return mw.ErrInternal("delete stale global ranking failed")
+	}
+
 	limit, offset := parsePagination(c)
 	rows, err := h.q.GetGlobalPhaseRanking(ctx, db.GetGlobalPhaseRankingParams{
 		PhaseKey: phaseKey,

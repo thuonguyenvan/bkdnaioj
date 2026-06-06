@@ -531,59 +531,13 @@ func (b *LeaderboardBridge) recomputeGlobalPhase(ctx context.Context, sub db.Sub
 	if err != nil {
 		return fmt.Errorf("get phase def: %w", err)
 	}
-	phaseKey := string(def.Key)
-	// Use raw SQL with string parameter to avoid enum-type issues with Supabase pooler.
-	if _, err := b.pool.Exec(ctx, `
-		DELETE FROM global_phase_rankings gpr
-		WHERE gpr.phase_key::text = $1
-		  AND NOT EXISTS (
-		    SELECT 1 FROM task_phase_leaderboard_entries lb
-		    JOIN phases p ON p.id = lb.phase_id
-		    JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
-		    JOIN contest_entry_members cem ON cem.contest_entry_id = lb.contest_entry_id
-		    WHERE cpd.key::text = $1 AND cem.user_id = gpr.user_id
-		  )`, phaseKey); err != nil {
-		b.log.Warn().Err(err).Str("phase_key", phaseKey).Msg("delete stale global rankings")
-	}
-	if _, err := b.pool.Exec(ctx, `
-		WITH all_scores AS (
-		  SELECT cpd.key::text AS phase_key, u.id AS user_id,
-		         COALESCE(u.username, split_part(u.email::text,'@',1)) AS display_name,
-		         u.email::text AS user_email, ct.title AS contest_title, t.title AS task_title,
-		         lb.score, lb.penalty_minutes
-		  FROM task_phase_leaderboard_entries lb
-		  JOIN phases p ON p.id=lb.phase_id
-		  JOIN contest_phase_defs cpd ON cpd.id=p.contest_phase_def_id
-		  JOIN tasks t ON t.id=lb.task_id
-		  JOIN contests ct ON ct.id=lb.contest_id
-		  JOIN contest_entries ce ON ce.id=lb.contest_entry_id
-		  JOIN contest_entry_members cem ON cem.contest_entry_id=ce.id
-		  JOIN users u ON u.id=cem.user_id
-		  WHERE cpd.key::text=$1 AND ct.visibility='public' AND ct.status<>'draft'
-		    AND ce.status<>'disqualified' AND lb.is_disqualified=false AND lb.score IS NOT NULL
-		), best_per_task AS (
-		  SELECT DISTINCT ON (user_id, contest_title, task_title)
-		    phase_key, user_id, display_name, user_email, contest_title, task_title, score, penalty_minutes
-		  FROM all_scores ORDER BY user_id, contest_title, task_title, score DESC, penalty_minutes ASC
-		), agg AS (
-		  SELECT phase_key, user_id, display_name, user_email,
-		         SUM(score)::numeric AS total_score, SUM(penalty_minutes)::numeric AS total_penalty,
-		         COUNT(*)::int AS task_count,
-		         jsonb_agg(jsonb_build_object('contest_title',contest_title,'task_title',task_title,'score',score) ORDER BY contest_title,task_title) AS details
-		  FROM best_per_task GROUP BY phase_key, user_id, display_name, user_email
-		), ranked AS (
-		  SELECT *, dense_rank() OVER (ORDER BY total_score DESC NULLS LAST, total_penalty ASC NULLS LAST)::int AS rank FROM agg
-		)
-		INSERT INTO global_phase_rankings (phase_key, user_id, rank, display_name, user_email, total_score, task_count, details)
-		SELECT phase_key::contest_phase_key, user_id, rank, display_name, user_email, total_score, task_count, details
-		FROM ranked
-		ON CONFLICT (phase_key, user_id) DO UPDATE SET
-		  rank=EXCLUDED.rank, display_name=EXCLUDED.display_name,
-		  total_score=EXCLUDED.total_score, task_count=EXCLUDED.task_count, details=EXCLUDED.details
-	`, phaseKey); err != nil {
+	if err := q.RecomputeGlobalPhaseRanking(ctx, def.Key); err != nil {
 		return fmt.Errorf("recompute global phase ranking: %w", err)
 	}
-	b.log.Info().Str("phase_key", phaseKey).Msg("global phase ranking recomputed")
+	if err := q.DeleteStaleGlobalRankings(ctx, def.Key); err != nil {
+		b.log.Warn().Err(err).Str("phase_key", string(def.Key)).Msg("delete stale global rankings")
+	}
+	b.log.Info().Str("phase_key", string(def.Key)).Msg("global phase ranking recomputed")
 	return nil
 }
 

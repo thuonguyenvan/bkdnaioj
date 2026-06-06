@@ -16,11 +16,18 @@ const deleteStaleGlobalRankings = `-- name: DeleteStaleGlobalRankings :exec
 DELETE FROM global_phase_rankings gpr
 WHERE gpr.phase_key::text = $1
   AND NOT EXISTS (
-    SELECT 1 FROM task_phase_leaderboard_entries lb
-    JOIN phases p ON p.id = lb.phase_id
+    SELECT 1 FROM submissions s
+    JOIN phases p ON p.id = s.phase_id
     JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
-    JOIN contest_entry_members cem ON cem.contest_entry_id = lb.contest_entry_id
+    JOIN contests ct ON ct.id = s.contest_id
+    JOIN contest_entries ce ON ce.id = s.contest_entry_id
+    JOIN contest_entry_members cem ON cem.contest_entry_id = s.contest_entry_id
     WHERE cpd.key::text = $1
+      AND ct.visibility = 'public'
+      AND ct.status <> 'draft'
+      AND ce.status <> 'disqualified'
+      AND s.status = 'done'
+      AND COALESCE(s.raw_score, s.display_score) IS NOT NULL
       AND cem.user_id = gpr.user_id
   )
 `
@@ -499,36 +506,38 @@ func (q *Queries) RecomputeContestPhaseLeaderboard(ctx context.Context, arg Reco
 }
 
 const recomputeGlobalPhaseRanking = `-- name: RecomputeGlobalPhaseRanking :exec
-WITH all_scores AS (
+WITH scored_submissions AS (
   SELECT
     cpd.key          AS phase_key,
     u.id             AS user_id,
     COALESCE(u.username, split_part(u.email::text, '@', 1)) AS display_name,
     u.email::text    AS user_email,
+    ct.id            AS contest_id,
     ct.title         AS contest_title,
+    t.id             AS task_id,
     t.title          AS task_title,
-    lb.score,
-    lb.penalty_minutes
-  FROM task_phase_leaderboard_entries lb
-  JOIN phases             p   ON p.id   = lb.phase_id
+    COALESCE(s.raw_score, s.display_score)::numeric AS score,
+    EXTRACT(EPOCH FROM (s.submitted_at - ct.start_time)) / 60.0 AS penalty_minutes
+  FROM submissions s
+  JOIN phases             p   ON p.id   = s.phase_id
   JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
-  JOIN tasks              t   ON t.id   = lb.task_id
-  JOIN contests           ct  ON ct.id  = lb.contest_id
-  JOIN contest_entries    ce  ON ce.id  = lb.contest_entry_id
+  JOIN tasks              t   ON t.id   = s.task_id
+  JOIN contests           ct  ON ct.id  = s.contest_id
+  JOIN contest_entries    ce  ON ce.id  = s.contest_entry_id
   JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
   JOIN users              u   ON u.id   = cem.user_id
   WHERE cpd.key::text  = $1
     AND ct.visibility  = 'public'
     AND ct.status     <> 'draft'
     AND ce.status     <> 'disqualified'
-    AND lb.is_disqualified = false
-    AND lb.score      IS NOT NULL
+    AND s.status       = 'done'
+    AND COALESCE(s.raw_score, s.display_score) IS NOT NULL
 ),
 best_per_task AS (
-  SELECT DISTINCT ON (user_id, contest_title, task_title)
+  SELECT DISTINCT ON (user_id, contest_id, task_id)
     phase_key, user_id, display_name, user_email, contest_title, task_title, score, penalty_minutes
-  FROM all_scores
-  ORDER BY user_id, contest_title, task_title, score DESC, penalty_minutes ASC
+  FROM scored_submissions
+  ORDER BY user_id, contest_id, task_id, score DESC, penalty_minutes ASC
 ),
 agg AS (
   SELECT
@@ -560,9 +569,9 @@ ON CONFLICT (phase_key, user_id) DO UPDATE SET
   details      = EXCLUDED.details
 `
 
-// Uses leaderboard scores (already scaled). Each user appears once per task
-// with their BEST score across all entries (individual + team), preventing
-// score accumulation for users who joined multiple entries.
+// Uses raw submission scores. Each user appears once per task with their BEST
+// score across all entries/modes (individual + team, official/virtual/practice),
+// preventing score accumulation for users who joined multiple entries.
 // Uses UPSERT to avoid DELETE-CTE optimization bug in PostgreSQL 12+.
 // Pick best score per (user, task); if same score take earliest (lowest penalty)
 func (q *Queries) RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error {

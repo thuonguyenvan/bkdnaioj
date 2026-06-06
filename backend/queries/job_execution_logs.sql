@@ -10,7 +10,7 @@ INSERT INTO job_execution_logs (
     peak_vram_bytes,
     execution_path,
     profile_payload
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::varchar::jsonb);
 
 -- name: ListRecentJobExecutionLogs :many
 SELECT

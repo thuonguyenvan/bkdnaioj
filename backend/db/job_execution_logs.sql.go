@@ -100,7 +100,7 @@ INSERT INTO job_execution_logs (
     peak_vram_bytes,
     execution_path,
     profile_payload
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::varchar::jsonb)
 `
 
 type InsertJobExecutionLogParams struct {
@@ -113,7 +113,7 @@ type InsertJobExecutionLogParams struct {
 	PeakRamBytes            *int64    `json:"peak_ram_bytes"`
 	PeakVramBytes           *int64    `json:"peak_vram_bytes"`
 	ExecutionPath           *string   `json:"execution_path"`
-	ProfilePayload          []byte    `json:"profile_payload"`
+	Column10                string    `json:"column_10"`
 }
 
 func (q *Queries) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error {
@@ -127,7 +127,7 @@ func (q *Queries) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecut
 		arg.PeakRamBytes,
 		arg.PeakVramBytes,
 		arg.ExecutionPath,
-		arg.ProfilePayload,
+		arg.Column10,
 	)
 	return err
 }

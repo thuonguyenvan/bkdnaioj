@@ -862,7 +862,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 		PeakRamBytes:            peakRAM,
 		PeakVramBytes:           peakVRAM,
 		ExecutionPath:           executionPath,
-		ProfilePayload:          profilePayload,
+		Column10:                profilePayload,
 	}); err != nil {
 		log.Warn().Err(err).Str("submission_id", sub.ID.String()).Msg("insert job execution log failed")
 	}
@@ -895,13 +895,13 @@ func (h *VolunteerWorkerHandler) applyObservedResourceProfile(ctx context.Contex
 	}
 }
 
-func parseExecutionProfile(raw json.RawMessage) (*int64, *int64, *string, []byte) {
+func parseExecutionProfile(raw json.RawMessage) (*int64, *int64, *string, string) {
 	if len(raw) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil, "null"
 	}
 	var data map[string]any
 	if err := json.Unmarshal(raw, &data); err != nil {
-		return nil, nil, nil, raw
+		return nil, nil, nil, string(raw)
 	}
 	intField := func(keys ...string) *int64 {
 		for _, key := range keys {
@@ -931,7 +931,7 @@ func parseExecutionProfile(raw json.RawMessage) (*int64, *int64, *string, []byte
 		}
 		return &v
 	}
-	return intField("peak_ram_bytes", "peak_rss_bytes"), intField("peak_vram_bytes", "peak_vram_delta_bytes"), stringField("execution_path"), raw
+	return intField("peak_ram_bytes", "peak_rss_bytes"), intField("peak_vram_bytes", "peak_vram_delta_bytes"), stringField("execution_path"), string(raw)
 }
 
 // GET /api/v1/admin/workers/stream — SSE real-time scheduler dashboard
