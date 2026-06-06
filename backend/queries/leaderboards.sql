@@ -9,7 +9,14 @@ SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS usernames
+       ) AS usernames,
+       COALESCE(
+         (SELECT array_agg(u.full_name::text)
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS full_names
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 LEFT JOIN submissions s ON s.id = lb.chosen_submission_id
@@ -50,7 +57,14 @@ SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS usernames
+       ) AS usernames,
+       COALESCE(
+         (SELECT array_agg(u.full_name::text)
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS full_names
 FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1

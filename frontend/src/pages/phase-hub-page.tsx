@@ -17,20 +17,6 @@ const formatPenalty = (minutes: number): string => {
   return rem > 0 ? `${h}h${rem}m` : `${h}h`;
 };
 
-const formatParticipantName = (row: { display_name: string; entry_type: string; usernames?: string[] }) => {
-  if (row.entry_type === 'individual') {
-    if (row.usernames && row.usernames.length > 0) {
-      return row.usernames[0];
-    }
-    return row.display_name.includes('@') ? row.display_name.split('@')[0] : row.display_name;
-  } else if (row.entry_type === 'team') {
-    if (row.usernames && row.usernames.length > 0) {
-      return `${row.display_name} (${row.usernames.join(', ')})`;
-    }
-    return row.display_name;
-  }
-  return row.display_name;
-};
 
 const artifactContentType = (file: File) => file.type || 'application/octet-stream';
 
@@ -954,7 +940,18 @@ export const PhaseHubPage: React.FC = () => {
                     return (
                       <tr key={index} style={{ backgroundColor: isCurrentUser ? 'hsla(var(--primary), 0.04)' : undefined }}>
                         <td className="font-mono" style={{ fontWeight: 'bold' }}>{row.rank}</td>
-                        <td style={{ fontWeight: 600 }}>{formatParticipantName(row)}</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>
+                            {row.entry_type === 'individual'
+                              ? (row.usernames?.[0] ?? row.display_name)
+                              : row.display_name}
+                          </div>
+                          <div className="font-mono" style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.1rem' }}>
+                            {row.entry_type === 'individual'
+                              ? (row.full_names?.[0] ?? '')
+                              : (row.usernames?.join(', ') ?? '')}
+                          </div>
+                        </td>
                         <td className="font-mono" style={{ fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
                           {Number(row.score || 0).toFixed(6)}
                         </td>

@@ -27,6 +27,7 @@ type LeaderboardRow struct {
 	EntryType       string     `json:"entry_type"`
 	EntryMode       string     `json:"entry_mode"`
 	Usernames       []string   `json:"usernames"`
+	FullNames       []string   `json:"full_names"`
 	LastSubmittedAt *time.Time `json:"last_submitted_at"`
 	PenaltyMinutes  float64    `json:"penalty_minutes"`
 }
@@ -95,6 +96,7 @@ func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 		EntryID: r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
 		Usernames:       convertStringArray(r.Usernames),
+		FullNames:       convertStringArray(r.FullNames),
 		LastSubmittedAt: pgTimestamptzToPtr(r.LastSubmittedAt),
 		PenaltyMinutes:  parseNumeric(r.PenaltyMinutes),
 	}
@@ -109,6 +111,7 @@ func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRo
 		EntryID: r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
 		Usernames:       convertStringArray(r.Usernames),
+		FullNames:       convertStringArray(r.FullNames),
 		LastSubmittedAt: interfaceToTimePtr(r.LastSubmittedAt),
 		PenaltyMinutes:  parseNumeric(r.PenaltyMinutes),
 	}

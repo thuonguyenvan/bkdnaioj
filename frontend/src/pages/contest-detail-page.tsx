@@ -935,11 +935,11 @@ export const ContestDetailPage: React.FC = () => {
                                     ? (row.usernames?.[0] ?? row.display_name)
                                     : row.display_name}
                                 </div>
-                                {row.entry_type === 'team' && row.usernames && row.usernames.length > 0 && (
-                                  <div className="font-mono" style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.15rem' }}>
-                                    {row.usernames.join(', ')}
-                                  </div>
-                                )}
+                                <div className="font-mono" style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                                  {row.entry_type === 'individual'
+                                    ? (row.full_names?.[0] ?? '')
+                                    : (row.usernames?.join(', ') ?? '')}
+                                </div>
                               </td>
                               <td><span className="badge badge-secondary">{row.entry_type}</span></td>
                               <td className="font-mono" style={{ textAlign: 'right', color: 'hsl(var(--primary))', fontWeight: 800 }}>

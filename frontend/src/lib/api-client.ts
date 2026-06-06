@@ -234,6 +234,7 @@ export interface LeaderboardRow {
   entry_type: 'individual' | 'team';
   entry_mode: 'official' | 'practice';
   usernames: string[];
+  full_names: string[];
   last_submitted_at: string | null;
   penalty_minutes: number;
 }

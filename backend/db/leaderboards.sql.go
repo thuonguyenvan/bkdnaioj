@@ -90,7 +90,14 @@ SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.ra
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS usernames
+       ) AS usernames,
+       COALESCE(
+         (SELECT array_agg(u.full_name::text)
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS full_names
 FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1
@@ -126,6 +133,7 @@ type GetContestPhaseLeaderboardRow struct {
 	EntryMode         EntryMode          `json:"entry_mode"`
 	LastSubmittedAt   interface{}        `json:"last_submitted_at"`
 	Usernames         interface{}        `json:"usernames"`
+	FullNames         interface{}        `json:"full_names"`
 }
 
 // Contest-phase leaderboard
@@ -163,6 +171,7 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 			&i.EntryMode,
 			&i.LastSubmittedAt,
 			&i.Usernames,
+			&i.FullNames,
 		); err != nil {
 			return nil, err
 		}
@@ -257,7 +266,14 @@ SELECT lb.id, lb.contest_id, lb.task_id, lb.phase_id, lb.contest_entry_id, lb.ra
           JOIN users u ON u.id = cem.user_id
           WHERE cem.contest_entry_id = ce.id),
          ARRAY[]::text[]
-       ) AS usernames
+       ) AS usernames,
+       COALESCE(
+         (SELECT array_agg(u.full_name::text)
+          FROM contest_entry_members cem
+          JOIN users u ON u.id = cem.user_id
+          WHERE cem.contest_entry_id = ce.id),
+         ARRAY[]::text[]
+       ) AS full_names
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 LEFT JOIN submissions s ON s.id = lb.chosen_submission_id
@@ -296,6 +312,7 @@ type GetTaskPhaseLeaderboardRow struct {
 	EntryMode          EntryMode          `json:"entry_mode"`
 	LastSubmittedAt    pgtype.Timestamptz `json:"last_submitted_at"`
 	Usernames          interface{}        `json:"usernames"`
+	FullNames          interface{}        `json:"full_names"`
 }
 
 // Task-phase leaderboard
@@ -335,6 +352,7 @@ func (q *Queries) GetTaskPhaseLeaderboard(ctx context.Context, arg GetTaskPhaseL
 			&i.EntryMode,
 			&i.LastSubmittedAt,
 			&i.Usernames,
+			&i.FullNames,
 		); err != nil {
 			return nil, err
 		}
