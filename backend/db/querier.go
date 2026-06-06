@@ -147,9 +147,10 @@ type Querier interface {
 	MarkSubmissionRequeued(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Submission, error)
 	RecomputeContestPhaseLeaderboard(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
-	// Uses raw submission scores. Each user appears once per task with their BEST
-	// score across all entries/modes (individual + team, official/virtual/practice),
-	// preventing score accumulation for users who joined multiple entries.
+	// Uses the same score shown in task standings. Each user appears once per task
+	// with their BEST standings score across all entries/modes (individual + team,
+	// official/virtual/practice), preventing score accumulation for users who joined
+	// multiple entries.
 	// Uses UPSERT to avoid DELETE-CTE optimization bug in PostgreSQL 12+.
 	// Pick best score per (user, task); if same score take earliest (lowest penalty)
 	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error

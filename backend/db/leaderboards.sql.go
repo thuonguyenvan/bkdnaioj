@@ -506,37 +506,81 @@ func (q *Queries) RecomputeContestPhaseLeaderboard(ctx context.Context, arg Reco
 }
 
 const recomputeGlobalPhaseRanking = `-- name: RecomputeGlobalPhaseRanking :exec
-WITH scored_submissions AS (
+WITH entry_candidates AS (
   SELECT
     cpd.key          AS phase_key,
-    u.id             AS user_id,
-    COALESCE(u.username, split_part(u.email::text, '@', 1)) AS display_name,
-    u.email::text    AS user_email,
-    ct.id            AS contest_id,
+    s.contest_id,
+    s.task_id,
+    s.phase_id,
+    s.contest_entry_id,
+    s.id             AS submission_id,
     ct.title         AS contest_title,
-    t.id             AS task_id,
     t.title          AS task_title,
-    COALESCE(s.raw_score, s.display_score)::numeric AS score,
-    EXTRACT(EPOCH FROM (s.submitted_at - ct.start_time)) / 60.0 AS penalty_minutes
+    ct.scale_scores,
+    p.leaderboard_mode,
+    t.higher_is_better,
+    s.display_score,
+    EXTRACT(EPOCH FROM (s.submitted_at - ct.start_time)) / 60.0 AS penalty_minutes,
+    row_number() OVER (
+      PARTITION BY s.phase_id, s.contest_entry_id
+      ORDER BY
+        s.is_final DESC,
+        CASE WHEN p.leaderboard_mode = 'latest' THEN s.submitted_at END DESC NULLS LAST,
+        CASE WHEN p.leaderboard_mode = 'best' AND t.higher_is_better THEN s.display_score END DESC NULLS LAST,
+        CASE WHEN p.leaderboard_mode = 'best' AND NOT t.higher_is_better THEN s.display_score END ASC NULLS LAST,
+        s.submitted_at DESC
+    ) AS rn
   FROM submissions s
   JOIN phases             p   ON p.id   = s.phase_id
   JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
   JOIN tasks              t   ON t.id   = s.task_id
   JOIN contests           ct  ON ct.id  = s.contest_id
   JOIN contest_entries    ce  ON ce.id  = s.contest_entry_id
-  JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
-  JOIN users              u   ON u.id   = cem.user_id
   WHERE cpd.key::text  = $1
     AND ct.visibility  = 'public'
     AND ct.status     <> 'draft'
     AND ce.status     <> 'disqualified'
     AND s.status       = 'done'
-    AND COALESCE(s.raw_score, s.display_score) IS NOT NULL
+    AND s.display_score IS NOT NULL
+),
+entry_chosen AS (
+  SELECT phase_key, contest_id, task_id, phase_id, contest_entry_id, submission_id, contest_title, task_title, scale_scores, leaderboard_mode, higher_is_better, display_score, penalty_minutes, rn FROM entry_candidates WHERE rn = 1
+),
+entry_scored AS (
+  SELECT
+    c.phase_key, c.contest_id, c.task_id, c.phase_id, c.contest_entry_id, c.submission_id, c.contest_title, c.task_title, c.scale_scores, c.leaderboard_mode, c.higher_is_better, c.display_score, c.penalty_minutes, c.rn,
+    MAX(c.display_score) OVER (PARTITION BY c.phase_id) AS max_phase_score,
+    CASE
+      WHEN c.scale_scores = TRUE THEN
+        CASE
+          WHEN COALESCE(MAX(c.display_score) OVER (PARTITION BY c.phase_id), 0) > 0
+          THEN (c.display_score / MAX(c.display_score) OVER (PARTITION BY c.phase_id)) * 100
+          ELSE 0
+        END
+      ELSE c.display_score
+    END AS score
+  FROM entry_chosen c
+),
+scored_members AS (
+  SELECT
+    es.phase_key,
+    u.id AS user_id,
+    COALESCE(u.username, split_part(u.email::text, '@', 1)) AS display_name,
+    u.email::text AS user_email,
+    es.contest_id,
+    es.contest_title,
+    es.task_id,
+    es.task_title,
+    es.score,
+    es.penalty_minutes
+  FROM entry_scored es
+  JOIN contest_entry_members cem ON cem.contest_entry_id = es.contest_entry_id
+  JOIN users u ON u.id = cem.user_id
 ),
 best_per_task AS (
   SELECT DISTINCT ON (user_id, contest_id, task_id)
     phase_key, user_id, display_name, user_email, contest_title, task_title, score, penalty_minutes
-  FROM scored_submissions
+  FROM scored_members
   ORDER BY user_id, contest_id, task_id, score DESC, penalty_minutes ASC
 ),
 agg AS (
@@ -569,9 +613,10 @@ ON CONFLICT (phase_key, user_id) DO UPDATE SET
   details      = EXCLUDED.details
 `
 
-// Uses raw submission scores. Each user appears once per task with their BEST
-// score across all entries/modes (individual + team, official/virtual/practice),
-// preventing score accumulation for users who joined multiple entries.
+// Uses the same score shown in task standings. Each user appears once per task
+// with their BEST standings score across all entries/modes (individual + team,
+// official/virtual/practice), preventing score accumulation for users who joined
+// multiple entries.
 // Uses UPSERT to avoid DELETE-CTE optimization bug in PostgreSQL 12+.
 // Pick best score per (user, task); if same score take earliest (lowest penalty)
 func (q *Queries) RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error {
