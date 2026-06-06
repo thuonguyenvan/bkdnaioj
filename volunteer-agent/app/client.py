@@ -4,6 +4,16 @@ from dataclasses import dataclass, field
 import httpx
 
 
+def _raise_for_status(response: httpx.Response) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = response.text[:1000]
+        raise RuntimeError(
+            f"{exc.response.status_code} {exc.response.reason_phrase} for {exc.request.url}: {body}"
+        ) from exc
+
+
 @dataclass
 class Artifact:
     type: str
@@ -37,16 +47,17 @@ class APIClient:
                   "max_workers": max_workers},
             timeout=10,
         )
-        r.raise_for_status()
+        _raise_for_status(r)
         return r.json()
 
     def heartbeat(self, cpu: int, ram: int) -> None:
-        httpx.post(
+        r = httpx.post(
             f"{self._base}/api/v1/worker/heartbeat",
             json={"cpu_usage": cpu, "ram_usage": ram},
             headers=self._headers,
             timeout=10,
         )
+        _raise_for_status(r)
 
     def next_job(self) -> Job | None:
         r = httpx.post(
@@ -54,7 +65,7 @@ class APIClient:
             headers=self._headers,
             timeout=20,
         )
-        r.raise_for_status()
+        _raise_for_status(r)
         data = r.json()
         if not data.get("submission_id"):
             return None
@@ -85,7 +96,7 @@ class APIClient:
             headers=self._headers,
             timeout=10,
         )
-        r.raise_for_status()
+        _raise_for_status(r)
 
     def submit_result(self, submission_id: str, result: dict) -> None:
         r = httpx.post(
@@ -94,4 +105,4 @@ class APIClient:
             headers=self._headers,
             timeout=15,
         )
-        r.raise_for_status()
+        _raise_for_status(r)

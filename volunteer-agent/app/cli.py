@@ -908,6 +908,35 @@ def start(
     def poll_loop(worker_idx: int) -> None:
         judge_worker = VolunteerJudgeWorker(PhaseRunner(), cache)
         log.info("worker_thread_started", idx=worker_idx)
+
+        def submit_result_with_retry(submission_id: str, body: dict, event: str) -> bool:
+            deadline = time.monotonic() + 180
+            attempt = 0
+            while not stop_event.is_set():
+                attempt += 1
+                try:
+                    client.submit_result(submission_id, body)
+                    return True
+                except Exception as submit_exc:
+                    if time.monotonic() >= deadline:
+                        log.error(
+                            event,
+                            worker=worker_idx,
+                            submission_id=submission_id,
+                            attempts=attempt,
+                            error=str(submit_exc),
+                        )
+                        return False
+                    log.warning(
+                        "job_result_submit_retry",
+                        worker=worker_idx,
+                        submission_id=submission_id,
+                        attempts=attempt,
+                        error=str(submit_exc),
+                    )
+                    stop_event.wait(min(5 + attempt, 15))
+            return False
+
         while not stop_event.is_set():
             try:
                 job = client.next_job()
@@ -940,52 +969,43 @@ def start(
                     profiler = ExecutionProfiler()
                     profiler.start()
                     try:
-                        result = judge_worker.run(job, td)
-                        execution_profile = profiler.stop("done")
-                        if result.get("dry_run_profile") is not None:
-                            execution_profile["dry_run_profile"] = result.get("dry_run_profile")
-                    except Exception as exc:
-                        execution_profile = profiler.stop("failed")
-                        err_msg = str(exc)[:4000]
-                        log.error("job_failed", worker=worker_idx, submission_id=job.submission_id,
-                                  error=err_msg)
                         try:
-                            client.submit_result(job.submission_id,
-                                                 {
-                                                     "attempt_id": job.attempt_id,
-                                                     "status": "failed",
-                                                     "error_message": err_msg,
-                                                     "execution_profile": execution_profile,
-                                                 })
-                        except Exception as submit_exc:
-                            log.error(
+                            result = judge_worker.run(job, td)
+                            execution_profile = profiler.stop("done")
+                            if result.get("dry_run_profile") is not None:
+                                execution_profile["dry_run_profile"] = result.get("dry_run_profile")
+                        except Exception as exc:
+                            execution_profile = profiler.stop("failed")
+                            err_msg = str(exc)[:4000]
+                            log.error("job_failed", worker=worker_idx, submission_id=job.submission_id,
+                                      error=err_msg)
+                            submit_result_with_retry(
+                                job.submission_id,
+                                {
+                                    "attempt_id": job.attempt_id,
+                                    "status": "failed",
+                                    "error_message": err_msg,
+                                    "execution_profile": execution_profile,
+                                },
                                 "job_failed_result_submit_failed",
-                                worker=worker_idx,
-                                submission_id=job.submission_id,
-                                error=str(submit_exc),
                             )
-                        finally:
-                            job_stop_event.set()
-                        continue
+                            continue
 
-                    try:
-                        client.submit_result(job.submission_id, {
-                            "attempt_id":        job.attempt_id,
-                            "status":            "done",
-                            "raw_score":         result["raw_score"],
-                            "display_score":     result["display_score"],
-                            "payload":           result.get("payload"),
-                            "execution_profile": execution_profile,
-                        })
-                        log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
-                                 score=result["raw_score"])
-                    except Exception as submit_exc:
-                        log.error(
+                        submitted = submit_result_with_retry(
+                            job.submission_id,
+                            {
+                                "attempt_id":        job.attempt_id,
+                                "status":            "done",
+                                "raw_score":         result["raw_score"],
+                                "display_score":     result["display_score"],
+                                "payload":           result.get("payload"),
+                                "execution_profile": execution_profile,
+                            },
                             "job_done_result_submit_failed",
-                            worker=worker_idx,
-                            submission_id=job.submission_id,
-                            error=str(submit_exc),
                         )
+                        if submitted:
+                            log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
+                                     score=result["raw_score"])
                     finally:
                         job_stop_event.set()
             except Exception as exc:

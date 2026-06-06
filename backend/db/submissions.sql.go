@@ -238,7 +238,7 @@ UPDATE submissions
 SET status        = 'done',
     raw_score     = $2,
     display_score = $3,
-    score_payload = $4::jsonb,
+    score_payload = $4::varchar::jsonb,
     evaluated_at  = now(),
     updated_at    = now(),
     error_message = NULL
@@ -250,7 +250,7 @@ type MarkSubmissionDoneParams struct {
 	ID           uuid.UUID      `json:"id"`
 	RawScore     pgtype.Numeric `json:"raw_score"`
 	DisplayScore pgtype.Numeric `json:"display_score"`
-	Column4      []byte         `json:"column_4"`
+	Column4      string         `json:"column_4"`
 }
 
 func (q *Queries) MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error) {
