@@ -42,12 +42,12 @@ export const TopNavbar: React.FC = () => {
           <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: '0.5rem' }}>
             <svg viewBox="0 0 100 100" width="38" height="38" style={{ flexShrink: 0 }}>
               <circle cx="50" cy="50" r="46" fill="#ffffff" />
-              <circle cx="50" cy="50" r="40" fill="none" stroke="#0b1329" strokeWidth="3.5" />
-              <text x="50" y="44" textAnchor="middle" fill="#0b1329" fontSize="22" fontWeight="900" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">AI</text>
-              <text x="50" y="68" textAnchor="middle" fill="#0b1329" fontSize="18" fontWeight="800" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">OLP</text>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#2563eb" strokeWidth="3.5" />
+              <text x="50" y="43" textAnchor="middle" fill="#0b1329" fontSize="16" fontWeight="900" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">BKDN</text>
+              <text x="50" y="68" textAnchor="middle" fill="#2563eb" fontSize="22" fontWeight="800" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">AI</text>
             </svg>
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.05rem', letterSpacing: '0.02em', fontFamily: 'sans-serif' }}>AI OLYMPIC</span>
+              <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.05rem', letterSpacing: '0.02em', fontFamily: 'sans-serif' }}>BKDN AI</span>
               <span style={{ color: '#94a3b8', fontWeight: 650, fontSize: '0.7rem', letterSpacing: '0.08em', fontFamily: 'sans-serif' }}>ONLINE JUDGE</span>
             </div>
           </Link>
