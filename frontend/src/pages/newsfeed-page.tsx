@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Contest, type Announcement } from '../lib/api-client';
 import { useAuth } from '../contexts/auth-context';
-import { Volume2, Megaphone, Clock, Award, Pin, ShieldAlert, Trash2 } from 'lucide-react';
+import { Clock, Megaphone, Pin, Trash2 } from 'lucide-react';
 import { MarkdownContent } from '../components/markdown-content';
 
 interface RichAnnouncement extends Announcement {
@@ -156,7 +156,7 @@ export const NewsfeedPage: React.FC = () => {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.2fr', gap: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isStaff ? 'minmax(0, 1fr) 360px' : 'minmax(0, 1fr)', gap: '1.5rem', alignItems: 'start' }}>
         
         {/* Main Feed Column */}
         <div>
@@ -174,8 +174,7 @@ export const NewsfeedPage: React.FC = () => {
           )}
 
           {!isLoading && !contestsError && announcements.length === 0 && (
-            <div className="panel flex flex-col items-center justify-center text-center" style={{ padding: '4rem 2rem' }}>
-              <Volume2 size={48} style={{ color: '#94a3b8', marginBottom: '1rem' }} />
+            <div className="panel" style={{ padding: '2rem' }}>
               <h3 style={{ margin: 0, color: '#475569' }}>No announcements yet</h3>
               <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '0.5rem', maxWidth: '380px' }}>
                 No official announcements have been posted yet.
@@ -190,9 +189,9 @@ export const NewsfeedPage: React.FC = () => {
                   key={ann.id} 
                   className="panel"
                   style={{
-                    borderLeft: ann.is_pinned ? '4px solid hsl(var(--primary))' : (ann.isSystem ? '4px solid #dc2626' : '1px solid #e2e8f0'),
+                    borderLeft: ann.is_pinned ? '3px solid hsl(var(--primary))' : '1px solid #e2e8f0',
                     transition: 'all 0.2s ease',
-                    boxShadow: ann.is_pinned ? '0 4px 12px hsla(var(--primary), 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
                   }}
                 >
                   <div className="flex justify-between items-start" style={{ marginBottom: '1rem' }}>
@@ -201,9 +200,9 @@ export const NewsfeedPage: React.FC = () => {
                         <span 
                           style={{ 
                             fontSize: '0.75rem', 
-                            backgroundColor: ann.isSystem ? '#fef2f2' : '#eff6ff', 
-                            color: ann.isSystem ? '#dc2626' : 'hsl(var(--primary))', 
-                            border: ann.isSystem ? '1px solid #fca5a5' : 'none',
+                            backgroundColor: ann.isSystem ? '#f8fafc' : 'hsl(var(--background))', 
+                            color: '#475569', 
+                            border: '1px solid #e2e8f0',
                             padding: '0.2rem 0.6rem', 
                             borderRadius: '4px',
                             fontWeight: 600
@@ -215,8 +214,9 @@ export const NewsfeedPage: React.FC = () => {
                           <span 
                             style={{ 
                               fontSize: '0.75rem', 
-                              backgroundColor: '#fee2e2', 
-                              color: '#ef4444', 
+                              backgroundColor: 'hsl(var(--background))', 
+                              color: 'hsl(var(--primary))', 
+                              border: '1px solid hsl(var(--border))',
                               padding: '0.2rem 0.45rem', 
                               borderRadius: '4px',
                               fontWeight: 600,
@@ -265,15 +265,27 @@ export const NewsfeedPage: React.FC = () => {
           )}
         </div>
 
-        {/* Sidebar Column */}
-        <div>
-          {/* Admin Posting Section */}
-          {isStaff && (
-            <div className="panel" style={{ padding: '1.5rem', marginBottom: '1.5rem', border: '1px solid #fca5a5', backgroundColor: '#fffdfd' }}>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626' }}>
+        {isStaff && (
+          <aside>
+            <div className="panel" style={{ padding: '1.25rem', marginBottom: 0 }}>
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a' }}>
                 <Megaphone size={18} />
                 Post System Announcement
               </h3>
+              <div style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                padding: '0.75rem',
+                marginBottom: '1rem',
+                background: '#f8fafc',
+                color: '#475569',
+                fontSize: '0.8rem',
+                lineHeight: 1.6,
+              }}>
+                Announcements should be limited to official deadlines, rule changes, dataset or package updates,
+                scheduled maintenance, and contest-wide clarifications. Use concise titles and state the effective
+                time when the notice changes participant obligations.
+              </div>
               {formError && <div className="alert alert-danger" style={{ fontSize: '0.8rem', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.75rem' }}>{formError}</div>}
               {formSuccess && <div className="alert alert-success" style={{ fontSize: '0.8rem', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.75rem' }}>{formSuccess}</div>}
               <form onSubmit={handleCreateAnnouncement}>
@@ -309,31 +321,15 @@ export const NewsfeedPage: React.FC = () => {
                 <button 
                   type="submit" 
                   className="btn btn-primary" 
-                  style={{ width: '100%', padding: '0.5rem', fontSize: '0.875rem', backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                  style={{ width: '100%', padding: '0.5rem', fontSize: '0.875rem' }}
                   disabled={createMutation.isPending}
                 >
                   {createMutation.isPending ? 'Posting...' : 'Post announcement'}
                 </button>
               </form>
             </div>
-          )}
-
-          {/* Platform Info Section */}
-          <div className="panel" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Award size={18} style={{ color: 'hsl(var(--primary))' }} />
-              About the Platform
-            </h3>
-            <p style={{ fontSize: '0.875rem', lineHeight: '1.6', color: '#475569', margin: 0 }}>
-              Welcome to the AI OLP contest platform. Follow the newsfeed for official updates, contest changes, and technical notices.
-            </p>
-            <hr style={{ margin: '1rem 0', borderColor: '#e2e8f0' }} />
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: '#64748b', fontSize: '0.8rem' }}>
-              <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '0.1rem', color: '#eab308' }} />
-              <span>If you encounter technical issues during submission, please create a support ticket from the relevant contest page.</span>
-            </div>
-          </div>
-        </div>
+          </aside>
+        )}
 
       </div>
     </div>

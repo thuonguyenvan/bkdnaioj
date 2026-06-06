@@ -1,600 +1,276 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  BookOpen, ChevronDown, ChevronRight, Trophy, Upload, Cpu, Shield,
-  Server, BarChart2, HelpCircle, Zap, Users, FileText
-} from 'lucide-react';
+import { BookOpen, ChevronRight, FileText, Server, Upload, Users } from 'lucide-react';
 
-/* ── Types ──────────────────────────────────────────────── */
 interface SectionDef {
   id: string;
-  icon: React.ReactNode;
   title: string;
+  icon: React.ReactNode;
   content: React.ReactNode;
 }
 
-interface FaqItem { q: string; a: string }
+const CodeBlock: React.FC<{ children: string }> = ({ children }) => (
+  <div className="panel" style={{ padding: '1rem', background: 'hsl(var(--background))', marginBottom: '1.25rem' }}>
+    <pre style={{
+      margin: 0,
+      whiteSpace: 'pre-wrap',
+      fontFamily: 'var(--font-mono)',
+      fontSize: '0.8rem',
+      lineHeight: 1.8,
+      color: 'hsl(var(--text-main))',
+    }}>
+      {children}
+    </pre>
+  </div>
+);
 
-/* ── FAQ ────────────────────────────────────────────────── */
-const FAQ: FaqItem[] = [
-  {
-    q: 'Tôi cần đăng ký tham gia cuộc thi như thế nào?',
-    a: 'Vào trang Contest → chọn cuộc thi → nhấn "Register". Với cuộc thi yêu cầu duyệt thủ công, bạn cần chờ BTC phê duyệt trước khi nộp bài.',
-  },
-  {
-    q: 'Định dạng file nộp bài là gì?',
-    a: 'Tuỳ task. Phase output-only (public_test, private_test): nộp file CSV/ZIP chứa dự đoán. Phase final (final_public, final_private): nộp file ZIP chứa mô hình và script infer.py.',
-  },
-  {
-    q: 'Tôi có thể nộp bao nhiêu lần?',
-    a: 'Không giới hạn số lần nộp trong thời gian phase mở. Bảng xếp hạng dùng submission tốt nhất hoặc mới nhất tuỳ cấu hình của BTC.',
-  },
-  {
-    q: 'Score được tính thế nào trên Global Ranking?',
-    a: 'Global Ranking tổng hợp điểm tốt nhất của mỗi thí sinh trên tất cả tasks và cuộc thi, phân theo loại phase (public_test, final_public…).',
-  },
-  {
-    q: 'Volunteer Worker là gì? Tôi có cần cài không?',
-    a: 'Volunteer Worker là agent chạy trên máy tính của bạn để giúp chấm bài. Thí sinh thường KHÔNG cần cài — chỉ người muốn đóng góp tài nguyên tính toán mới cần. Xem mục "Volunteer Judge Worker" để biết thêm.',
-  },
-  {
-    q: 'Bài nộp của tôi bị "Failed" — nguyên nhân thường gặp?',
-    a: '1) File sai định dạng (CSV thiếu header, ZIP thiếu infer.py). 2) Hết thời gian chạy (timeout). 3) Script lỗi runtime — xem error log trong chi tiết submission. 4) BTC chưa upload dataset — liên hệ BTC.',
-  },
-  {
-    q: 'Leaderboard được cập nhật ngay sau khi nộp không?',
-    a: 'Có — sau khi worker chấm xong (thường vài giây đến vài phút tuỳ tải hệ thống), leaderboard tự cập nhật không cần refresh.',
-  },
-  {
-    q: 'Phase Private Test/Final Private khác gì Public?',
-    a: 'Public phases dùng bộ test công khai (thí sinh biết trước). Private phases dùng bộ test ẩn — đây là điểm chính thức quyết định thứ hạng cuối cùng.',
-  },
-];
-
-/* ── Section content ────────────────────────────────────── */
-const SECTIONS: SectionDef[] = [
-  /* Overview */
-  {
-    id: 'overview',
-    icon: <BookOpen size={14} />,
-    title: 'Tổng quan',
-    content: (
-      <div>
-        <p className="page-subtitle" style={{ marginBottom: '1.5rem', maxWidth: '100%' }}>
-          <strong>OLPAI</strong> (Olympic AI – Online Judge) là nền tảng tổ chức và chấm thi các cuộc thi Trí tuệ Nhân tạo.
-          Hệ thống hỗ trợ đầy đủ vòng đời: từ thiết kế bài thi, tổ chức nhiều phases, chấm bài tự động,
-          quản lý bảng xếp hạng đến phân tích kết quả.
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-          {[
-            { icon: <Trophy size={16} color="hsl(38,92%,50%)" />, title: 'Multi-phase Contest', desc: 'Hỗ trợ 4 phase: Public Test, Final Public, Private Test, Final Private' },
-            { icon: <Upload size={16} color="hsl(222,47%,40%)" />, title: 'Flexible Submission', desc: 'Output-only (CSV/ZIP) hoặc model inference (ZIP + infer.py)' },
-            { icon: <Cpu size={16} color="hsl(142,76%,36%)" />, title: 'Distributed Judging', desc: 'Volunteer worker network tự động phân phối tải' },
-            { icon: <BarChart2 size={16} color="hsl(199,89%,40%)" />, title: 'Real-time Leaderboard', desc: 'Cập nhật ngay sau chấm, hỗ trợ best/latest mode' },
-          ].map(({ icon, title, desc }) => (
-            <div key={title} className="panel" style={{ padding: '1rem', marginBottom: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-                {icon}
-                <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>{title}</span>
-              </div>
-              <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.8rem', margin: 0, lineHeight: 1.6 }}>{desc}</p>
-            </div>
-          ))}
-        </div>
-
-        <h3 className="section-heading" style={{ marginBottom: '0.75rem' }}>Kiến trúc</h3>
-        <div className="panel" style={{ padding: '1rem', marginBottom: 0, background: 'hsl(var(--background))' }}>
-          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'hsl(var(--text-muted))', margin: 0, lineHeight: 2, whiteSpace: 'pre-wrap' }}>
-{`User Browser  →  React Frontend (Vite + TypeScript)
-                ↓ HTTP / REST
-Go API Server  →  Echo + JWT Auth + PostgreSQL (Supabase)
-                ↓ Redis Streams (jobs:judge)
-Judge Workers  →  Internal Worker | Volunteer Agent
-                ↓ MinIO S3
-Artifact Store →  Submissions, Datasets, Checkpoints`}
-          </pre>
-        </div>
-      </div>
-    ),
-  },
-
-  /* Contest & Phases */
-  {
-    id: 'contest',
-    icon: <Trophy size={14} />,
-    title: 'Contest & Phases',
-    content: (
-      <div>
-        <p className="page-subtitle" style={{ marginBottom: '1.5rem', maxWidth: '100%' }}>
-          Mỗi cuộc thi gồm nhiều <strong>Tasks</strong> (bài toán), mỗi task có tối đa 4 <strong>Phases</strong> (vòng chấm).
-          Các phase có thể mở đồng thời.
-        </p>
-
-        <h3 className="section-heading">4 loại Phase</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          {[
-            { key: 'public_test',    label: 'Public Test',    note: 'Thường xuyên mở',    desc: 'Bộ test công khai — luyện tập và kiểm tra. Điểm hiển thị ngay.' },
-            { key: 'final_public',   label: 'Final Public',   note: 'Phase chính thức',   desc: 'Vòng chính với bộ test công khai. Submission model inference (ZIP + infer.py).' },
-            { key: 'private_test',   label: 'Private Test',   note: 'Bộ test ẩn',         desc: 'Thí sinh không thấy test trước. Output-only — nộp CSV dự đoán.' },
-            { key: 'final_private',  label: 'Final Private',  note: 'Quyết định kết quả', desc: 'Phase quan trọng nhất — inference trên bộ test hoàn toàn ẩn.' },
-          ].map(({ key, label, note, desc }) => (
-            <div key={key} className="panel" style={{ padding: '0.875rem 1rem', marginBottom: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
-                <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', background: 'hsl(var(--background))', padding: '0.1rem 0.4rem', borderRadius: 4, border: '1px solid hsl(var(--border))' }}>{key}</code>
-                <strong style={{ fontSize: '0.875rem' }}>{label}</strong>
-                <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>{note}</span>
-              </div>
-              <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.82rem', margin: 0, lineHeight: 1.6 }}>{desc}</p>
-            </div>
-          ))}
-        </div>
-
-        <h3 className="section-heading">Luồng tham gia</h3>
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
-          {['Đăng ký contest', 'Chờ duyệt (nếu cần)', 'Tải đề + dataset', 'Nộp submission', 'Xem leaderboard'].map((step, i, arr) => (
-            <React.Fragment key={step}>
-              <div className="panel" style={{ padding: '0.4rem 0.75rem', marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'hsl(var(--primary))', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>{step}</span>
-              </div>
-              {i < arr.length - 1 && <ChevronRight size={14} color="hsl(var(--text-muted))" />}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-    ),
-  },
-
-  /* Submission */
-  {
-    id: 'submission',
-    icon: <Upload size={14} />,
-    title: 'Nộp bài',
-    content: (
-      <div>
-        <h3 className="section-heading">Output-only Phase (public_test, private_test)</h3>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '0.75rem' }}>
-          Nộp file dự đoán trực tiếp. Định dạng do BTC quy định, thường là CSV:
-        </p>
-        <div className="panel" style={{ padding: '0.875rem 1rem', marginBottom: '1.5rem', background: 'hsl(var(--background))' }}>
-          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'hsl(142,60%,35%)', margin: 0 }}>{`id,y_pred\n1,0\n2,1\n3,0\n...`}</pre>
-        </div>
-
-        <h3 className="section-heading">Model Inference Phase (final_public, final_private)</h3>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '0.75rem' }}>
-          Nộp file ZIP chứa model và script chạy inference:
-        </p>
-        <div className="panel" style={{ padding: '0.875rem 1rem', marginBottom: '0.75rem', background: 'hsl(var(--background))' }}>
-          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'hsl(222,47%,40%)', margin: 0 }}>{`submission.zip\n├── infer.py          # Bắt buộc — entrypoint\n├── model.pt          # Checkpoint\n├── requirements.txt  # Tuỳ chọn\n└── ...`}</pre>
-        </div>
-        <div className="panel" style={{ padding: '0.875rem 1rem', marginBottom: '1.5rem', borderLeft: '3px solid hsl(var(--warning))' }}>
-          <p style={{ color: 'hsl(var(--warning))', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.25rem' }}>⚠️ infer.py phải nhận đúng arguments</p>
-          <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.82rem', margin: 0, lineHeight: 1.7 }}>
-            <code style={{ fontFamily: 'var(--font-mono)' }}>--submission-dir</code>,&nbsp;
-            <code style={{ fontFamily: 'var(--font-mono)' }}>--assets-dir</code>,&nbsp;
-            <code style={{ fontFamily: 'var(--font-mono)' }}>--output-dir</code>,&nbsp;
-            <code style={{ fontFamily: 'var(--font-mono)' }}>--context</code> và ghi output ra <code style={{ fontFamily: 'var(--font-mono)' }}>output-dir</code>. Xem template từ BTC.
-          </p>
-        </div>
-
-        <h3 className="section-heading">Trạng thái submission</h3>
-        <table className="table" style={{ marginBottom: 0 }}>
-          <tbody>
-            {[
-              { status: 'queued',  cls: '',        desc: 'Đang trong hàng chờ, chưa có worker nhận' },
-              { status: 'running', cls: 'running', desc: 'Worker đang chấm bài' },
-              { status: 'done',    cls: 'success', desc: 'Chấm xong, có điểm' },
-              { status: 'failed',  cls: 'danger',  desc: 'Lỗi — xem error message để biết nguyên nhân' },
-            ].map(({ status, cls, desc }) => (
-              <tr key={status}>
-                <td style={{ width: 90 }}><span className={`badge${cls ? ` badge-${cls}` : ''}`}>{status}</span></td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem' }}>{desc}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ),
-  },
-
-  /* Leaderboard */
-  {
-    id: 'leaderboard',
-    icon: <BarChart2 size={14} />,
-    title: 'Leaderboard & Scoring',
-    content: (
-      <div>
-        <h3 className="section-heading">Task Phase Leaderboard</h3>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-          Mỗi phase của mỗi task có bảng xếp hạng riêng. Score có thể được <strong>normalize</strong> (về 0–100)
-          nếu BTC bật tuỳ chọn <code style={{ fontFamily: 'var(--font-mono)' }}>scale_scores</code>.
-        </p>
-
-        <h3 className="section-heading">Chọn submission cho leaderboard</h3>
-        <table className="table" style={{ marginBottom: '1.5rem' }}>
-          <tbody>
-            {[
-              { mode: 'best',   desc: 'Submission có điểm cao nhất — mặc định' },
-              { mode: 'latest', desc: 'Submission mới nhất — BTC chọn khi muốn đánh giá chiến thuật cuối' },
-            ].map(({ mode, desc }) => (
-              <tr key={mode}>
-                <td style={{ width: 80 }}><code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{mode}</code></td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem' }}>{desc}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h3 className="section-heading">Global Ranking</h3>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-          Trang <Link to="/rankings">Rankings</Link> tổng hợp cross-contest — mỗi thí sinh được tính <strong>điểm tốt nhất</strong> trên
-          mỗi task, cộng dồn và phân theo loại phase.
-        </p>
-
-        <h3 className="section-heading">Incremental Update (O(log n))</h3>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7 }}>
-          Khi submission mới không phá vỡ điểm tối đa hiện tại, hệ thống chỉ cập nhật 1 dòng + Redis ZSET
-          thay vì recompute toàn bảng — giảm latency từ ~400ms xuống ~10ms ở quy mô nhỏ.
-          Khi có điểm mới cao nhất, full recompute (O(n)) được trigger để đảm bảo tính chính xác.
-        </p>
-      </div>
-    ),
-  },
-
-  /* Volunteer Worker */
-  {
-    id: 'worker',
-    icon: <Server size={14} />,
-    title: 'Volunteer Judge Worker',
-    content: (
-      <div>
-        <div className="panel" style={{ borderLeft: '3px solid hsl(var(--running))', marginBottom: '1.5rem' }}>
-          <p style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.3rem' }}>Volunteer Worker là gì?</p>
-          <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', margin: 0, lineHeight: 1.7 }}>
-            Thay vì chỉ dùng server trung tâm, OLPAI cho phép bất kỳ máy tính nào tham gia mạng lưới chấm bài.
-            Worker nhận job từ hàng chờ Redis, chạy script chấm trong sandbox Docker, trả kết quả về — hoàn toàn tự động.
-          </p>
-        </div>
-
-        <h3 className="section-heading">Yêu cầu tối thiểu</h3>
-        <table className="table" style={{ marginBottom: '1.5rem' }}>
-          <tbody>
-            {[
-              ['Python', '3.11+'],
-              ['RAM', '4 GB tối thiểu'],
-              ['Disk', '10 GB free'],
-              ['Docker', 'Tuỳ chọn — cần cho final phase inference'],
-            ].map(([k, v]) => (
-              <tr key={k}>
-                <td style={{ width: 100, fontWeight: 600, fontSize: '0.875rem' }}>{k}</td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem' }}>{v}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h3 className="section-heading">Cài đặt & Khởi động</h3>
-        <div className="panel" style={{ padding: '1rem', marginBottom: '1.5rem', background: 'hsl(var(--background))' }}>
-          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'hsl(var(--text-main))', margin: 0, lineHeight: 2 }}>{
-`# 1. Cài đặt
-pip install olpai-volunteer-agent
-
-# 2. Wizard đăng ký (chạy 1 lần)
-olpai-volunteer setup
-# → Nhập Platform URL + tên máy
-# → Hệ thống tự benchmark và đăng ký → ghi lại Worker ID
-
-# 3. Admin approve /admin/workers → copy token
-
-# 4. Lưu token
-olpai-volunteer approve-token <TOKEN>
-
-# 5. Chạy worker
-olpai-volunteer start                # Foreground
-olpai-volunteer service install      # Background service`
-          }</pre>
-        </div>
-
-        <h3 className="section-heading">Tất cả commands</h3>
-        <table className="table" style={{ marginBottom: '1.5rem' }}>
-          <tbody>
-            {[
-              ['olpai-volunteer setup',               'Wizard đăng ký lần đầu'],
-              ['olpai-volunteer approve-token <T>',   'Lưu token sau khi admin duyệt'],
-              ['olpai-volunteer start',               'Chạy worker (foreground)'],
-              ['olpai-volunteer start --workers 4',   'Chạy 4 workers song song'],
-              ['olpai-volunteer doctor',              'Kiểm tra môi trường'],
-              ['olpai-volunteer benchmark',           'Đo hiệu suất CPU/disk'],
-              ['olpai-volunteer status',              'Xem config và trạng thái'],
-              ['olpai-volunteer logs -f',             'Theo dõi logs realtime'],
-              ['olpai-volunteer service install',     'Cài service tự khởi động khi boot'],
-              ['olpai-volunteer cache --clear',       'Xoá cache artifact cũ'],
-            ].map(([cmd, desc]) => (
-              <tr key={cmd}>
-                <td><code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>{cmd}</code></td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.82rem' }}>{desc}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h3 className="section-heading">Capability-Aware Scheduling</h3>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '0.75rem' }}>
-          Khi đăng ký, worker đo <strong>capability profile</strong>: CPU ops/sec, RAM, disk throughput, Docker startup time.
-          Server dùng thông tin này để gán job phù hợp — job inference nặng vào máy mạnh, job output-only vào bất kỳ máy nào.
-          Worker chưa benchmark hoặc không có sandbox sẽ không nhận được job.
-        </p>
-        <div className="panel" style={{ padding: '1rem', background: 'hsl(var(--background))', marginBottom: 0 }}>
-          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'hsl(var(--text-muted))', margin: 0, lineHeight: 1.8 }}>{
-`# Runtime estimate T(i,j):
-T = T_download + T_unpack + T_setup + T_run
-
-# Cost function (lexicographic order):
-cost(worker, job) = (timeout_violation, finish_delay, stress)
-
-# Kiểm tra sandbox:
-olpai-volunteer doctor`
-          }</pre>
-        </div>
-      </div>
-    ),
-  },
-
-  /* Sandbox */
-  {
-    id: 'sandbox',
-    icon: <Shield size={14} />,
-    title: 'Sandbox & Bảo mật',
-    content: (
-      <div>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-          Code của thí sinh chạy trong môi trường Docker cô lập để bảo vệ worker khỏi code độc hại.
-        </p>
-
-        <h3 className="section-heading">Giới hạn sandbox (Final phases)</h3>
-        <table className="table" style={{ marginBottom: '1.5rem' }}>
-          <tbody>
-            {[
-              ['Memory',        '512 MB'],
-              ['CPU',           '1 core'],
-              ['Process limit', '64 PIDs (ngăn fork bomb)'],
-              ['Network',       'Tắt hoàn toàn (network_mode=none)'],
-              ['Timeout',       'Tuỳ cấu hình BTC (mặc định 20 phút)'],
-              ['Filesystem',    'Chỉ shared-temp volume'],
-            ].map(([k, v]) => (
-              <tr key={k}>
-                <td style={{ width: 130, fontWeight: 600, fontSize: '0.875rem' }}>{k}</td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem' }}>{v}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h3 className="section-heading">Threats được chặn</h3>
-        <table className="table" style={{ marginBottom: 0 }}>
-          <tbody>
-            {[
-              ['Fork bomb',          'pids_limit=64 — container bị kill ngay khi vượt ngưỡng'],
-              ['Memory bomb',        'mem_limit=512m — OOM killer tự động'],
-              ['Infinite loop',      'Timeout + container.kill() sau N giây'],
-              ['Network exfiltration','network_mode=none — không có kết nối ra ngoài'],
-            ].map(([threat, protection]) => (
-              <tr key={threat}>
-                <td style={{ width: 160 }}><span className="badge badge-danger">{threat}</span></td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.82rem' }}>{protection}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ),
-  },
-
-  /* Admin / BTC */
-  {
-    id: 'admin',
-    icon: <Users size={14} />,
-    title: 'Dành cho BTC / Admin',
-    content: (
-      <div>
-        <h3 className="section-heading">Quy trình tổ chức cuộc thi</h3>
-        <ol style={{ paddingLeft: '1.25rem', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          {[
-            ['Tạo Contest',       'Admin → Create Contest. Cấu hình tên, thời gian, chính sách đăng ký.'],
-            ['Tạo Task',          'Mỗi contest có thể nhiều tasks. Cấu hình score label, higher_is_better.'],
-            ['Upload judge.py',   'Script chấm nhận --submission-dir, --assets-dir, --output-dir, --context và in JSON kết quả.'],
-            ['Upload Evaluation Set', 'Upload ground_truth và inputs cho từng bộ test (public/private).'],
-            ['Tạo Phases',        'Gán evaluation set cho từng phase. Cấu hình thời gian mở/đóng, leaderboard mode.'],
-            ['Publish',           'Contest chuyển sang active — thí sinh có thể đăng ký và nộp bài.'],
-          ].map(([title, desc]) => (
-            <li key={title} style={{ fontSize: '0.875rem', lineHeight: 1.7 }}>
-              <strong>{title}</strong>
-              <span style={{ color: 'hsl(var(--text-muted))', display: 'block', marginTop: '0.1rem' }}>{desc}</span>
-            </li>
-          ))}
-        </ol>
-
-        <h3 className="section-heading">Template judge.py</h3>
-        <div className="panel" style={{ padding: '1rem', background: 'hsl(var(--background))', marginBottom: 0 }}>
-          <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'hsl(var(--text-main))', margin: 0, lineHeight: 1.8 }}>{
-`import argparse, json, os
-
-ap = argparse.ArgumentParser()
-ap.add_argument("--submission-dir", required=True)
-ap.add_argument("--assets-dir",     required=True)
-ap.add_argument("--output-dir",     required=True)
-ap.add_argument("--context",        required=True)
-args = ap.parse_args()
-
-# ... logic chấm bài ...
-
-print(json.dumps({
-    "status":        "success",   # hoặc "error"
-    "raw_score":     0.95,
-    "display_score": 95.0,
-    "message":       "ok",
-    "payload":       {}
-}))`
-          }</pre>
-        </div>
-      </div>
-    ),
-  },
-
-  /* Metrics */
-  {
-    id: 'metrics',
-    icon: <Zap size={14} />,
-    title: 'Monitoring & Metrics',
-    content: (
-      <div>
-        <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-          Hệ thống expose Prometheus metrics tại <code style={{ fontFamily: 'var(--font-mono)' }}>GET /metrics</code>.
-        </p>
-        <table className="table" style={{ marginBottom: 0 }}>
-          <thead>
-            <tr>
-              <th>Metric</th>
-              <th>Mô tả</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['olpai_leaderboard_recompute_duration_seconds', 'Thời gian recompute (full vs incremental)'],
-              ['olpai_queue_depth',                            'Số jobs đang chờ trong Redis stream'],
-              ['olpai_job_claim_duration_seconds',             'Thời gian từ enqueue → worker nhận (wait time)'],
-              ['olpai_worker_active_claims',                   'Số jobs đang chạy trên từng worker'],
-              ['olpai_submissions_total',                      'Tổng submissions theo status'],
-              ['olpai_scheduler_decision_duration_seconds',    'Thời gian cost function chọn job'],
-              ['olpai_scheduler_constraint_reject_total',      'Jobs bị reject do không đủ tài nguyên'],
-              ['olpai_job_timeout_total',                      'Jobs bị timeout và re-enqueue'],
-            ].map(([metric, desc]) => (
-              <tr key={metric}>
-                <td><code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{metric}</code></td>
-                <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.82rem' }}>{desc}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ),
-  },
-];
-
-/* ── FAQ Accordion ──────────────────────────────────────── */
-const FaqAccordion: React.FC<{ items: FaqItem[] }> = ({ items }) => {
-  const [open, setOpen] = useState<number | null>(null);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {items.map((item, i) => (
-        <div key={i} className="panel" style={{ padding: 0, marginBottom: 0, overflow: 'hidden' }}>
-          <button
-            onClick={() => setOpen(open === i ? null : i)}
-            style={{
-              width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '0.875rem 1rem', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{item.q}</span>
-            {open === i
-              ? <ChevronDown size={15} color="hsl(var(--text-muted))" style={{ flexShrink: 0 }} />
-              : <ChevronRight size={15} color="hsl(var(--text-muted))" style={{ flexShrink: 0 }} />
-            }
-          </button>
-          {open === i && (
-            <div style={{ padding: '0.875rem 1rem', borderTop: '1px solid hsl(var(--border))' }}>
-              <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.8, margin: 0 }}>{item.a}</p>
-            </div>
-          )}
-        </div>
+const SimpleTable: React.FC<{ rows: Array<[string, string]> }> = ({ rows }) => (
+  <table className="table" style={{ marginBottom: '1.5rem' }}>
+    <tbody>
+      {rows.map(([term, description]) => (
+        <tr key={term}>
+          <td style={{ width: 190, fontWeight: 700, fontSize: '0.875rem' }}>{term}</td>
+          <td style={{ color: 'hsl(var(--text-muted))', fontSize: '0.875rem', lineHeight: 1.65 }}>{description}</td>
+        </tr>
       ))}
-    </div>
-  );
-};
+    </tbody>
+  </table>
+);
 
-/* ── Page ───────────────────────────────────────────────── */
+const SECTIONS: SectionDef[] = [
+  {
+    id: 'contestants',
+    title: 'Contestants',
+    icon: <Upload size={14} />,
+    content: (
+      <div>
+        <p className="page-subtitle" style={{ maxWidth: '100%', marginBottom: '1.25rem' }}>
+          This section defines the minimum information required to participate in a contest, submit solutions,
+          interpret judging results, and communicate with organizers.
+        </p>
+
+        <h3 className="section-heading">Participation</h3>
+        <SimpleTable rows={[
+          ['Registration', 'Open a contest page and register as an individual participant or as a team, depending on the contest policy. Some contests require organizer approval before submissions are accepted.'],
+          ['Participation mode', 'Official submissions are used for contest standings. Virtual and practice submissions may be enabled by the organizer and are treated according to the contest rules.'],
+          ['Phase access', 'A contest is divided into fixed phases: Public Test, Final Public, Private Test, and Final Private. The available actions depend on the active phase and your registration status.'],
+        ]} />
+
+        <h3 className="section-heading">Phase Rules</h3>
+        <SimpleTable rows={[
+          ['Public Test', 'Participants submit prediction outputs against a public evaluation set. Organizers may allow multiple attempts during this phase.'],
+          ['Final Public', 'Participants submit a reproducible package containing source code, inference entrypoint, and model artifacts. This package is used to verify the public result.'],
+          ['Private Test', 'Participants submit prediction outputs against a hidden evaluation set. This phase is used to estimate performance on unseen data.'],
+          ['Final Private', 'Participants submit the final reproducible package for the hidden evaluation set. Contest rules may require this model to match the Final Public model.'],
+        ]} />
+
+        <h3 className="section-heading">Submission Types</h3>
+        <SimpleTable rows={[
+          ['Output-only phase', 'Submit a prediction file or archive in the format specified by the problem statement. Common formats include CSV, JSONL, or ZIP archives.'],
+          ['Final inference phase', 'Submit a ZIP archive containing an executable inference entrypoint, usually infer.py, plus any model files required at runtime.'],
+          ['Submission history', 'The submission history page displays raw scores and execution errors. Scaled scores are only applied in standings when enabled by the contest.'],
+        ]} />
+
+        <h3 className="section-heading">Integrity Requirements</h3>
+        <SimpleTable rows={[
+          ['No manual editing', 'Contestants must not manually modify evaluation inputs or generated outputs after inference, unless the problem statement explicitly allows post-processing.'],
+          ['Reproducibility', 'A final submission must contain all code and model artifacts required to reproduce the submitted predictions.'],
+          ['Package consistency', 'If the contest requires model consistency across final phases, the Final Public and Final Private model artifacts must be identical.'],
+          ['Environment limits', 'Contestants must follow the library, network, storage, and runtime restrictions specified by the organizer for the contest.'],
+        ]} />
+
+        <h3 className="section-heading">Final Inference Contract</h3>
+        <CodeBlock>{`submission.zip
+  infer.py
+  model files
+  optional dependency files
+
+infer.py must read data from:
+  --assets-dir
+
+infer.py must write predictions to:
+  --output-dir
+
+The expected output filename and format are defined by the problem statement.`}</CodeBlock>
+
+        <h3 className="section-heading">Support</h3>
+        <SimpleTable rows={[
+          ['Clarifications', 'Use clarifications for questions about problem statements, datasets, scoring rules, or ambiguous contest instructions.'],
+          ['Support tickets', 'Use support tickets for account, registration, submission, infrastructure, or worker-related issues.'],
+          ['Error messages', 'When a submission fails, include the submission ID, phase, task name, and visible error message when contacting organizers.'],
+        ]} />
+      </div>
+    ),
+  },
+  {
+    id: 'organizers',
+    title: 'Organizers',
+    icon: <Users size={14} />,
+    content: (
+      <div>
+        <p className="page-subtitle" style={{ maxWidth: '100%', marginBottom: '1.25rem' }}>
+          This section summarizes the operational contract required to create tasks that can be judged reliably.
+        </p>
+
+        <h3 className="section-heading">Contest Setup</h3>
+        <SimpleTable rows={[
+          ['Contest metadata', 'Define the title, slug, registration policy, visibility, start time, end time, and participation types before publishing the contest.'],
+          ['Tasks', 'Each task must define a title, scoring label, score direction, submission schema, and the expected output format.'],
+          ['Phases', 'The system uses four fixed phase definitions: Public Test, Final Public, Private Test, and Final Private. Configure open and close times, judge key, evaluation set, and leaderboard mode for each phase.'],
+          ['Leaderboard mode', 'Use best when the best valid submission should count. Use latest only when the latest valid submission should replace previous attempts.'],
+        ]} />
+
+        <h3 className="section-heading">Problem Statement Requirements</h3>
+        <SimpleTable rows={[
+          ['Task definition', 'State the input, expected output, target metric, score direction, and any task-specific constraints before submissions open.'],
+          ['Dataset description', 'Specify the training set, public test set, private test set, file naming convention, encoding, and required row ordering.'],
+          ['Submission limits', 'State the maximum number of submissions for each phase. Final phases should normally use a strict low limit.'],
+          ['Final package policy', 'State whether Final Public and Final Private packages must use the same model architecture, checkpoint, and inference code.'],
+          ['Allowed resources', 'List allowed preinstalled libraries, external model usage, network policy, and whether additional package installation is prohibited.'],
+        ]} />
+
+        <h3 className="section-heading">Scoring Policy</h3>
+        <SimpleTable rows={[
+          ['Raw score', 'The raw score is the direct result produced by judge.py according to the task metric. It is shown in submission history.'],
+          ['Standing score', 'The standing score is the score used in leaderboards. It may equal the raw score or be normalized by contest policy.'],
+          ['Normalization', 'When scale_scores is enabled, each task-phase board normalizes scores against the current best score in that phase. A change in the maximum score updates the standing scores of all entries in that board.'],
+          ['Global ranking', 'Global ranking aggregates standing scores by phase category and uses the best score per user and task across all eligible entries and modes.'],
+        ]} />
+
+        <h3 className="section-heading">Evaluation Assets</h3>
+        <SimpleTable rows={[
+          ['Asset keys', 'Use stable asset keys such as inputs, ground_truth, and judge.py. Contestants should not depend on uploaded filenames except where explicitly documented.'],
+          ['Single-file assets', 'If an asset is uploaded as a single file under a key such as inputs, workers expose it under assets/inputs/filename.ext.'],
+          ['Archive assets', 'If an asset is uploaded as a ZIP archive under a key such as inputs, workers extract it into assets/inputs/.'],
+          ['Judge file', 'judge.py remains an executable file at assets/judge.py and is not converted into a directory.'],
+        ]} />
+
+        <h3 className="section-heading">Required judge.py Behavior</h3>
+        <CodeBlock>{`judge.py must:
+  read contestant outputs from --submission-dir or --output-dir
+  read evaluation assets from --assets-dir
+  print a JSON result to stdout
+
+Required JSON fields:
+  status: "success" or "error"
+  raw_score: numeric value
+  display_score: numeric value used by standings
+
+Optional JSON fields:
+  message
+  payload`}</CodeBlock>
+
+        <h3 className="section-heading">Publication Checklist</h3>
+        <SimpleTable rows={[
+          ['Statement', 'Verify that all input, output, scoring, and packaging rules are stated explicitly.'],
+          ['Sample validation', 'Run at least one known valid submission and one invalid submission before opening the phase.'],
+          ['Dataset availability', 'Confirm that every phase references the correct evaluation set and that all required assets are uploaded.'],
+          ['Reproducibility check', 'Verify that a final package can generate the expected prediction file from the provided assets without manual intervention.'],
+          ['Announcement policy', 'Use announcements only for official contest changes, maintenance notices, deadlines, and rule clarifications.'],
+        ]} />
+      </div>
+    ),
+  },
+  {
+    id: 'volunteers',
+    title: 'Volunteer Workers',
+    icon: <Server size={14} />,
+    content: (
+      <div>
+        <p className="page-subtitle" style={{ maxWidth: '100%', marginBottom: '1.25rem' }}>
+          Volunteer workers provide compute capacity for judging. A worker should only be enabled on machines where the operator accepts the execution model and resource usage.
+        </p>
+
+        <h3 className="section-heading">Requirements</h3>
+        <SimpleTable rows={[
+          ['Python', 'Python 3.11 or newer is recommended.'],
+          ['Disk space', 'Keep sufficient temporary space for submissions, extracted datasets, and model artifacts.'],
+          ['Docker', 'Required for sandboxed final inference jobs. Trusted native final execution may be enabled only on controlled machines.'],
+          ['Network', 'The worker must be able to reach the platform API and artifact storage endpoints.'],
+        ]} />
+
+        <h3 className="section-heading">Setup</h3>
+        <CodeBlock>{`pip install --upgrade olpai-volunteer-agent
+olpai-volunteer setup
+olpai-volunteer approve-token <TOKEN>
+olpai-volunteer start`}</CodeBlock>
+
+        <h3 className="section-heading">Operational Notes</h3>
+        <SimpleTable rows={[
+          ['Worker approval', 'A worker is not eligible for jobs until an administrator approves it and the approval token is configured locally.'],
+          ['Output slots', 'Output-only slots control how many non-final jobs the worker can run concurrently.'],
+          ['Inference slots', 'Inference slots control how many final inference jobs the worker can run concurrently. Use conservative values for GPU machines.'],
+          ['Exclusive inference', 'When enabled, inference jobs do not run concurrently with output-only jobs on the same worker.'],
+          ['Failure handling', 'If a worker disconnects or fails to submit results, the server reclaims stale jobs and makes them eligible for another worker.'],
+        ]} />
+
+        <h3 className="section-heading">Diagnostics</h3>
+        <CodeBlock>{`olpai-volunteer doctor
+olpai-volunteer status
+olpai-volunteer logs -f`}</CodeBlock>
+      </div>
+    ),
+  },
+];
+
 export const DocsPage: React.FC = () => {
-  const [active, setActive] = useState('overview');
-  const section = SECTIONS.find(s => s.id === active) ?? SECTIONS[0];
+  const [active, setActive] = useState(SECTIONS[0].id);
+  const section = SECTIONS.find(item => item.id === active) ?? SECTIONS[0];
 
   return (
     <div className="container" style={{ paddingTop: '1.5rem', paddingBottom: '3rem' }}>
-      {/* Page header */}
       <div className="page-header">
         <div className="page-header-row">
           <div>
             <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <FileText size={20} />
-              Tài liệu hệ thống
+              Documentation
             </h1>
-            <p className="page-subtitle">Hướng dẫn sử dụng OLPAI — từ thí sinh, BTC đến Volunteer Judge Worker</p>
+            <p className="page-subtitle">
+              Operational rules for contestants, organizers, and volunteer workers.
+            </p>
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '1.75rem', alignItems: 'flex-start' }}>
-        {/* Sidebar */}
-        <aside style={{ width: 210, flexShrink: 0, position: 'sticky', top: '1rem' }}>
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-            {SECTIONS.map(s => (
+      <div style={{ display: 'grid', gridTemplateColumns: '220px minmax(0, 1fr)', gap: '1.75rem', alignItems: 'start' }}>
+        <aside style={{ position: 'sticky', top: '1rem' }}>
+          <nav className="panel" style={{ padding: '0.5rem', marginBottom: 0 }}>
+            {SECTIONS.map(item => (
               <button
-                key={s.id}
-                onClick={() => setActive(s.id)}
+                key={item.id}
+                type="button"
+                onClick={() => setActive(item.id)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.45rem 0.75rem', borderRadius: 'var(--radius)', border: 'none', cursor: 'pointer',
-                  background: active === s.id ? 'hsl(var(--primary) / 0.08)' : 'transparent',
-                  color: active === s.id ? 'hsl(var(--primary))' : 'hsl(var(--text-muted))',
-                  fontWeight: active === s.id ? 700 : 500,
-                  fontSize: '0.83rem', textAlign: 'left', width: '100%',
-                  borderLeft: active === s.id ? '2px solid hsl(var(--primary))' : '2px solid transparent',
-                  transition: 'all 0.12s',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.55rem 0.65rem',
+                  border: 'none',
+                  borderLeft: active === item.id ? '2px solid hsl(var(--primary))' : '2px solid transparent',
+                  borderRadius: 4,
+                  background: active === item.id ? 'hsl(var(--primary) / 0.08)' : 'transparent',
+                  color: active === item.id ? 'hsl(var(--primary))' : 'hsl(var(--text-muted))',
+                  fontWeight: active === item.id ? 700 : 600,
+                  fontSize: '0.85rem',
+                  textAlign: 'left',
+                  cursor: 'pointer',
                 }}
               >
-                {s.icon}
-                {s.title}
+                {item.icon}
+                <span style={{ flex: 1 }}>{item.title}</span>
+                {active === item.id && <ChevronRight size={13} />}
               </button>
             ))}
-
-            <div style={{ margin: '0.5rem 0', borderTop: '1px solid hsl(var(--border))' }} />
-
-            <button
-              onClick={() => setActive('faq')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.45rem 0.75rem', borderRadius: 'var(--radius)', border: 'none', cursor: 'pointer',
-                background: active === 'faq' ? 'hsl(var(--primary) / 0.08)' : 'transparent',
-                color: active === 'faq' ? 'hsl(var(--primary))' : 'hsl(var(--text-muted))',
-                fontWeight: active === 'faq' ? 700 : 500,
-                fontSize: '0.83rem', textAlign: 'left', width: '100%',
-                borderLeft: active === 'faq' ? '2px solid hsl(var(--primary))' : '2px solid transparent',
-                transition: 'all 0.12s',
-              }}
-            >
-              <HelpCircle size={14} />
-              FAQ
-            </button>
           </nav>
         </aside>
 
-        {/* Content */}
-        <main style={{ flex: 1, minWidth: 0 }}>
-          {active === 'faq' ? (
-            <>
-              <h2 className="section-heading" style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
-                <HelpCircle size={16} /> Câu hỏi thường gặp
-              </h2>
-              <FaqAccordion items={FAQ} />
-            </>
-          ) : (
-            <>
-              <h2 className="section-heading" style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
-                {section.icon} {section.title}
-              </h2>
-              {section.content}
-            </>
-          )}
+        <main className="panel" style={{ padding: '1.25rem 1.35rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '1rem' }}>
+            <BookOpen size={18} />
+            <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>{section.title}</h2>
+          </div>
+          {section.content}
         </main>
       </div>
     </div>
