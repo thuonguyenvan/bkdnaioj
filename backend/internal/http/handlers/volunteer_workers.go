@@ -574,14 +574,6 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		actualRuntime = time.Since(claim.ClaimedAt.Time).Seconds()
 	}
 
-	// Delete claim regardless of outcome
-	defer func() {
-		_ = h.q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{
-			WorkerID:     worker.ID,
-			SubmissionID: subID,
-		})
-	}()
-
 	if req.Status == "done" {
 		if req.RawScore == nil || req.DisplayScore == nil {
 			return mw.ErrBadRequest("raw_score and display_score required for done status")
@@ -628,6 +620,13 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		_ = h.producer.EnqueueResult(ctx, subID, "failed")
 		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
 		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo", req.ExecutionProfile)
+	}
+
+	if err := h.q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{
+		WorkerID:     worker.ID,
+		SubmissionID: subID,
+	}); err != nil {
+		log.Warn().Err(err).Str("submission_id", subID.String()).Str("worker_id", worker.ID.String()).Msg("delete worker claim after result failed")
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
