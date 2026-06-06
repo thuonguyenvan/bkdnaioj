@@ -534,6 +534,7 @@ func (b *LeaderboardBridge) recomputeGlobalPhase(ctx context.Context, sub db.Sub
 	if err := q.RecomputeGlobalPhaseRanking(ctx, def.Key); err != nil {
 		return fmt.Errorf("recompute global phase ranking: %w", err)
 	}
+	b.log.Info().Str("phase_key", string(def.Key)).Msg("global phase ranking recomputed")
 	return nil
 }
 
