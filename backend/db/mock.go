@@ -13,6 +13,7 @@ import (
 type MockQuerier struct {
 	ApproveVolunteerWorkerFunc            func(ctx context.Context, arg ApproveVolunteerWorkerParams) (VolunteerWorker, error)
 	CountWorkerActiveClaimsFunc           func(ctx context.Context, workerID uuid.UUID) (int64, error)
+	CountWorkerActiveClaimsByKindFunc     func(ctx context.Context, workerID uuid.UUID) (CountWorkerActiveClaimsByKindRow, error)
 	CreateVolunteerWorkerFunc             func(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
 	CreateWorkerClaimFunc                 func(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
 	DeactivateVolunteerWorkerFunc         func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
@@ -69,6 +70,7 @@ type MockQuerier struct {
 	GetContestEntryByIDFunc               func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
 	GetContestPhaseLeaderboardFunc        func(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
 	GetGlobalPhaseRankingFunc             func(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error)
+	GetObservedResourceProfileFunc        func(ctx context.Context, arg GetObservedResourceProfileParams) (GetObservedResourceProfileRow, error)
 	GetEvaluationSetByIDFunc              func(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
 	GetEvaluationSetByTaskAndKeyFunc      func(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
 	GetPhaseByIDFunc                      func(ctx context.Context, id uuid.UUID) (Phase, error)
@@ -820,6 +822,13 @@ func (m *MockQuerier) CountWorkerActiveClaims(ctx context.Context, workerID uuid
 	return 0, nil
 }
 
+func (m *MockQuerier) CountWorkerActiveClaimsByKind(ctx context.Context, workerID uuid.UUID) (CountWorkerActiveClaimsByKindRow, error) {
+	if m.CountWorkerActiveClaimsByKindFunc != nil {
+		return m.CountWorkerActiveClaimsByKindFunc(ctx, workerID)
+	}
+	return CountWorkerActiveClaimsByKindRow{}, nil
+}
+
 func (m *MockQuerier) CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error) {
 	if m.CreateVolunteerWorkerFunc != nil {
 		return m.CreateVolunteerWorkerFunc(ctx, arg)
@@ -991,6 +1000,13 @@ func (m *MockQuerier) ListRecentJobExecutionLogs(ctx context.Context, limit int3
 
 func (m *MockQuerier) GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error) {
 	return GetCorrectionFactorRow{CorrectionFactor: 1.0, SampleCount: 0}, nil
+}
+
+func (m *MockQuerier) GetObservedResourceProfile(ctx context.Context, arg GetObservedResourceProfileParams) (GetObservedResourceProfileRow, error) {
+	if m.GetObservedResourceProfileFunc != nil {
+		return m.GetObservedResourceProfileFunc(ctx, arg)
+	}
+	return GetObservedResourceProfileRow{}, nil
 }
 
 func (m *MockQuerier) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error {

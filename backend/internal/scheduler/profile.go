@@ -24,6 +24,9 @@ type WorkerProfile struct {
 	AvailableRAMBytes          int64
 	AvailableDiskBytes         int64
 	MaxParallelJobs            int
+	MaxOutputSlots             int
+	MaxInferenceSlots          int
+	ExclusiveInference         bool
 	// GPU fields — non-zero only on NVIDIA workers with torch+CUDA benchmark
 	GPUFp32OpsPerSec   float64
 	AvailableVRAMBytes int64
@@ -52,6 +55,18 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 		v, _ := m[k].(bool)
 		return v
 	}
+	getInt := func(m map[string]any, k string) int {
+		if m == nil {
+			return 0
+		}
+		v, _ := m[k].(float64)
+		return int(v)
+	}
+	maxOutputSlots := getInt(caps, "max_output_slots")
+	if maxOutputSlots <= 0 {
+		maxOutputSlots = maxWorkers
+	}
+	maxInferenceSlots := getInt(caps, "max_inference_slots")
 
 	return &WorkerProfile{
 		WorkerID:             workerID,
@@ -65,9 +80,41 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 		AvailableRAMBytes:    int64(getF(caps, "available_ram_bytes")),
 		AvailableDiskBytes:   int64(getF(caps, "available_disk_bytes")),
 		MaxParallelJobs:      maxWorkers,
+		MaxOutputSlots:       maxOutputSlots,
+		MaxInferenceSlots:    maxInferenceSlots,
+		ExclusiveInference:   getBool(caps, "exclusive_inference"),
 		GPUFp32OpsPerSec:     getF(bench, "gpu_fp32_ops_per_sec"),
 		AvailableVRAMBytes:   int64(getF(bench, "available_vram_bytes")),
 	}, nil
+}
+
+func CanAcceptJob(w *WorkerProfile, activeOutputClaims, activeInferenceClaims int64, isFinal bool) bool {
+	if !HasJobSlotCapability(w, isFinal) {
+		return false
+	}
+	if isFinal {
+		if activeInferenceClaims >= int64(w.MaxInferenceSlots) {
+			return false
+		}
+		if w.ExclusiveInference && activeOutputClaims > 0 {
+			return false
+		}
+		return true
+	}
+	if activeOutputClaims >= int64(w.MaxOutputSlots) {
+		return false
+	}
+	if w.ExclusiveInference && activeInferenceClaims > 0 {
+		return false
+	}
+	return true
+}
+
+func HasJobSlotCapability(w *WorkerProfile, isFinal bool) bool {
+	if isFinal {
+		return w.MaxInferenceSlots > 0
+	}
+	return w.MaxOutputSlots > 0
 }
 
 // JobDemand holds estimated resource requirements for a submission.

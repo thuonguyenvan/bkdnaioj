@@ -10,7 +10,7 @@ import (
 
 // --- Tasks ---
 
-var DefaultSubmissionSchema = json.RawMessage(`{"non_final":{"description":"Upload output artifact theo yêu cầu đề bài","examples":["submission.zip","adversarial_images.zip","predictions.jsonl"],"max_files":10},"final":{"description":"Upload checkpoint/code inference theo yêu cầu đề bài","examples":["final_submission.zip"],"max_files":10,"inference_entrypoint":"infer.py"},"task_assets":{"required_assets":["judge.py"],"description":"BTC uploads the shared task-level judge entrypoint once."},"evaluation":{"required_assets":["ground_truth","inputs"],"description":"BTC uploads task-specific ground_truth and inputs assets for each public/private evaluation set. The concrete file formats are defined by BTC and consumed by judge.py/infer.py."}}`)
+var DefaultSubmissionSchema = json.RawMessage(`{"non_final":{"description":"Upload output artifacts required by the problem statement.","examples":["submission.zip","adversarial_images.zip","predictions.jsonl"],"max_files":10},"final":{"description":"Upload checkpoint/code for inference.","examples":["final_submission.zip"],"max_files":10,"inference_entrypoint":"infer.py","profiling":{"enabled":false,"args":["--profile"],"timeout_s":120,"sample_count":100}},"task_assets":{"required_assets":["judge.py"],"description":"BTC uploads the shared task-level judge entrypoint once."},"evaluation":{"required_assets":["ground_truth","inputs"],"description":"BTC uploads task-specific ground_truth and inputs assets for each public/private evaluation set. The concrete file formats are defined by BTC and consumed by judge.py/infer.py."}}`)
 
 type CreateTaskRequest struct {
 	Slug                string           `json:"slug" validate:"required,min=2,max=120"`

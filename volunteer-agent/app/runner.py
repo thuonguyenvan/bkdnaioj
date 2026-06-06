@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 
 from . import config as cfg
 
@@ -127,6 +128,85 @@ class PhaseRunner:
             output_dir=output_dir,
             context_path=context_path,
         )
+
+    def profile_final(
+        self,
+        *,
+        inference_entrypoint: str,
+        submission_dir: str,
+        assets_dir: str,
+        generated_dir: str,
+        context_path: str,
+        profiling: dict,
+    ) -> dict | None:
+        if not profiling.get("enabled"):
+            return None
+        native_allowed = os.getenv("OLPAI_ALLOW_NATIVE_FINAL", "0") == "1" or cfg.load().native_final_allowed
+        if not native_allowed:
+            return {
+                "status": "skipped",
+                "reason": "profiling requires trusted native final mode",
+            }
+
+        sample_output_dir = os.path.join(generated_dir, "_profile_sample")
+        os.makedirs(sample_output_dir, exist_ok=True)
+        timeout = int(profiling.get("timeout_s") or os.getenv("OLPAI_PROFILE_TIMEOUT_S", "120"))
+        extra_args = profiling.get("args")
+        if not isinstance(extra_args, list):
+            extra_args = ["--profile"]
+
+        command = [
+            "python",
+            inference_entrypoint,
+            "--submission-dir",
+            submission_dir,
+            "--assets-dir",
+            assets_dir,
+            "--output-dir",
+            sample_output_dir,
+            "--context",
+            context_path,
+        ] + [str(arg) for arg in extra_args]
+
+        started = time.perf_counter()
+        try:
+            p = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "status": "timeout",
+                "timeout_s": timeout,
+                "runtime_seconds": timeout,
+                "message": str(exc)[:1000],
+            }
+        except subprocess.CalledProcessError as exc:
+            return {
+                "status": "failed",
+                "runtime_seconds": round(time.perf_counter() - started, 3),
+                "message": (exc.stderr or exc.stdout or str(exc))[:1000],
+            }
+
+        profile = {
+            "status": "success",
+            "runtime_seconds": round(time.perf_counter() - started, 3),
+        }
+        stdout = p.stdout.strip()
+        if stdout:
+            try:
+                parsed = json.loads(stdout.splitlines()[-1])
+                if isinstance(parsed, dict):
+                    profile.update(parsed)
+            except Exception:
+                profile["stdout_tail"] = stdout[-1000:]
+        sample_count = profiling.get("sample_count")
+        if sample_count is not None:
+            profile["sample_count"] = sample_count
+        return profile
 
     def _run_judge(
         self,

@@ -1242,6 +1242,10 @@ type JobExecutionLog struct {
 	ActualRuntimeSeconds    *float32           `json:"actual_runtime_seconds"`
 	ErrorRatio              *float32           `json:"error_ratio"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	PeakRamBytes            *int64             `json:"peak_ram_bytes"`
+	PeakVramBytes           *int64             `json:"peak_vram_bytes"`
+	ExecutionPath           *string            `json:"execution_path"`
+	ProfilePayload          []byte             `json:"profile_payload"`
 }
 
 type PasswordResetToken struct {

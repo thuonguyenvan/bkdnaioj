@@ -48,6 +48,46 @@ func (q *Queries) GetCorrectionFactor(ctx context.Context, arg GetCorrectionFact
 	return i, err
 }
 
+const getObservedResourceProfile = `-- name: GetObservedResourceProfile :one
+SELECT
+    COALESCE(
+        PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY peak_ram_bytes)
+            FILTER (WHERE peak_ram_bytes IS NOT NULL AND peak_ram_bytes > 0),
+        0
+    )::bigint AS p95_peak_ram_bytes,
+    COALESCE(
+        PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY peak_vram_bytes)
+            FILTER (WHERE peak_vram_bytes IS NOT NULL AND peak_vram_bytes > 0),
+        0
+    )::bigint AS p95_peak_vram_bytes,
+    COUNT(*) FILTER (
+        WHERE peak_ram_bytes IS NOT NULL OR peak_vram_bytes IS NOT NULL
+    ) AS sample_count
+FROM job_execution_logs
+WHERE phase_key = $1
+  AND is_final = $2
+  AND created_at > now() - interval '30 days'
+`
+
+type GetObservedResourceProfileParams struct {
+	PhaseKey string `json:"phase_key"`
+	IsFinal  bool   `json:"is_final"`
+}
+
+type GetObservedResourceProfileRow struct {
+	P95PeakRamBytes  int64 `json:"p95_peak_ram_bytes"`
+	P95PeakVramBytes int64 `json:"p95_peak_vram_bytes"`
+	SampleCount      int64 `json:"sample_count"`
+}
+
+// Returns p95 observed RAM/VRAM usage for the same semantic phase + finalness.
+func (q *Queries) GetObservedResourceProfile(ctx context.Context, arg GetObservedResourceProfileParams) (GetObservedResourceProfileRow, error) {
+	row := q.db.QueryRow(ctx, getObservedResourceProfile, arg.PhaseKey, arg.IsFinal)
+	var i GetObservedResourceProfileRow
+	err := row.Scan(&i.P95PeakRamBytes, &i.P95PeakVramBytes, &i.SampleCount)
+	return i, err
+}
+
 const insertJobExecutionLog = `-- name: InsertJobExecutionLog :exec
 INSERT INTO job_execution_logs (
     submission_id,
@@ -55,8 +95,12 @@ INSERT INTO job_execution_logs (
     phase_key,
     is_final,
     predicted_runtime_seconds,
-    actual_runtime_seconds
-) VALUES ($1, $2, $3, $4, $5, $6)
+    actual_runtime_seconds,
+    peak_ram_bytes,
+    peak_vram_bytes,
+    execution_path,
+    profile_payload
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type InsertJobExecutionLogParams struct {
@@ -66,6 +110,10 @@ type InsertJobExecutionLogParams struct {
 	IsFinal                 bool      `json:"is_final"`
 	PredictedRuntimeSeconds *float32  `json:"predicted_runtime_seconds"`
 	ActualRuntimeSeconds    *float32  `json:"actual_runtime_seconds"`
+	PeakRamBytes            *int64    `json:"peak_ram_bytes"`
+	PeakVramBytes           *int64    `json:"peak_vram_bytes"`
+	ExecutionPath           *string   `json:"execution_path"`
+	ProfilePayload          []byte    `json:"profile_payload"`
 }
 
 func (q *Queries) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error {
@@ -76,6 +124,10 @@ func (q *Queries) InsertJobExecutionLog(ctx context.Context, arg InsertJobExecut
 		arg.IsFinal,
 		arg.PredictedRuntimeSeconds,
 		arg.ActualRuntimeSeconds,
+		arg.PeakRamBytes,
+		arg.PeakVramBytes,
+		arg.ExecutionPath,
+		arg.ProfilePayload,
 	)
 	return err
 }
@@ -90,6 +142,9 @@ SELECT
     jel.is_final,
     jel.predicted_runtime_seconds,
     jel.actual_runtime_seconds,
+    jel.peak_ram_bytes,
+    jel.peak_vram_bytes,
+    jel.execution_path,
     jel.error_ratio,
     jel.created_at
 FROM job_execution_logs jel
@@ -107,6 +162,9 @@ type ListRecentJobExecutionLogsRow struct {
 	IsFinal                 bool               `json:"is_final"`
 	PredictedRuntimeSeconds *float32           `json:"predicted_runtime_seconds"`
 	ActualRuntimeSeconds    *float32           `json:"actual_runtime_seconds"`
+	PeakRamBytes            *int64             `json:"peak_ram_bytes"`
+	PeakVramBytes           *int64             `json:"peak_vram_bytes"`
+	ExecutionPath           *string            `json:"execution_path"`
 	ErrorRatio              *float32           `json:"error_ratio"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 }
@@ -129,6 +187,9 @@ func (q *Queries) ListRecentJobExecutionLogs(ctx context.Context, limit int32) (
 			&i.IsFinal,
 			&i.PredictedRuntimeSeconds,
 			&i.ActualRuntimeSeconds,
+			&i.PeakRamBytes,
+			&i.PeakVramBytes,
+			&i.ExecutionPath,
 			&i.ErrorRatio,
 			&i.CreatedAt,
 		); err != nil {

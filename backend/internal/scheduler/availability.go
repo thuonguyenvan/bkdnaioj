@@ -13,6 +13,8 @@ type WorkerAvailability struct {
 	WorkerID            uuid.UUID
 	Profile             *WorkerProfile
 	EarliestAvailableAt time.Time // now if free slot, else predicted_finish_at of last claim
+	OutputClaims        int64
+	InferenceClaims     int64
 }
 
 // GlobalBestThreshold: requesting worker's finish time must match the global best.
@@ -24,6 +26,9 @@ const GlobalBestThreshold = 1.0
 func GlobalBestFinishTime(workers []WorkerAvailability, d *JobDemand, now time.Time) float64 {
 	best := math.MaxFloat64
 	for _, w := range workers {
+		if !CanAcceptJob(w.Profile, w.OutputClaims, w.InferenceClaims, d.IsFinal) {
+			continue
+		}
 		plan := EstimateRuntime(w.Profile, d)
 		if !plan.HardConstraintsOK {
 			continue
@@ -86,6 +91,8 @@ func BuildWorkerAvailability(rows []db.GetAllActiveWorkersWithEarliestAvailableR
 			WorkerID:            row.ID,
 			Profile:             profile,
 			EarliestAvailableAt: availAt,
+			OutputClaims:        int64(row.OutputClaims),
+			InferenceClaims:     int64(row.InferenceClaims),
 		})
 	}
 	return result

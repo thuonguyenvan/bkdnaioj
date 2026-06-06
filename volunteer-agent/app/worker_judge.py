@@ -65,7 +65,16 @@ class VolunteerJudgeWorker:
         if job.is_final:
             self._extract_final_archives(_submission_paths(submission_dir), submission_dir)
             inference = self._resolve_inference(job.context.get("submission_schema", {}), submission_dir)
-            return self._runner.run_final(
+            profiling = self._resolve_profiling(job.context.get("submission_schema", {}))
+            dry_run_profile = self._runner.profile_final(
+                inference_entrypoint=inference,
+                submission_dir=submission_dir,
+                assets_dir=assets_dir,
+                generated_dir=generated_dir,
+                context_path=context_path,
+                profiling=profiling,
+            )
+            result = self._runner.run_final(
                 inference_entrypoint=inference,
                 judge=judge,
                 submission_dir=submission_dir,
@@ -74,6 +83,9 @@ class VolunteerJudgeWorker:
                 output_dir=output_dir,
                 context_path=context_path,
             )
+            if dry_run_profile is not None:
+                result["dry_run_profile"] = dry_run_profile
+            return result
 
         return self._runner.run_non_final(
             judge=judge,
@@ -100,6 +112,18 @@ class VolunteerJudgeWorker:
             if os.path.isfile(path):
                 return path
         raise RuntimeError(f"inference entrypoint not found ({configured or 'infer.py'})")
+
+    def _resolve_profiling(self, schema: dict | str) -> dict:
+        if isinstance(schema, str):
+            try:
+                schema = json.loads(schema)
+            except Exception:
+                schema = {}
+        final_schema = schema.get("final") if isinstance(schema, dict) else {}
+        profiling = final_schema.get("profiling") if isinstance(final_schema, dict) else {}
+        if isinstance(profiling, dict):
+            return profiling
+        return {}
 
     def _extract_final_archives(self, paths: list[str], submission_dir: str) -> None:
         for path in paths:

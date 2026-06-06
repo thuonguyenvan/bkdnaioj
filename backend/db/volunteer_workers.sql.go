@@ -50,6 +50,27 @@ func (q *Queries) ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunte
 	return i, err
 }
 
+const countWorkerActiveClaimsByKind = `-- name: CountWorkerActiveClaimsByKind :one
+SELECT
+    COUNT(*) FILTER (WHERE s.is_final = false)::int AS output_claims,
+    COUNT(*) FILTER (WHERE s.is_final = true)::int AS inference_claims
+FROM volunteer_worker_claims c
+JOIN submissions s ON s.id = c.submission_id
+WHERE c.worker_id = $1
+`
+
+type CountWorkerActiveClaimsByKindRow struct {
+	OutputClaims    int32 `json:"output_claims"`
+	InferenceClaims int32 `json:"inference_claims"`
+}
+
+func (q *Queries) CountWorkerActiveClaimsByKind(ctx context.Context, workerID uuid.UUID) (CountWorkerActiveClaimsByKindRow, error) {
+	row := q.db.QueryRow(ctx, countWorkerActiveClaimsByKind, workerID)
+	var i CountWorkerActiveClaimsByKindRow
+	err := row.Scan(&i.OutputClaims, &i.InferenceClaims)
+	return i, err
+}
+
 const createVolunteerWorker = `-- name: CreateVolunteerWorker :one
 INSERT INTO volunteer_workers (user_id, display_name, capabilities, max_workers)
 VALUES ($1, $2, $3::text::jsonb, $4)
@@ -218,12 +239,18 @@ SELECT
     w.id,
     w.capabilities,
     w.max_workers,
+    COUNT(*) FILTER (WHERE s.is_final = false)::int AS output_claims,
+    COUNT(*) FILTER (WHERE s.is_final = true)::int AS inference_claims,
     CASE
+        WHEN COALESCE((w.capabilities->>'exclusive_inference')::boolean, false) = true
+             AND COUNT(c.id) > 0
+        THEN MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
         WHEN COUNT(c.id) < w.max_workers THEN now()
         ELSE MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
     END AS earliest_available_at
 FROM volunteer_workers w
 LEFT JOIN volunteer_worker_claims c ON c.worker_id = w.id
+LEFT JOIN submissions s ON s.id = c.submission_id
 WHERE w.status = 'active'
 GROUP BY w.id, w.capabilities, w.max_workers
 `
@@ -232,6 +259,8 @@ type GetAllActiveWorkersWithEarliestAvailableRow struct {
 	ID                  uuid.UUID   `json:"id"`
 	Capabilities        []byte      `json:"capabilities"`
 	MaxWorkers          int16       `json:"max_workers"`
+	OutputClaims        int32       `json:"output_claims"`
+	InferenceClaims     int32       `json:"inference_claims"`
 	EarliestAvailableAt interface{} `json:"earliest_available_at"`
 }
 
@@ -251,6 +280,8 @@ func (q *Queries) GetAllActiveWorkersWithEarliestAvailable(ctx context.Context) 
 			&i.ID,
 			&i.Capabilities,
 			&i.MaxWorkers,
+			&i.OutputClaims,
+			&i.InferenceClaims,
 			&i.EarliestAvailableAt,
 		); err != nil {
 			return nil, err

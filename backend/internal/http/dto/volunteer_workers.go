@@ -20,12 +20,13 @@ type HeartbeatRequest struct {
 }
 
 type JobResultRequest struct {
-	AttemptID    uuid.UUID       `json:"attempt_id" validate:"required"`
-	Status       string          `json:"status" validate:"required,oneof=done failed"`
-	RawScore     *float64        `json:"raw_score"`
-	DisplayScore *float64        `json:"display_score"`
-	Payload      json.RawMessage `json:"payload"`
-	ErrorMessage *string         `json:"error_message"`
+	AttemptID        uuid.UUID       `json:"attempt_id" validate:"required"`
+	Status           string          `json:"status" validate:"required,oneof=done failed"`
+	RawScore         *float64        `json:"raw_score"`
+	DisplayScore     *float64        `json:"display_score"`
+	Payload          json.RawMessage `json:"payload"`
+	ExecutionProfile json.RawMessage `json:"execution_profile"`
+	ErrorMessage     *string         `json:"error_message"`
 }
 
 type JobHeartbeatRequest struct {
@@ -102,6 +103,9 @@ type ScheduleLogItem struct {
 	IsFinal          bool      `json:"is_final"`
 	PredictedSeconds *float32  `json:"predicted_seconds"`
 	ActualSeconds    *float32  `json:"actual_seconds"`
+	PeakRAMBytes     *int64    `json:"peak_ram_bytes"`
+	PeakVRAMBytes    *int64    `json:"peak_vram_bytes"`
+	ExecutionPath    *string   `json:"execution_path"`
 	ErrorRatio       *float32  `json:"error_ratio"`
 	CreatedAt        time.Time `json:"created_at"`
 }

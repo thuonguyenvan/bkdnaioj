@@ -24,6 +24,7 @@ type Querier interface {
 	CountTasks(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CountWorkerActiveClaims(ctx context.Context, workerID uuid.UUID) (int64, error)
+	CountWorkerActiveClaimsByKind(ctx context.Context, workerID uuid.UUID) (CountWorkerActiveClaimsByKindRow, error)
 	// Announcements
 	CreateAnnouncement(ctx context.Context, arg CreateAnnouncementParams) (Announcement, error)
 	// Clarifications
@@ -84,6 +85,8 @@ type Querier interface {
 	GetEvaluationSetByID(ctx context.Context, id uuid.UUID) (TaskEvaluationSet, error)
 	GetEvaluationSetByTaskAndKey(ctx context.Context, arg GetEvaluationSetByTaskAndKeyParams) (TaskEvaluationSet, error)
 	GetGlobalPhaseRanking(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error)
+	// Returns p95 observed RAM/VRAM usage for the same semantic phase + finalness.
+	GetObservedResourceProfile(ctx context.Context, arg GetObservedResourceProfileParams) (GetObservedResourceProfileRow, error)
 	GetPhaseByID(ctx context.Context, id uuid.UUID) (Phase, error)
 	GetPhaseDefByID(ctx context.Context, id uuid.UUID) (ContestPhaseDef, error)
 	// ── Incremental leaderboard queries (Phase 04) ──────────────────────────────

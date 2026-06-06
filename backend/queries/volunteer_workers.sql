@@ -81,6 +81,14 @@ SELECT worker_id, COUNT(*)::int AS active_claims
 FROM volunteer_worker_claims
 GROUP BY worker_id;
 
+-- name: CountWorkerActiveClaimsByKind :one
+SELECT
+    COUNT(*) FILTER (WHERE s.is_final = false)::int AS output_claims,
+    COUNT(*) FILTER (WHERE s.is_final = true)::int AS inference_claims
+FROM volunteer_worker_claims c
+JOIN submissions s ON s.id = c.submission_id
+WHERE c.worker_id = $1;
+
 -- name: WorkerIsAtCapacity :one
 -- Bounded check: stops scanning after max_workers rows found.
 -- Returns true when worker already has max_workers active claims.
@@ -110,12 +118,18 @@ SELECT
     w.id,
     w.capabilities,
     w.max_workers,
+    COUNT(*) FILTER (WHERE s.is_final = false)::int AS output_claims,
+    COUNT(*) FILTER (WHERE s.is_final = true)::int AS inference_claims,
     CASE
+        WHEN COALESCE((w.capabilities->>'exclusive_inference')::boolean, false) = true
+             AND COUNT(c.id) > 0
+        THEN MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
         WHEN COUNT(c.id) < w.max_workers THEN now()
         ELSE MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
     END AS earliest_available_at
 FROM volunteer_workers w
 LEFT JOIN volunteer_worker_claims c ON c.worker_id = w.id
+LEFT JOIN submissions s ON s.id = c.submission_id
 WHERE w.status = 'active'
 GROUP BY w.id, w.capabilities, w.max_workers;
 

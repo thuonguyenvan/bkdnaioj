@@ -131,6 +131,23 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
 	}
+	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
+	if err != nil {
+		_ = h.producer.Ack(ctx, msgID)
+		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "invalid_capabilities"})
+	}
+	activeByKind, err := h.q.CountWorkerActiveClaimsByKind(ctx, worker.ID)
+	if err != nil {
+		_ = h.producer.Ack(ctx, msgID)
+		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
+		return mw.ErrInternal("count typed claims failed")
+	}
+	if !scheduler.CanAcceptJob(profile, int64(activeByKind.OutputClaims), int64(activeByKind.InferenceClaims), sub.IsFinal) {
+		_ = h.producer.Ack(ctx, msgID)
+		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "typed_capacity"})
+	}
 
 	artifacts, err := h.buildArtifactURLs(ctx, sub)
 	if err != nil {
@@ -226,6 +243,10 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "invalid_capabilities"})
 	}
+	activeByKind, err := h.q.CountWorkerActiveClaimsByKind(ctx, worker.ID)
+	if err != nil {
+		return mw.ErrInternal("count typed claims failed")
+	}
 
 	// Official-first policy: if any official contest active, only serve official submissions
 	officialActive, _ := h.isOfficialContestActive(ctx)
@@ -241,6 +262,30 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	// Peek pending jobs (XRANGE — does not consume)
 	start := time.Now()
 	candidates, _ := h.producer.PeekPendingJobs(ctx, 100)
+	demandsBySubmission := make(map[uuid.UUID]*scheduler.JobDemand, len(candidates))
+	queueDemands := make([]*scheduler.JobDemand, 0, len(candidates))
+	for _, msg := range candidates {
+		payload, ok := msg.Values["payload"].(string)
+		if !ok {
+			continue
+		}
+		var env queue.JudgeEnvelope
+		if err := json.Unmarshal([]byte(payload), &env); err != nil {
+			continue
+		}
+		sub, err := h.q.GetSubmissionForWorker(ctx, env.SubmissionID)
+		if err != nil {
+			continue
+		}
+		demand := scheduler.EstimateJobDemand(
+			sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
+			sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
+		)
+		h.applyObservedResourceProfile(ctx, demand, string(sub.PhaseKey), sub.IsFinal)
+		demandsBySubmission[sub.ID] = demand
+		queueDemands = append(queueDemands, demand)
+	}
+	gpuScarcity := scheduler.ComputeGPUScarcity(allWorkers, queueDemands)
 
 	var bestEnqueuedAt time.Time
 	var bestCost *scheduler.Cost
@@ -266,11 +311,24 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		if officialActive && string(sub.EntryMode) != "official" {
 			continue
 		}
+		if !scheduler.CanAcceptJob(
+			profile,
+			int64(activeByKind.OutputClaims),
+			int64(activeByKind.InferenceClaims),
+			sub.IsFinal,
+		) {
+			metrics.SchedulerConstraintReject.WithLabelValues("typed_capacity").Inc()
+			continue
+		}
 
-		demand := scheduler.EstimateJobDemand(
-			sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
-			sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
-		)
+		demand := demandsBySubmission[sub.ID]
+		if demand == nil {
+			demand = scheduler.EstimateJobDemand(
+				sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
+				sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
+			)
+			h.applyObservedResourceProfile(ctx, demand, string(sub.PhaseKey), sub.IsFinal)
+		}
 		plan := scheduler.EstimateRuntime(profile, demand)
 		if !plan.HardConstraintsOK {
 			metrics.SchedulerConstraintReject.WithLabelValues(plan.FailReason).Inc()
@@ -302,6 +360,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			TimeoutViolation: tv,
 			FinishDelay:      correctedRuntime,
 			Stress:           scheduler.ComputeStress(profile, demand, plan),
+			Waste:            scheduler.ComputeGPUWaste(profile, demand, plan, gpuScarcity),
 			CreatedAt:        env.EnqueuedAt,
 		}
 		if bestCost == nil || cost.LessThan(*bestCost) {
@@ -548,7 +607,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		// V1: strategy label is always "fifo" here because SubmitResult doesn't
 		// know how the job was claimed. To distinguish "cost" strategy, the worker
 		// would need to include strategy in the result payload (future work).
-		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo")
+		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo", req.ExecutionProfile)
 	} else {
 		errMsg := "judge failed"
 		if req.ErrorMessage != nil {
@@ -736,6 +795,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 	worker db.VolunteerWorker,
 	actualRuntime float64,
 	strategy string, // "fifo" | "cost" — which endpoint claimed the job
+	executionProfile json.RawMessage,
 ) {
 	if actualRuntime <= 0 {
 		return
@@ -755,6 +815,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 		sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
 		sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
 	)
+	h.applyObservedResourceProfile(ctx, demand, string(sub.PhaseKey), sub.IsFinal)
 	plan := scheduler.EstimateRuntime(profile, demand)
 	predictedRuntime := plan.RuntimeSeconds
 
@@ -767,6 +828,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 	// Insert into job_execution_logs
 	predicted32 := float32(predictedRuntime)
 	actual32 := float32(actualRuntime)
+	peakRAM, peakVRAM, executionPath, profilePayload := parseExecutionProfile(executionProfile)
 	_ = h.q.InsertJobExecutionLog(ctx, db.InsertJobExecutionLogParams{
 		SubmissionID:            sub.ID,
 		WorkerID:                worker.ID,
@@ -774,6 +836,10 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 		IsFinal:                 sub.IsFinal,
 		PredictedRuntimeSeconds: &predicted32,
 		ActualRuntimeSeconds:    &actual32,
+		PeakRamBytes:            peakRAM,
+		PeakVramBytes:           peakVRAM,
+		ExecutionPath:           executionPath,
+		ProfilePayload:          profilePayload,
 	})
 
 	// Emit Prometheus metrics
@@ -786,6 +852,61 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 			WithLabelValues(phaseKey, isFinalStr).
 			Observe(actualRuntime / predictedRuntime)
 	}
+}
+
+func (h *VolunteerWorkerHandler) applyObservedResourceProfile(ctx context.Context, demand *scheduler.JobDemand, phaseKey string, isFinal bool) {
+	row, err := h.q.GetObservedResourceProfile(ctx, db.GetObservedResourceProfileParams{
+		PhaseKey: phaseKey,
+		IsFinal:  isFinal,
+	})
+	if err != nil || row.SampleCount < 3 {
+		return
+	}
+	if row.P95PeakRamBytes > 0 {
+		demand.RAMBytes = row.P95PeakRamBytes
+	}
+	if isFinal && row.P95PeakVramBytes > 0 {
+		demand.VRAMBytes = row.P95PeakVramBytes
+	}
+}
+
+func parseExecutionProfile(raw json.RawMessage) (*int64, *int64, *string, []byte) {
+	if len(raw) == 0 {
+		return nil, nil, nil, nil
+	}
+	var data map[string]any
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, nil, nil, raw
+	}
+	intField := func(keys ...string) *int64 {
+		for _, key := range keys {
+			v, ok := data[key]
+			if !ok {
+				continue
+			}
+			switch n := v.(type) {
+			case float64:
+				if n > 0 {
+					x := int64(n)
+					return &x
+				}
+			case int64:
+				if n > 0 {
+					x := n
+					return &x
+				}
+			}
+		}
+		return nil
+	}
+	stringField := func(key string) *string {
+		v, ok := data[key].(string)
+		if !ok || v == "" {
+			return nil
+		}
+		return &v
+	}
+	return intField("peak_ram_bytes", "peak_rss_bytes"), intField("peak_vram_bytes", "peak_vram_delta_bytes"), stringField("execution_path"), raw
 }
 
 // GET /api/v1/admin/workers/stream — SSE real-time scheduler dashboard
@@ -885,6 +1006,9 @@ func (h *VolunteerWorkerHandler) buildSchedulerSnapshot(ctx context.Context) dto
 			IsFinal:          l.IsFinal,
 			PredictedSeconds: l.PredictedRuntimeSeconds,
 			ActualSeconds:    l.ActualRuntimeSeconds,
+			PeakRAMBytes:     l.PeakRamBytes,
+			PeakVRAMBytes:    l.PeakVramBytes,
+			ExecutionPath:    l.ExecutionPath,
 			ErrorRatio:       l.ErrorRatio,
 		}
 		if l.CreatedAt.Valid {

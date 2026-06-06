@@ -193,6 +193,141 @@ def _ask_native_final_mode(caps: dict, current: bool) -> bool:
     return enabled
 
 
+def _ask_int_range(prompt: str, default: int, min_value: int, max_value: int) -> int:
+    while True:
+        try:
+            raw = _ask(prompt, str(default))
+            value = int(raw)
+            if min_value <= value <= max_value:
+                return value
+            _warn(f"Please enter a number between {min_value} and {max_value}.")
+        except ValueError:
+            _warn("Please enter a valid number.")
+
+
+class ExecutionProfiler:
+    """Sample local process and GPU memory while one judge job is running."""
+
+    def __init__(self, interval_s: float = 0.5) -> None:
+        self.interval_s = interval_s
+        self.started_at = 0.0
+        self.peak_rss_bytes = 0
+        self.peak_vram_total_used_bytes = 0
+        self.baseline_vram_total_used_bytes = 0
+        self.baseline_process_rss_bytes = 0
+        self.baseline_child_pids: set[int] = set()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._nvml = None
+        self._gpu_handles: list[object] = []
+
+    def start(self) -> None:
+        self.started_at = time.perf_counter()
+        self.baseline_process_rss_bytes = self._sample_self_rss()
+        self.baseline_child_pids = self._sample_child_pids()
+        self.peak_rss_bytes = 0
+        self._init_gpu_sampling()
+        self.baseline_vram_total_used_bytes = self._sample_gpu_used_bytes()
+        self.peak_vram_total_used_bytes = self.baseline_vram_total_used_bytes
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self, status: str) -> dict:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+        self._sample_once()
+        peak_vram_delta = max(
+            0,
+            self.peak_vram_total_used_bytes - self.baseline_vram_total_used_bytes,
+        )
+        execution_path = "gpu" if peak_vram_delta >= 64 * 1024 * 1024 else "cpu"
+        return {
+            "status": status,
+            "wall_time_seconds": round(time.perf_counter() - self.started_at, 3),
+            "peak_ram_bytes": int(self.peak_rss_bytes),
+            "peak_rss_bytes": int(self.peak_rss_bytes),
+            "peak_vram_bytes": int(peak_vram_delta),
+            "peak_vram_delta_bytes": int(peak_vram_delta),
+            "peak_vram_total_used_bytes": int(self.peak_vram_total_used_bytes),
+            "execution_path": execution_path,
+        }
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.interval_s):
+            self._sample_once()
+
+    def _sample_once(self) -> None:
+        self.peak_rss_bytes = max(self.peak_rss_bytes, self._sample_job_rss())
+        self.peak_vram_total_used_bytes = max(
+            self.peak_vram_total_used_bytes,
+            self._sample_gpu_used_bytes(),
+        )
+
+    def _process(self):
+        import psutil
+
+        return psutil.Process(os.getpid())
+
+    def _sample_self_rss(self) -> int:
+        try:
+            return int(self._process().memory_info().rss)
+        except Exception:
+            return 0
+
+    def _sample_child_pids(self) -> set[int]:
+        try:
+            return {child.pid for child in self._process().children(recursive=True)}
+        except Exception:
+            return set()
+
+    def _sample_job_rss(self) -> int:
+        try:
+            import psutil
+
+            proc = self._process()
+            self_delta = max(0, int(proc.memory_info().rss) - self.baseline_process_rss_bytes)
+            processes = proc.children(recursive=True)
+            total = 0
+            for child in processes:
+                if child.pid in self.baseline_child_pids:
+                    continue
+                try:
+                    total += int(child.memory_info().rss)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            return self_delta + total
+        except Exception:
+            return 0
+
+    def _init_gpu_sampling(self) -> None:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                import pynvml  # type: ignore
+
+            pynvml.nvmlInit()
+            self._nvml = pynvml
+            self._gpu_handles = [
+                pynvml.nvmlDeviceGetHandleByIndex(i)
+                for i in range(pynvml.nvmlDeviceGetCount())
+            ]
+        except Exception:
+            self._nvml = None
+            self._gpu_handles = []
+
+    def _sample_gpu_used_bytes(self) -> int:
+        if self._nvml is None:
+            return 0
+        total = 0
+        for handle in self._gpu_handles:
+            try:
+                total += int(self._nvml.nvmlDeviceGetMemoryInfo(handle).used)
+            except Exception:
+                continue
+        return total
+
+
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 @app.command()
@@ -290,25 +425,40 @@ def setup() -> None:
             4,
         ))
         final_mode = "Docker" if has_docker else "trusted native GPU"
-        _echo(f"Recommended parallel workers:")
+        recommended_exclusive = True
+        _echo("Recommended worker slots:")
         _echo(f"  Output-only jobs (public_test, private_test): {recommended_output}")
         _echo(f"  Inference jobs   (final phases, {final_mode}): {recommended_final}")
-        _echo(f"  → Suggested: {recommended_output} (covers all job types)")
-        suggested = recommended_output
+        _echo(f"  Inference exclusive: {'yes' if recommended_exclusive else 'no'}")
     else:
-        _echo(f"Recommended parallel workers (output-only, no Docker): {recommended_output}")
-        suggested = recommended_output
+        recommended_final = 0
+        recommended_exclusive = True
+        _echo("Recommended worker slots:")
+        _echo(f"  Output-only jobs (public_test, private_test): {recommended_output}")
+        _echo("  Inference jobs   (final phases): 0 (Docker/native final unavailable)")
+        _echo("  Inference exclusive: yes")
 
-    while True:
-        try:
-            raw = _ask(f"Number of parallel judge workers (1–32)", str(suggested))
-            n = int(raw)
-            if 1 <= n <= 32:
-                s.max_workers = n
-                break
-            _warn("Please enter a number between 1 and 32.")
-        except ValueError:
-            _warn("Please enter a valid number.")
+    use_recommended = _ask("Use recommended slot settings? (Y/n)", "Y").lower() != "n"
+    if use_recommended:
+        s.max_output_slots = int(recommended_output)
+        s.max_inference_slots = int(recommended_final)
+        s.exclusive_inference = recommended_exclusive
+    else:
+        s.max_output_slots = _ask_int_range("Output-only slots (0–32)", int(recommended_output), 0, 32)
+        s.max_inference_slots = _ask_int_range("Inference slots (0–32)", int(recommended_final), 0, 32)
+        s.exclusive_inference = _ask("Run inference exclusively? (Y/n)", "Y").lower() != "n"
+        if s.max_output_slots == 0 and s.max_inference_slots == 0:
+            _warn("At least one slot is required; setting output-only slots to 1.")
+            s.max_output_slots = 1
+
+    if s.exclusive_inference:
+        s.max_workers = max(s.max_output_slots, s.max_inference_slots, 1)
+    else:
+        s.max_workers = max(s.max_output_slots+s.max_inference_slots, 1)
+
+    caps["max_output_slots"] = s.max_output_slots
+    caps["max_inference_slots"] = s.max_inference_slots
+    caps["exclusive_inference"] = s.exclusive_inference
 
     # 6. Register
     _echo(f"\nRegistering with {s.api_url} (max_workers={s.max_workers})...")
@@ -656,6 +806,7 @@ def status() -> None:
     _echo(f"  Name     : {s.worker_name}")
     _echo(f"  Token    : {'set (' + s.worker_token[:8] + '...)' if s.worker_token else 'not set'}")
     _echo(f"  Final    : {'trusted native enabled' if s.native_final_allowed else 'Docker sandbox required'}")
+    _echo(f"  Slots    : output={s.max_output_slots}, inference={s.max_inference_slots}, exclusive_inference={s.exclusive_inference}")
     _echo(f"  Poll     : every {s.poll_interval_s}s")
     _echo(f"  Heartbeat: every {s.heartbeat_interval_s}s")
 
@@ -786,18 +937,25 @@ def start(
 
                     hb_thread = threading.Thread(target=job_heartbeat_loop, daemon=True)
                     hb_thread.start()
+                    profiler = ExecutionProfiler()
+                    profiler.start()
                     try:
                         result = judge_worker.run(job, td)
+                        execution_profile = profiler.stop("done")
+                        if result.get("dry_run_profile") is not None:
+                            execution_profile["dry_run_profile"] = result.get("dry_run_profile")
                         client.submit_result(job.submission_id, {
-                            "attempt_id":    job.attempt_id,
-                            "status":        "done",
-                            "raw_score":     result["raw_score"],
-                            "display_score": result["display_score"],
-                            "payload":       result.get("payload"),
+                            "attempt_id":        job.attempt_id,
+                            "status":            "done",
+                            "raw_score":         result["raw_score"],
+                            "display_score":     result["display_score"],
+                            "payload":           result.get("payload"),
+                            "execution_profile": execution_profile,
                         })
                         log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
                                  score=result["raw_score"])
                     except Exception as exc:
+                        execution_profile = profiler.stop("failed")
                         err_msg = str(exc)[:4000]
                         log.error("job_failed", worker=worker_idx, submission_id=job.submission_id,
                                   error=err_msg)
@@ -807,6 +965,7 @@ def start(
                                                      "attempt_id": job.attempt_id,
                                                      "status": "failed",
                                                      "error_message": err_msg,
+                                                     "execution_profile": execution_profile,
                                                  })
                         except Exception:
                             pass

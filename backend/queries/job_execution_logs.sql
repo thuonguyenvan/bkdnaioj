@@ -5,8 +5,12 @@ INSERT INTO job_execution_logs (
     phase_key,
     is_final,
     predicted_runtime_seconds,
-    actual_runtime_seconds
-) VALUES ($1, $2, $3, $4, $5, $6);
+    actual_runtime_seconds,
+    peak_ram_bytes,
+    peak_vram_bytes,
+    execution_path,
+    profile_payload
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: ListRecentJobExecutionLogs :many
 SELECT
@@ -18,6 +22,9 @@ SELECT
     jel.is_final,
     jel.predicted_runtime_seconds,
     jel.actual_runtime_seconds,
+    jel.peak_ram_bytes,
+    jel.peak_vram_bytes,
+    jel.execution_path,
     jel.error_ratio,
     jel.created_at
 FROM job_execution_logs jel
@@ -42,3 +49,24 @@ WHERE phase_key = $1
   AND created_at > now() - interval '30 days'
   AND error_ratio IS NOT NULL
   AND error_ratio > 0;
+
+-- name: GetObservedResourceProfile :one
+-- Returns p95 observed RAM/VRAM usage for the same semantic phase + finalness.
+SELECT
+    COALESCE(
+        PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY peak_ram_bytes)
+            FILTER (WHERE peak_ram_bytes IS NOT NULL AND peak_ram_bytes > 0),
+        0
+    )::bigint AS p95_peak_ram_bytes,
+    COALESCE(
+        PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY peak_vram_bytes)
+            FILTER (WHERE peak_vram_bytes IS NOT NULL AND peak_vram_bytes > 0),
+        0
+    )::bigint AS p95_peak_vram_bytes,
+    COUNT(*) FILTER (
+        WHERE peak_ram_bytes IS NOT NULL OR peak_vram_bytes IS NOT NULL
+    ) AS sample_count
+FROM job_execution_logs
+WHERE phase_key = $1
+  AND is_final = $2
+  AND created_at > now() - interval '30 days';

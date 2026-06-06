@@ -91,30 +91,17 @@ func EstimateRuntime(w *WorkerProfile, d *JobDemand) ExecutionPlan {
 		}
 	}
 
-	// GPU opportunity cost for output-only jobs:
-	// A GPU worker running a non-GPU job wastes its GPU capability.
-	// Penalize by adding estimated GPU idle time = T_infer_gpu for a typical final job.
-	// This makes CPU-only workers preferred for output-only without hardcoding a constant.
-	// If no CPU workers are available, GPU workers can still take output-only jobs.
-	adjustedCPU := tCPU
-	if !d.IsFinal && w.GPUFp32OpsPerSec > 0 {
-		// Opportunity cost ≈ time GPU could spend on a typical final job
-		// Using 50 GFLOPS demand (same as EstimateJobDemand default for final)
-		typicalFinalGPUOps := 50_000_000_000.0
-		gpuOpportunityCost := safeDivide(typicalFinalGPUOps, w.GPUFp32OpsPerSec)
-		adjustedCPU = tCPU + gpuOpportunityCost
-	}
-	return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: adjustedCPU, ExecutionPath: "cpu"}
+	return ExecutionPlan{HardConstraintsOK: true, RuntimeSeconds: tCPU, ExecutionPath: "cpu"}
 }
 
 // Cost is the lexicographic tuple used to rank worker-job pairs.
 //
 // Full design (Section 15): (timeout_violation, finish_delay, stress, waste, created_at)
-// V1 omits `waste` — requires global scarcity view across all workers (future work).
 type Cost struct {
 	TimeoutViolation int     // 0 or 1
 	FinishDelay      float64 // estimated seconds until job completes
 	Stress           float64 // max resource utilization ratio
+	Waste            float64 // opportunity waste under current system scarcity
 	CreatedAt        time.Time
 }
 
@@ -128,6 +115,9 @@ func (a Cost) LessThan(b Cost) bool {
 	}
 	if math.Abs(a.Stress-b.Stress) > 0.01 {
 		return a.Stress < b.Stress
+	}
+	if math.Abs(a.Waste-b.Waste) > 0.01 {
+		return a.Waste < b.Waste
 	}
 	return a.CreatedAt.Before(b.CreatedAt)
 }
@@ -146,4 +136,50 @@ func ComputeStress(w *WorkerProfile, d *JobDemand, plan ExecutionPlan) float64 {
 		stress = math.Max(stress, vramStress)
 	}
 	return stress
+}
+
+// ComputeGPUScarcity estimates how scarce free GPU inference capacity is for the
+// currently visible pending queue.
+func ComputeGPUScarcity(workers []WorkerAvailability, demands []*JobDemand) float64 {
+	queuedGPUOps := 0.0
+	for _, demand := range demands {
+		if demand != nil && demand.IsFinal && demand.GPUOps > 0 {
+			queuedGPUOps += demand.GPUOps
+		}
+	}
+	if queuedGPUOps <= 0 {
+		return 0
+	}
+
+	availableGPUOpsPerSec := 0.0
+	for _, worker := range workers {
+		profile := worker.Profile
+		if profile == nil || profile.GPUFp32OpsPerSec <= 0 || !HasJobSlotCapability(profile, true) {
+			continue
+		}
+		if profile.ExclusiveInference && worker.OutputClaims > 0 {
+			continue
+		}
+		freeSlots := int64(profile.MaxInferenceSlots) - worker.InferenceClaims
+		if freeSlots <= 0 {
+			continue
+		}
+		availableGPUOpsPerSec += profile.GPUFp32OpsPerSec * float64(freeSlots)
+	}
+	if availableGPUOpsPerSec <= 0 {
+		return 0
+	}
+	return queuedGPUOps / availableGPUOpsPerSec
+}
+
+// ComputeGPUWaste penalizes assigning CPU-only work to a GPU worker only when
+// the system currently has pending GPU demand and scarce free GPU capacity.
+func ComputeGPUWaste(w *WorkerProfile, d *JobDemand, plan ExecutionPlan, gpuScarcity float64) float64 {
+	if gpuScarcity <= 0 || w == nil || d == nil {
+		return 0
+	}
+	if d.IsFinal || w.GPUFp32OpsPerSec <= 0 || plan.ExecutionPath == "gpu" {
+		return 0
+	}
+	return gpuScarcity
 }
