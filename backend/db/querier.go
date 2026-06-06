@@ -142,6 +142,10 @@ type Querier interface {
 	MarkSubmissionRequeued(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Submission, error)
 	RecomputeContestPhaseLeaderboard(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
+	// Uses leaderboard scores (already scaled). Each user appears once per task
+	// with their BEST score across all entries (individual + team), preventing
+	// score accumulation for users who joined multiple entries.
+	// Pick best score per (user, task) — handles users in multiple entries
 	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error
 	RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
 	RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)

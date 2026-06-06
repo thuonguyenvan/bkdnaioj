@@ -234,6 +234,7 @@ export interface LeaderboardRow {
   entry_type: 'individual' | 'team';
   entry_mode: 'official' | 'virtual' | 'practice';
   usernames: string[];
+  last_submitted_at: string | null;
 }
 
 export interface GlobalRankingDetail {

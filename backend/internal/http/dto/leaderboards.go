@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
 )
 
@@ -20,11 +21,12 @@ type LeaderboardRow struct {
 	DqReason       *string         `json:"dq_reason,omitempty"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	// Embedded entry brief
-	EntryID     uuid.UUID `json:"entry_id"`
-	DisplayName string    `json:"display_name"`
-	EntryType   string    `json:"entry_type"`
-	EntryMode   string    `json:"entry_mode"`
-	Usernames   []string  `json:"usernames"`
+	EntryID          uuid.UUID  `json:"entry_id"`
+	DisplayName      string     `json:"display_name"`
+	EntryType        string     `json:"entry_type"`
+	EntryMode        string     `json:"entry_mode"`
+	Usernames        []string   `json:"usernames"`
+	LastSubmittedAt  *time.Time `json:"last_submitted_at"`
 }
 
 type GlobalRankingRow struct {
@@ -55,15 +57,37 @@ func convertStringArray(emails interface{}) []string {
 	return []string{}
 }
 
+func pgTimestamptzToPtr(ts pgtype.Timestamptz) *time.Time {
+	if !ts.Valid {
+		return nil
+	}
+	t := ts.Time
+	return &t
+}
+
+func interfaceToTimePtr(v interface{}) *time.Time {
+	if v == nil {
+		return nil
+	}
+	switch t := v.(type) {
+	case time.Time:
+		return &t
+	case pgtype.Timestamptz:
+		return pgTimestamptzToPtr(t)
+	}
+	return nil
+}
+
 func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 	return LeaderboardRow{
 		Rank: r.Rank, Score: r.Score, RawScore: r.RawScore, ScoreBreakdown: r.ScoreBreakdown,
 		EntriesCount: r.EntriesCount, IsFrozen: r.IsFrozen,
 		IsDisqualified: r.IsDisqualified, DqReason: r.DqReason,
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
-		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
+		EntryID: r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
-		Usernames: convertStringArray(r.Usernames),
+		Usernames:       convertStringArray(r.Usernames),
+		LastSubmittedAt: pgTimestamptzToPtr(r.LastSubmittedAt),
 	}
 }
 
@@ -73,9 +97,10 @@ func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRo
 		EntriesCount: r.EntriesCount, IsFrozen: r.IsFrozen,
 		IsDisqualified: r.IsDisqualified, DqReason: r.DqReason,
 		UpdatedAt: PgTimeVal(r.UpdatedAt),
-		EntryID:   r.ContestEntryID, DisplayName: r.DisplayName,
+		EntryID: r.ContestEntryID, DisplayName: r.DisplayName,
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
-		Usernames: convertStringArray(r.Usernames),
+		Usernames:       convertStringArray(r.Usernames),
+		LastSubmittedAt: interfaceToTimePtr(r.LastSubmittedAt),
 	}
 }
 

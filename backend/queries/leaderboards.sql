@@ -2,6 +2,7 @@
 
 -- name: GetTaskPhaseLeaderboard :many
 SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
+       s.submitted_at AS last_submitted_at,
        COALESCE(
          (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
           FROM contest_entry_members cem
@@ -11,9 +12,10 @@ SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
        ) AS usernames
 FROM task_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
+LEFT JOIN submissions s ON s.id = lb.chosen_submission_id
 WHERE lb.phase_id = $1
   AND (sqlc.narg('entry_mode')::entry_mode IS NULL OR ce.entry_mode = sqlc.narg('entry_mode'))
-ORDER BY lb.rank ASC NULLS LAST
+ORDER BY lb.rank ASC NULLS LAST, lb.entries_count ASC
 LIMIT $2 OFFSET $3;
 
 -- name: UpsertTaskPhaseLeaderboard :one
@@ -35,6 +37,13 @@ RETURNING *;
 
 -- name: GetContestPhaseLeaderboard :many
 SELECT lb.*, ce.display_name, ce.entry_type, ce.entry_mode,
+       (SELECT MAX(s2.submitted_at)
+        FROM submissions s2
+        JOIN phases p2 ON p2.id = s2.phase_id
+        WHERE p2.contest_phase_def_id = lb.contest_phase_def_id
+          AND s2.contest_entry_id = lb.contest_entry_id
+          AND s2.status = 'done'
+       ) AS last_submitted_at,
        COALESCE(
          (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
           FROM contest_entry_members cem
@@ -46,7 +55,7 @@ FROM contest_phase_leaderboard_entries lb
 JOIN contest_entries ce ON ce.id = lb.contest_entry_id
 WHERE lb.contest_phase_def_id = $1
   AND (sqlc.narg('entry_mode')::entry_mode IS NULL OR ce.entry_mode = sqlc.narg('entry_mode'))
-ORDER BY lb.rank ASC NULLS LAST
+ORDER BY lb.rank ASC NULLS LAST, lb.entries_count ASC
 LIMIT $2 OFFSET $3;
 
 -- name: GetGlobalPhaseRanking :many
@@ -63,20 +72,21 @@ ORDER BY rank ASC, display_name ASC
 LIMIT $2 OFFSET $3;
 
 -- name: RecomputeGlobalPhaseRanking :exec
--- Uses leaderboard scores (already scaled) instead of raw submission scores,
--- so tasks with different metrics are compared on a fair common scale.
+-- Uses leaderboard scores (already scaled). Each user appears once per task
+-- with their BEST score across all entries (individual + team), preventing
+-- score accumulation for users who joined multiple entries.
 WITH cleared AS (
   DELETE FROM global_phase_rankings WHERE phase_key = sqlc.arg('phase_key')::contest_phase_key
 ),
-scored AS (
+all_scores AS (
   SELECT
-    cpd.key                                                          AS phase_key,
-    u.id                                                             AS user_id,
-    COALESCE(u.username, split_part(u.email::text, '@', 1))          AS display_name,
-    u.email::text                                                    AS user_email,
-    ct.title                                                         AS contest_title,
-    t.title                                                          AS task_title,
-    lb.score                                                         AS score
+    cpd.key          AS phase_key,
+    u.id             AS user_id,
+    COALESCE(u.username, split_part(u.email::text, '@', 1)) AS display_name,
+    u.email::text    AS user_email,
+    ct.title         AS contest_title,
+    t.title          AS task_title,
+    lb.score
   FROM task_phase_leaderboard_entries lb
   JOIN phases             p   ON p.id   = lb.phase_id
   JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
@@ -85,23 +95,30 @@ scored AS (
   JOIN contest_entries    ce  ON ce.id  = lb.contest_entry_id
   JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
   JOIN users              u   ON u.id   = cem.user_id
-  WHERE cpd.key             = sqlc.arg('phase_key')::contest_phase_key
-    AND ct.visibility       = 'public'
-    AND ct.status          <> 'draft'
-    AND ce.status          <> 'disqualified'
-    AND lb.is_disqualified  = false
-    AND lb.score           IS NOT NULL
+  WHERE cpd.key        = sqlc.arg('phase_key')::contest_phase_key
+    AND ct.visibility  = 'public'
+    AND ct.status     <> 'draft'
+    AND ce.status     <> 'disqualified'
+    AND lb.is_disqualified = false
+    AND lb.score      IS NOT NULL
+),
+-- Pick best score per (user, task) — handles users in multiple entries
+best_per_task AS (
+  SELECT DISTINCT ON (user_id, contest_title, task_title)
+    phase_key, user_id, display_name, user_email, contest_title, task_title, score
+  FROM all_scores
+  ORDER BY user_id, contest_title, task_title, score DESC
 ),
 agg AS (
   SELECT
     phase_key, user_id, display_name, user_email,
-    SUM(score)::numeric   AS total_score,
-    COUNT(*)::int         AS task_count,
+    SUM(score)::numeric AS total_score,
+    COUNT(*)::int       AS task_count,
     jsonb_agg(
       jsonb_build_object('contest_title', contest_title, 'task_title', task_title, 'score', score)
       ORDER BY contest_title, task_title
     ) AS details
-  FROM scored
+  FROM best_per_task
   GROUP BY phase_key, user_id, display_name, user_email
 ),
 ranked AS (
@@ -136,10 +153,10 @@ WITH candidate AS (
     s.contest_entry_id,
     s.id AS submission_id,
     s.display_score,
+    s.submitted_at,
     row_number() OVER (
       PARTITION BY s.contest_entry_id
       ORDER BY
-        s.is_final DESC,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'latest' THEN s.submitted_at END DESC NULLS LAST,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND sqlc.arg('higher_is_better')::boolean THEN s.display_score END DESC NULLS LAST,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND NOT sqlc.arg('higher_is_better')::boolean THEN s.display_score END ASC NULLS LAST,
@@ -166,7 +183,9 @@ ranked AS (
       ORDER BY
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND sqlc.arg('higher_is_better')::boolean THEN c.display_score END DESC NULLS LAST,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND NOT sqlc.arg('higher_is_better')::boolean THEN c.display_score END ASC NULLS LAST,
-        c.display_score DESC NULLS LAST
+        c.display_score DESC NULLS LAST,
+        c.submitted_at ASC NULLS LAST,
+        c.entries_count ASC
     )::int AS rank
   FROM chosen_with_max c
 )

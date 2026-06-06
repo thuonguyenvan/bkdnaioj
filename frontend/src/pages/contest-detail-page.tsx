@@ -956,7 +956,7 @@ export const ContestDetailPage: React.FC = () => {
                               </td>
                               <td className="font-mono">{row.entries_count}</td>
                               <td className="font-mono" style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                                {formatDateTime(row.updated_at)}
+                                {row.last_submitted_at ? formatDateTime(row.last_submitted_at) : "—"}
                               </td>
                             </tr>
                           ))}

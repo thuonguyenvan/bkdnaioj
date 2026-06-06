@@ -967,7 +967,7 @@ export const PhaseHubPage: React.FC = () => {
                         </td>
                         <td className="font-mono">{row.entries_count}</td>
                         <td className="font-mono" style={{ fontSize: '0.8rem', color: 'hsl(var(--text-muted))' }}>
-                          {new Date(row.updated_at).toLocaleString()}
+                          {row.last_submitted_at ? new Date(row.last_submitted_at).toLocaleString() : "—"}
                         </td>
                       </tr>
                     );
