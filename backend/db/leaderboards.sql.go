@@ -185,15 +185,17 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 
 const getGlobalPhaseRanking = `-- name: GetGlobalPhaseRanking :many
 SELECT
-  COALESCE(rank, 0)::int AS rank,
-  display_name,
-  user_email,
-  total_score::text AS total_score,
-  task_count,
-  details
-FROM global_phase_rankings
-WHERE phase_key = $1
-ORDER BY rank ASC, display_name ASC
+  COALESCE(gpr.rank, 0)::int AS rank,
+  gpr.display_name,
+  gpr.user_email,
+  gpr.total_score::text AS total_score,
+  gpr.task_count,
+  gpr.details,
+  u.full_name
+FROM global_phase_rankings gpr
+LEFT JOIN users u ON u.id = gpr.user_id
+WHERE gpr.phase_key = $1
+ORDER BY gpr.rank ASC, gpr.display_name ASC
 LIMIT $2 OFFSET $3
 `
 
@@ -204,12 +206,13 @@ type GetGlobalPhaseRankingParams struct {
 }
 
 type GetGlobalPhaseRankingRow struct {
-	Rank        int32  `json:"rank"`
-	DisplayName string `json:"display_name"`
-	UserEmail   string `json:"user_email"`
-	TotalScore  string `json:"total_score"`
-	TaskCount   int32  `json:"task_count"`
-	Details     []byte `json:"details"`
+	Rank        int32   `json:"rank"`
+	DisplayName string  `json:"display_name"`
+	UserEmail   string  `json:"user_email"`
+	TotalScore  string  `json:"total_score"`
+	TaskCount   int32   `json:"task_count"`
+	Details     []byte  `json:"details"`
+	FullName    *string `json:"full_name"`
 }
 
 func (q *Queries) GetGlobalPhaseRanking(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error) {
@@ -228,6 +231,7 @@ func (q *Queries) GetGlobalPhaseRanking(ctx context.Context, arg GetGlobalPhaseR
 			&i.TotalScore,
 			&i.TaskCount,
 			&i.Details,
+			&i.FullName,
 		); err != nil {
 			return nil, err
 		}

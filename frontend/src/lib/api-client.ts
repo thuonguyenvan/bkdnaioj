@@ -248,6 +248,7 @@ export interface GlobalRankingDetail {
 export interface GlobalRankingRow {
   rank: number;
   display_name: string;
+  full_name: string;
   user_email: string;
   total_score: number | string;
   task_count: number;

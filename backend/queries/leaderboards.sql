@@ -74,15 +74,17 @@ LIMIT $2 OFFSET $3;
 
 -- name: GetGlobalPhaseRanking :many
 SELECT
-  COALESCE(rank, 0)::int AS rank,
-  display_name,
-  user_email,
-  total_score::text AS total_score,
-  task_count,
-  details
-FROM global_phase_rankings
-WHERE phase_key = $1
-ORDER BY rank ASC, display_name ASC
+  COALESCE(gpr.rank, 0)::int AS rank,
+  gpr.display_name,
+  gpr.user_email,
+  gpr.total_score::text AS total_score,
+  gpr.task_count,
+  gpr.details,
+  u.full_name
+FROM global_phase_rankings gpr
+LEFT JOIN users u ON u.id = gpr.user_id
+WHERE gpr.phase_key = $1
+ORDER BY gpr.rank ASC, gpr.display_name ASC
 LIMIT $2 OFFSET $3;
 
 -- name: RecomputeGlobalPhaseRanking :exec

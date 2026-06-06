@@ -7,6 +7,7 @@ type RankingPhaseKey = PhaseDef['key'];
 
 interface StandingUser {
   displayName: string;
+  fullName: string;
   totalScore: number;
   taskCount: number;
   details: { contestTitle: string; phaseTitle: string; taskTitle: string; score: number }[];
@@ -38,6 +39,7 @@ export const RankingsPage: React.FC = () => {
             const totalScore = Number(row.total_score);
             return {
               displayName: row.display_name,
+              fullName: row.full_name,
               totalScore: Number.isFinite(totalScore) ? totalScore : 0,
               taskCount: row.task_count,
               details: row.details.map(detail => {
@@ -206,6 +208,11 @@ export const RankingsPage: React.FC = () => {
                         </td>
                         <td>
                           <div style={{ fontWeight: 700, color: '#0f172a' }}>{user.displayName}</div>
+                          {user.fullName && (
+                            <div className="font-mono" style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.1rem' }}>
+                              {user.fullName}
+                            </div>
+                          )}
                         </td>
                         <td style={{ textAlign: 'center', color: '#475569' }}>
                           <span className="metric-pill">{user.taskCount}</span>

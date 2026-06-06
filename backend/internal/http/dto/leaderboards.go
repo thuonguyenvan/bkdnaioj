@@ -35,6 +35,7 @@ type LeaderboardRow struct {
 type GlobalRankingRow struct {
 	Rank        int32           `json:"rank"`
 	DisplayName string          `json:"display_name"`
+	FullName    string          `json:"full_name"`
 	UserEmail   string          `json:"user_email"`
 	TotalScore  string          `json:"total_score"`
 	TaskCount   int32           `json:"task_count"`
@@ -118,9 +119,14 @@ func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRo
 }
 
 func GlobalRankingRowToResponse(r db.GetGlobalPhaseRankingRow) GlobalRankingRow {
+	fullName := ""
+	if r.FullName != nil {
+		fullName = *r.FullName
+	}
 	return GlobalRankingRow{
 		Rank:        r.Rank,
 		DisplayName: r.DisplayName,
+		FullName:    fullName,
 		UserEmail:   r.UserEmail,
 		TotalScore:  r.TotalScore,
 		TaskCount:   r.TaskCount,
