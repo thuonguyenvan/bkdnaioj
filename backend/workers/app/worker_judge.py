@@ -85,6 +85,15 @@ class JudgeWorker:
             else:
                 self._copy_file_asset_to_key_dir(downloaded, key_dest)
                 asset_paths[a.asset_key] = key_dest
+            self._normalize_asset_key_path(assets_dir, a.asset_key, a.original_filename)
+            log.info(
+                "asset_prepared",
+                key=a.asset_key,
+                original_filename=a.original_filename,
+                key_path=os.path.join(assets_dir, a.asset_key),
+                key_is_dir=os.path.isdir(os.path.join(assets_dir, a.asset_key)),
+                key_is_file=os.path.isfile(os.path.join(assets_dir, a.asset_key)),
+            )
             asset_paths[a.original_filename] = downloaded
 
         schema = self._load_schema(sub.submission_schema)
@@ -187,6 +196,29 @@ class JudgeWorker:
         dest = os.path.join(dest_dir, os.path.basename(path))
         if os.path.abspath(dest) != os.path.abspath(path):
             shutil.copyfile(path, dest)
+
+    def _normalize_asset_key_path(self, assets_dir: str, key: str, original_filename: str) -> None:
+        if key.endswith(".py"):
+            return
+        key_path = os.path.join(assets_dir, key)
+        if os.path.isdir(key_path) or not os.path.isfile(key_path):
+            return
+
+        source_copy = os.path.join(assets_dir, original_filename)
+        if os.path.abspath(source_copy) == os.path.abspath(key_path):
+            source_copy = key_path + ".file"
+            shutil.copyfile(key_path, source_copy)
+
+        tmp_dir = key_path + ".dir"
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
+        os.makedirs(tmp_dir, exist_ok=True)
+        if zipfile.is_zipfile(key_path):
+            self._extract_zip_asset(key_path, tmp_dir)
+        else:
+            shutil.copyfile(key_path, os.path.join(tmp_dir, os.path.basename(original_filename)))
+        os.remove(key_path)
+        os.replace(tmp_dir, key_path)
 
     def _load_schema(self, raw: str) -> dict:
         try:

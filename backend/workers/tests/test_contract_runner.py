@@ -205,6 +205,23 @@ class ContractRunnerTest(unittest.TestCase):
 
             self.assertEqual(result["display_score"], 100)
 
+    def test_normalizes_legacy_file_asset_key_to_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            inputs = os.path.join(td, "inputs")
+            with zipfile.ZipFile(inputs, "w") as zf:
+                zf.writestr("id_001.png", b"png")
+
+            assets_dir = os.path.join(td, "assets")
+            os.makedirs(assets_dir, exist_ok=True)
+            key_path = os.path.join(assets_dir, "inputs")
+            shutil.copyfile(inputs, key_path)
+
+            worker = JudgeWorker(db=None, streams=None, stream_results="unused", store=FakeStore())
+            worker._normalize_asset_key_path(assets_dir, "inputs", "inputs.zip")
+
+            self.assertTrue(os.path.isdir(key_path))
+            self.assertTrue(os.path.isfile(os.path.join(key_path, "id_001.png")))
+
     def _write_script(self, path: str, source: str) -> None:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(textwrap.dedent(source).strip())
