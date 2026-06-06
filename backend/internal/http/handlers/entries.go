@@ -93,16 +93,36 @@ func (h *EntryHandler) Create(c echo.Context) error {
 		return mw.ErrInternal("create entry failed: " + err.Error())
 	}
 
-	// Auto-add registering user as lineup member
+	// Auto-add registering user as lineup leader
 	_ = h.q.AddEntryMember(ctx, db.AddEntryMemberParams{
 		ContestEntryID: entry.ID, UserID: uid, Role: db.EntryMemberRoleLeader,
 	})
-	// Add extra lineup members if provided
-	for _, mid := range req.LineupUserIDs {
-		if mid != uid {
-			_ = h.q.AddEntryMember(ctx, db.AddEntryMemberParams{
-				ContestEntryID: entry.ID, UserID: mid, Role: db.EntryMemberRoleMember,
-			})
+
+	if req.EntryType == "team" && req.TeamID != nil {
+		// Add all accepted team members to the lineup automatically
+		members, err := h.q.ListTeamMembers(ctx, *req.TeamID)
+		if err == nil {
+			for _, m := range members {
+				if m.UserID == uid || m.Status != "accepted" {
+					continue // already added as leader above; skip pending
+				}
+				role := db.EntryMemberRoleMember
+				if m.Role == db.TeamRoleManager {
+					role = db.EntryMemberRoleLeader
+				}
+				_ = h.q.AddEntryMember(ctx, db.AddEntryMemberParams{
+					ContestEntryID: entry.ID, UserID: m.UserID, Role: role,
+				})
+			}
+		}
+	} else {
+		// Individual: add extra lineup members if explicitly provided
+		for _, mid := range req.LineupUserIDs {
+			if mid != uid {
+				_ = h.q.AddEntryMember(ctx, db.AddEntryMemberParams{
+					ContestEntryID: entry.ID, UserID: mid, Role: db.EntryMemberRoleMember,
+				})
+			}
 		}
 	}
 
