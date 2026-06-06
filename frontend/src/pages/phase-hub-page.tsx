@@ -8,6 +8,15 @@ import {
   FileText, UploadCloud, Play, RefreshCw, ArrowLeft, ShieldAlert, Lock, Unlock
 } from 'lucide-react';
 
+const formatPenalty = (minutes: number): string => {
+  if (!minutes && minutes !== 0) return '—';
+  const m = Math.round(minutes);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h${rem}m` : `${h}h`;
+};
+
 const formatParticipantName = (row: { display_name: string; entry_type: string; usernames?: string[] }) => {
   if (row.entry_type === 'individual') {
     if (row.usernames && row.usernames.length > 0) {
@@ -952,7 +961,7 @@ export const PhaseHubPage: React.FC = () => {
                     <th>Participant</th>
                     <th className="font-mono">Score</th>
                     <th style={{ width: '120px' }}>Run Count</th>
-                    <th>Last Upload</th>
+                    <th>Penalty</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -967,7 +976,7 @@ export const PhaseHubPage: React.FC = () => {
                         </td>
                         <td className="font-mono">{row.entries_count}</td>
                         <td className="font-mono" style={{ fontSize: '0.8rem', color: 'hsl(var(--text-muted))' }}>
-                          {row.last_submitted_at ? new Date(row.last_submitted_at).toLocaleString() : "—"}
+                          {formatPenalty(row.penalty_minutes)}
                         </td>
                       </tr>
                     );

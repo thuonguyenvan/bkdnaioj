@@ -145,6 +145,7 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
 RETURNING *;
 
 -- name: RecomputeTaskPhaseLeaderboard :exec
+-- penalty_minutes = minutes from contest start to the FIRST submission achieving the best score (ICPC-style).
 WITH candidate AS (
   SELECT
     s.contest_id,
@@ -160,7 +161,8 @@ WITH candidate AS (
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'latest' THEN s.submitted_at END DESC NULLS LAST,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND sqlc.arg('higher_is_better')::boolean THEN s.display_score END DESC NULLS LAST,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND NOT sqlc.arg('higher_is_better')::boolean THEN s.display_score END ASC NULLS LAST,
-        s.submitted_at DESC
+        s.display_score DESC NULLS LAST,
+        s.submitted_at ASC  -- earliest submission achieving the best score
     ) AS rn,
     count(*) OVER (PARTITION BY s.contest_entry_id) AS entries_count
   FROM submissions s
@@ -179,20 +181,22 @@ chosen_with_max AS (
 ranked AS (
   SELECT
     c.*,
+    GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60)::numeric AS penalty_minutes,
     dense_rank() OVER (
       ORDER BY
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND sqlc.arg('higher_is_better')::boolean THEN c.display_score END DESC NULLS LAST,
         CASE WHEN sqlc.arg('leaderboard_mode')::leaderboard_mode = 'best' AND NOT sqlc.arg('higher_is_better')::boolean THEN c.display_score END ASC NULLS LAST,
         c.display_score DESC NULLS LAST,
-        c.submitted_at ASC NULLS LAST,
+        GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60) ASC NULLS LAST,
         c.entries_count ASC
     )::int AS rank
   FROM chosen_with_max c
+  JOIN contests ct ON ct.id = c.contest_id
 )
 INSERT INTO task_phase_leaderboard_entries (
   contest_id, task_id, phase_id, contest_entry_id,
   rank, score, raw_score, score_breakdown, chosen_submission_id, entries_count,
-  is_frozen, is_disqualified
+  penalty_minutes, is_frozen, is_disqualified
 )
 SELECT
   r.contest_id,
@@ -200,9 +204,9 @@ SELECT
   r.phase_id,
   r.contest_entry_id,
   r.rank,
-  CASE 
+  CASE
     WHEN ct.scale_scores = TRUE THEN
-      CASE 
+      CASE
         WHEN COALESCE(r.max_phase_score, 0) > 0 THEN (r.display_score / r.max_phase_score) * 100
         ELSE 0
       END
@@ -212,6 +216,7 @@ SELECT
   NULL::jsonb,
   r.submission_id,
   r.entries_count,
+  r.penalty_minutes,
   p.is_frozen,
   (ce.status = 'disqualified')
 FROM ranked r
@@ -225,6 +230,7 @@ ON CONFLICT (phase_id, contest_entry_id) DO UPDATE SET
   score_breakdown = EXCLUDED.score_breakdown,
   chosen_submission_id = EXCLUDED.chosen_submission_id,
   entries_count = EXCLUDED.entries_count,
+  penalty_minutes = EXCLUDED.penalty_minutes,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now();
 
@@ -243,14 +249,15 @@ per_phase_choice AS (
     s.contest_entry_id,
     s.id AS submission_id,
     s.display_score,
+    s.submitted_at,
     row_number() OVER (
       PARTITION BY s.phase_id, s.contest_entry_id
       ORDER BY
-        s.is_final DESC,
         CASE WHEN pid.leaderboard_mode = 'latest' THEN s.submitted_at END DESC NULLS LAST,
         CASE WHEN pid.leaderboard_mode = 'best' AND pid.higher_is_better THEN s.display_score END DESC NULLS LAST,
         CASE WHEN pid.leaderboard_mode = 'best' AND NOT pid.higher_is_better THEN s.display_score END ASC NULLS LAST,
-        s.submitted_at DESC
+        s.display_score DESC NULLS LAST,
+        s.submitted_at ASC  -- earliest achieving best score
     ) AS rn
   FROM submissions s
   JOIN phases_in_def pid ON pid.phase_id = s.phase_id
@@ -271,9 +278,9 @@ agg AS (
     sqlc.arg('contest_phase_def_id')::uuid AS contest_phase_def_id,
     c.contest_entry_id,
     SUM(
-      CASE 
+      CASE
         WHEN ct.scale_scores = TRUE THEN
-          CASE 
+          CASE
             WHEN COALESCE(c.max_phase_score, 0) > 0 THEN (c.display_score / c.max_phase_score) * 100
             ELSE 0
           END
@@ -281,6 +288,8 @@ agg AS (
       END
     ) AS total_score,
     SUM(c.display_score) AS raw_score,
+    -- Sum penalty minutes across tasks (ICPC-style)
+    SUM(GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60))::numeric AS penalty_minutes,
     COUNT(*)::int AS entries_count
   FROM chosen_with_max c
   JOIN contests ct ON ct.id = c.contest_id
@@ -289,13 +298,17 @@ agg AS (
 ranked AS (
   SELECT
     a.*,
-    dense_rank() OVER (ORDER BY a.total_score DESC NULLS LAST)::int AS rank
+    dense_rank() OVER (
+      ORDER BY a.total_score DESC NULLS LAST,
+      a.penalty_minutes ASC NULLS LAST,
+      a.entries_count ASC
+    )::int AS rank
   FROM agg a
 )
 INSERT INTO contest_phase_leaderboard_entries (
   contest_id, contest_phase_def_id, contest_entry_id,
   rank, score, raw_score, score_breakdown, entries_count,
-  is_frozen, is_disqualified
+  penalty_minutes, is_frozen, is_disqualified
 )
 SELECT
   r.contest_id,
@@ -306,6 +319,7 @@ SELECT
   r.raw_score,
   NULL::jsonb,
   r.entries_count,
+  r.penalty_minutes,
   false,
   (ce.status = 'disqualified')
 FROM ranked r
@@ -316,6 +330,7 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
   raw_score = EXCLUDED.raw_score,
   score_breakdown = EXCLUDED.score_breakdown,
   entries_count = EXCLUDED.entries_count,
+  penalty_minutes = EXCLUDED.penalty_minutes,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now();
 
@@ -329,12 +344,13 @@ FROM task_phase_leaderboard_entries
 WHERE phase_id = $1;
 
 -- name: UpdateSingleLeaderboardEntry :exec
--- Updates one entry after incremental recompute (O(log n) path).
+-- Updates rank/score for one entry (incremental O(log n) path).
+-- penalty_minutes is intentionally NOT updated here — only full recompute sets it correctly.
 UPDATE task_phase_leaderboard_entries
 SET
-    rank       = $3,
-    score      = $4,
-    raw_score  = $5,
+    rank                 = $3,
+    score                = $4,
+    raw_score            = $5,
     chosen_submission_id = $6,
     entries_count        = $7,
     updated_at = now()

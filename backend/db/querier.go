@@ -147,6 +147,7 @@ type Querier interface {
 	// score accumulation for users who joined multiple entries.
 	// Pick best score per (user, task) — handles users in multiple entries
 	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error
+	// penalty_minutes = minutes from contest start to the FIRST submission achieving the best score (ICPC-style).
 	RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
 	RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error
@@ -163,7 +164,8 @@ type Querier interface {
 	UpdateContestStatus(ctx context.Context, arg UpdateContestStatusParams) (Contest, error)
 	UpdatePhase(ctx context.Context, arg UpdatePhaseParams) (Phase, error)
 	UpdatePhaseDef(ctx context.Context, arg UpdatePhaseDefParams) (ContestPhaseDef, error)
-	// Updates one entry after incremental recompute (O(log n) path).
+	// Updates rank/score for one entry (incremental O(log n) path).
+	// penalty_minutes is intentionally NOT updated here — only full recompute sets it correctly.
 	UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error)
 	UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error)

@@ -76,7 +76,7 @@ func (q *Queries) GetBestSubmissionForEntry(ctx context.Context, arg GetBestSubm
 
 const getContestPhaseLeaderboard = `-- name: GetContestPhaseLeaderboard :many
 
-SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
+SELECT lb.id, lb.contest_id, lb.contest_phase_def_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, lb.penalty_minutes, ce.display_name, ce.entry_type, ce.entry_mode,
        (SELECT MAX(s2.submitted_at)
         FROM submissions s2
         JOIN phases p2 ON p2.id = s2.phase_id
@@ -120,6 +120,7 @@ type GetContestPhaseLeaderboardRow struct {
 	DqReason          *string            `json:"dq_reason"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	RawScore          string             `json:"raw_score"`
+	PenaltyMinutes    string             `json:"penalty_minutes"`
 	DisplayName       string             `json:"display_name"`
 	EntryType         EntryType          `json:"entry_type"`
 	EntryMode         EntryMode          `json:"entry_mode"`
@@ -156,6 +157,7 @@ func (q *Queries) GetContestPhaseLeaderboard(ctx context.Context, arg GetContest
 			&i.DqReason,
 			&i.UpdatedAt,
 			&i.RawScore,
+			&i.PenaltyMinutes,
 			&i.DisplayName,
 			&i.EntryType,
 			&i.EntryMode,
@@ -247,7 +249,7 @@ func (q *Queries) GetPhaseMaxScore(ctx context.Context, phaseID uuid.UUID) (floa
 
 const getTaskPhaseLeaderboard = `-- name: GetTaskPhaseLeaderboard :many
 
-SELECT lb.id, lb.contest_id, lb.task_id, lb.phase_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.chosen_submission_id, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, ce.display_name, ce.entry_type, ce.entry_mode,
+SELECT lb.id, lb.contest_id, lb.task_id, lb.phase_id, lb.contest_entry_id, lb.rank, lb.score, lb.score_breakdown, lb.chosen_submission_id, lb.entries_count, lb.is_frozen, lb.is_disqualified, lb.dq_reason, lb.updated_at, lb.raw_score, lb.penalty_minutes, ce.display_name, ce.entry_type, ce.entry_mode,
        s.submitted_at AS last_submitted_at,
        COALESCE(
          (SELECT array_agg(COALESCE(u.username, split_part(u.email::text, '@', 1))::text)
@@ -288,6 +290,7 @@ type GetTaskPhaseLeaderboardRow struct {
 	DqReason           *string            `json:"dq_reason"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	RawScore           string             `json:"raw_score"`
+	PenaltyMinutes     string             `json:"penalty_minutes"`
 	DisplayName        string             `json:"display_name"`
 	EntryType          EntryType          `json:"entry_type"`
 	EntryMode          EntryMode          `json:"entry_mode"`
@@ -326,6 +329,7 @@ func (q *Queries) GetTaskPhaseLeaderboard(ctx context.Context, arg GetTaskPhaseL
 			&i.DqReason,
 			&i.UpdatedAt,
 			&i.RawScore,
+			&i.PenaltyMinutes,
 			&i.DisplayName,
 			&i.EntryType,
 			&i.EntryMode,
@@ -357,14 +361,15 @@ per_phase_choice AS (
     s.contest_entry_id,
     s.id AS submission_id,
     s.display_score,
+    s.submitted_at,
     row_number() OVER (
       PARTITION BY s.phase_id, s.contest_entry_id
       ORDER BY
-        s.is_final DESC,
         CASE WHEN pid.leaderboard_mode = 'latest' THEN s.submitted_at END DESC NULLS LAST,
         CASE WHEN pid.leaderboard_mode = 'best' AND pid.higher_is_better THEN s.display_score END DESC NULLS LAST,
         CASE WHEN pid.leaderboard_mode = 'best' AND NOT pid.higher_is_better THEN s.display_score END ASC NULLS LAST,
-        s.submitted_at DESC
+        s.display_score DESC NULLS LAST,
+        s.submitted_at ASC  -- earliest achieving best score
     ) AS rn
   FROM submissions s
   JOIN phases_in_def pid ON pid.phase_id = s.phase_id
@@ -372,10 +377,10 @@ per_phase_choice AS (
     AND s.display_score IS NOT NULL
 ),
 chosen AS (
-  SELECT contest_id, phase_id, contest_entry_id, submission_id, display_score, rn FROM per_phase_choice WHERE rn = 1
+  SELECT contest_id, phase_id, contest_entry_id, submission_id, display_score, submitted_at, rn FROM per_phase_choice WHERE rn = 1
 ),
 chosen_with_max AS (
-  SELECT c.contest_id, c.phase_id, c.contest_entry_id, c.submission_id, c.display_score, c.rn,
+  SELECT c.contest_id, c.phase_id, c.contest_entry_id, c.submission_id, c.display_score, c.submitted_at, c.rn,
          MAX(c.display_score) OVER(PARTITION BY c.phase_id) as max_phase_score
   FROM chosen c
 ),
@@ -385,9 +390,9 @@ agg AS (
     $1::uuid AS contest_phase_def_id,
     c.contest_entry_id,
     SUM(
-      CASE 
+      CASE
         WHEN ct.scale_scores = TRUE THEN
-          CASE 
+          CASE
             WHEN COALESCE(c.max_phase_score, 0) > 0 THEN (c.display_score / c.max_phase_score) * 100
             ELSE 0
           END
@@ -395,6 +400,8 @@ agg AS (
       END
     ) AS total_score,
     SUM(c.display_score) AS raw_score,
+    -- Sum penalty minutes across tasks (ICPC-style)
+    SUM(GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60))::numeric AS penalty_minutes,
     COUNT(*)::int AS entries_count
   FROM chosen_with_max c
   JOIN contests ct ON ct.id = c.contest_id
@@ -402,14 +409,18 @@ agg AS (
 ),
 ranked AS (
   SELECT
-    a.contest_id, a.contest_phase_def_id, a.contest_entry_id, a.total_score, a.raw_score, a.entries_count,
-    dense_rank() OVER (ORDER BY a.total_score DESC NULLS LAST)::int AS rank
+    a.contest_id, a.contest_phase_def_id, a.contest_entry_id, a.total_score, a.raw_score, a.penalty_minutes, a.entries_count,
+    dense_rank() OVER (
+      ORDER BY a.total_score DESC NULLS LAST,
+      a.penalty_minutes ASC NULLS LAST,
+      a.entries_count ASC
+    )::int AS rank
   FROM agg a
 )
 INSERT INTO contest_phase_leaderboard_entries (
   contest_id, contest_phase_def_id, contest_entry_id,
   rank, score, raw_score, score_breakdown, entries_count,
-  is_frozen, is_disqualified
+  penalty_minutes, is_frozen, is_disqualified
 )
 SELECT
   r.contest_id,
@@ -420,6 +431,7 @@ SELECT
   r.raw_score,
   NULL::jsonb,
   r.entries_count,
+  r.penalty_minutes,
   false,
   (ce.status = 'disqualified')
 FROM ranked r
@@ -430,6 +442,7 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
   raw_score = EXCLUDED.raw_score,
   score_breakdown = EXCLUDED.score_breakdown,
   entries_count = EXCLUDED.entries_count,
+  penalty_minutes = EXCLUDED.penalty_minutes,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now()
 `
@@ -525,7 +538,8 @@ WITH candidate AS (
         CASE WHEN $1::leaderboard_mode = 'latest' THEN s.submitted_at END DESC NULLS LAST,
         CASE WHEN $1::leaderboard_mode = 'best' AND $2::boolean THEN s.display_score END DESC NULLS LAST,
         CASE WHEN $1::leaderboard_mode = 'best' AND NOT $2::boolean THEN s.display_score END ASC NULLS LAST,
-        s.submitted_at DESC
+        s.display_score DESC NULLS LAST,
+        s.submitted_at ASC  -- earliest submission achieving the best score
     ) AS rn,
     count(*) OVER (PARTITION BY s.contest_entry_id) AS entries_count
   FROM submissions s
@@ -544,20 +558,22 @@ chosen_with_max AS (
 ranked AS (
   SELECT
     c.contest_id, c.task_id, c.phase_id, c.contest_entry_id, c.submission_id, c.display_score, c.submitted_at, c.rn, c.entries_count, c.max_phase_score,
+    GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60)::numeric AS penalty_minutes,
     dense_rank() OVER (
       ORDER BY
         CASE WHEN $1::leaderboard_mode = 'best' AND $2::boolean THEN c.display_score END DESC NULLS LAST,
         CASE WHEN $1::leaderboard_mode = 'best' AND NOT $2::boolean THEN c.display_score END ASC NULLS LAST,
         c.display_score DESC NULLS LAST,
-        c.submitted_at ASC NULLS LAST,
+        GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60) ASC NULLS LAST,
         c.entries_count ASC
     )::int AS rank
   FROM chosen_with_max c
+  JOIN contests ct ON ct.id = c.contest_id
 )
 INSERT INTO task_phase_leaderboard_entries (
   contest_id, task_id, phase_id, contest_entry_id,
   rank, score, raw_score, score_breakdown, chosen_submission_id, entries_count,
-  is_frozen, is_disqualified
+  penalty_minutes, is_frozen, is_disqualified
 )
 SELECT
   r.contest_id,
@@ -565,9 +581,9 @@ SELECT
   r.phase_id,
   r.contest_entry_id,
   r.rank,
-  CASE 
+  CASE
     WHEN ct.scale_scores = TRUE THEN
-      CASE 
+      CASE
         WHEN COALESCE(r.max_phase_score, 0) > 0 THEN (r.display_score / r.max_phase_score) * 100
         ELSE 0
       END
@@ -577,6 +593,7 @@ SELECT
   NULL::jsonb,
   r.submission_id,
   r.entries_count,
+  r.penalty_minutes,
   p.is_frozen,
   (ce.status = 'disqualified')
 FROM ranked r
@@ -590,6 +607,7 @@ ON CONFLICT (phase_id, contest_entry_id) DO UPDATE SET
   score_breakdown = EXCLUDED.score_breakdown,
   chosen_submission_id = EXCLUDED.chosen_submission_id,
   entries_count = EXCLUDED.entries_count,
+  penalty_minutes = EXCLUDED.penalty_minutes,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now()
 `
@@ -600,6 +618,7 @@ type RecomputeTaskPhaseLeaderboardParams struct {
 	PhaseID         uuid.UUID       `json:"phase_id"`
 }
 
+// penalty_minutes = minutes from contest start to the FIRST submission achieving the best score (ICPC-style).
 func (q *Queries) RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error {
 	_, err := q.db.Exec(ctx, recomputeTaskPhaseLeaderboard, arg.LeaderboardMode, arg.HigherIsBetter, arg.PhaseID)
 	return err
@@ -608,9 +627,9 @@ func (q *Queries) RecomputeTaskPhaseLeaderboard(ctx context.Context, arg Recompu
 const updateSingleLeaderboardEntry = `-- name: UpdateSingleLeaderboardEntry :exec
 UPDATE task_phase_leaderboard_entries
 SET
-    rank       = $3,
-    score      = $4,
-    raw_score  = $5,
+    rank                 = $3,
+    score                = $4,
+    raw_score            = $5,
     chosen_submission_id = $6,
     entries_count        = $7,
     updated_at = now()
@@ -627,7 +646,8 @@ type UpdateSingleLeaderboardEntryParams struct {
 	EntriesCount       int32       `json:"entries_count"`
 }
 
-// Updates one entry after incremental recompute (O(log n) path).
+// Updates rank/score for one entry (incremental O(log n) path).
+// penalty_minutes is intentionally NOT updated here — only full recompute sets it correctly.
 func (q *Queries) UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error {
 	_, err := q.db.Exec(ctx, updateSingleLeaderboardEntry,
 		arg.PhaseID,
@@ -653,7 +673,7 @@ ON CONFLICT (contest_phase_def_id, contest_entry_id) DO UPDATE SET
   entries_count = EXCLUDED.entries_count,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now()
-RETURNING id, contest_id, contest_phase_def_id, contest_entry_id, rank, score, score_breakdown, entries_count, is_frozen, is_disqualified, dq_reason, updated_at, raw_score
+RETURNING id, contest_id, contest_phase_def_id, contest_entry_id, rank, score, score_breakdown, entries_count, is_frozen, is_disqualified, dq_reason, updated_at, raw_score, penalty_minutes
 `
 
 type UpsertContestPhaseLeaderboardParams struct {
@@ -695,6 +715,7 @@ func (q *Queries) UpsertContestPhaseLeaderboard(ctx context.Context, arg UpsertC
 		&i.DqReason,
 		&i.UpdatedAt,
 		&i.RawScore,
+		&i.PenaltyMinutes,
 	)
 	return i, err
 }
@@ -712,7 +733,7 @@ ON CONFLICT (phase_id, contest_entry_id) DO UPDATE SET
   entries_count = EXCLUDED.entries_count,
   is_frozen = EXCLUDED.is_frozen,
   updated_at = now()
-RETURNING id, contest_id, task_id, phase_id, contest_entry_id, rank, score, score_breakdown, chosen_submission_id, entries_count, is_frozen, is_disqualified, dq_reason, updated_at, raw_score
+RETURNING id, contest_id, task_id, phase_id, contest_entry_id, rank, score, score_breakdown, chosen_submission_id, entries_count, is_frozen, is_disqualified, dq_reason, updated_at, raw_score, penalty_minutes
 `
 
 type UpsertTaskPhaseLeaderboardParams struct {
@@ -760,6 +781,7 @@ func (q *Queries) UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTask
 		&i.DqReason,
 		&i.UpdatedAt,
 		&i.RawScore,
+		&i.PenaltyMinutes,
 	)
 	return i, err
 }

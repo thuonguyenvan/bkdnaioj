@@ -931,7 +931,7 @@ export const ContestDetailPage: React.FC = () => {
                             <th style={{ width: '120px' }}>Type</th>
                             <th style={{ width: '140px', textAlign: 'right' }}>Score</th>
                             <th style={{ width: '120px' }}>Runs</th>
-                            <th style={{ width: '170px' }}>Updated</th>
+                            <th style={{ width: '120px' }}>Penalty</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -956,7 +956,12 @@ export const ContestDetailPage: React.FC = () => {
                               </td>
                               <td className="font-mono">{row.entries_count}</td>
                               <td className="font-mono" style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                                {row.last_submitted_at ? formatDateTime(row.last_submitted_at) : "—"}
+                                {(() => {
+                                  const m = Math.round(row.penalty_minutes ?? 0);
+                                  if (m < 60) return `${m}m`;
+                                  const h = Math.floor(m / 60), r = m % 60;
+                                  return r > 0 ? `${h}h${r}m` : `${h}h`;
+                                })()}
                               </td>
                             </tr>
                           ))}

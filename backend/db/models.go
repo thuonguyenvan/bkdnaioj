@@ -1185,6 +1185,7 @@ type ContestPhaseLeaderboardEntry struct {
 	DqReason          *string            `json:"dq_reason"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 	RawScore          string             `json:"raw_score"`
+	PenaltyMinutes    string             `json:"penalty_minutes"`
 }
 
 type EvaluationJob struct {
@@ -1368,6 +1369,7 @@ type TaskPhaseLeaderboardEntry struct {
 	DqReason           *string            `json:"dq_reason"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	RawScore           string             `json:"raw_score"`
+	PenaltyMinutes     string             `json:"penalty_minutes"`
 }
 
 type Team struct {

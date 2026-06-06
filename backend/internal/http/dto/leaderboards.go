@@ -2,6 +2,7 @@ package dto
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,12 +22,13 @@ type LeaderboardRow struct {
 	DqReason       *string         `json:"dq_reason,omitempty"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	// Embedded entry brief
-	EntryID          uuid.UUID  `json:"entry_id"`
-	DisplayName      string     `json:"display_name"`
-	EntryType        string     `json:"entry_type"`
-	EntryMode        string     `json:"entry_mode"`
-	Usernames        []string   `json:"usernames"`
-	LastSubmittedAt  *time.Time `json:"last_submitted_at"`
+	EntryID         uuid.UUID  `json:"entry_id"`
+	DisplayName     string     `json:"display_name"`
+	EntryType       string     `json:"entry_type"`
+	EntryMode       string     `json:"entry_mode"`
+	Usernames       []string   `json:"usernames"`
+	LastSubmittedAt *time.Time `json:"last_submitted_at"`
+	PenaltyMinutes  float64    `json:"penalty_minutes"`
 }
 
 type GlobalRankingRow struct {
@@ -78,6 +80,12 @@ func interfaceToTimePtr(v interface{}) *time.Time {
 	return nil
 }
 
+func parseNumeric(s string) float64 {
+	var f float64
+	fmt.Sscanf(s, "%f", &f)
+	return f
+}
+
 func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 	return LeaderboardRow{
 		Rank: r.Rank, Score: r.Score, RawScore: r.RawScore, ScoreBreakdown: r.ScoreBreakdown,
@@ -88,6 +96,7 @@ func TaskPhaseRowToResponse(r db.GetTaskPhaseLeaderboardRow) LeaderboardRow {
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
 		Usernames:       convertStringArray(r.Usernames),
 		LastSubmittedAt: pgTimestamptzToPtr(r.LastSubmittedAt),
+		PenaltyMinutes:  parseNumeric(r.PenaltyMinutes),
 	}
 }
 
@@ -101,6 +110,7 @@ func ContestPhaseRowToResponse(r db.GetContestPhaseLeaderboardRow) LeaderboardRo
 		EntryType: string(r.EntryType), EntryMode: string(r.EntryMode),
 		Usernames:       convertStringArray(r.Usernames),
 		LastSubmittedAt: interfaceToTimePtr(r.LastSubmittedAt),
+		PenaltyMinutes:  parseNumeric(r.PenaltyMinutes),
 	}
 }
 

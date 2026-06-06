@@ -235,6 +235,7 @@ export interface LeaderboardRow {
   entry_mode: 'official' | 'virtual' | 'practice';
   usernames: string[];
   last_submitted_at: string | null;
+  penalty_minutes: number;
 }
 
 export interface GlobalRankingDetail {
