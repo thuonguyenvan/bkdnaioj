@@ -49,12 +49,21 @@ class VolunteerJudgeWorker:
                 self._cache.symlink_into(cached, dest)
 
                 asset_paths[artifact.original_filename] = dest
-                asset_paths[artifact.key]               = dest
 
-                # Also copy to asset_key filename if different
+                # Also expose the asset under its logical asset_key as a
+                # directory. Contestants can consistently read assets/inputs/*
+                # regardless of whether the organizer uploaded one file or a ZIP.
                 key_dest = _safe_dest(assets_dir, artifact.key)
-                if os.path.abspath(key_dest) != os.path.abspath(dest):
-                    shutil.copyfile(dest, key_dest)
+                if artifact.key.endswith(".py"):
+                    if os.path.abspath(key_dest) != os.path.abspath(dest):
+                        shutil.copyfile(dest, key_dest)
+                    asset_paths[artifact.key] = key_dest
+                elif zipfile.is_zipfile(dest):
+                    _extract_zip_asset(dest, key_dest)
+                    asset_paths[artifact.key] = key_dest
+                else:
+                    _copy_file_asset_to_key_dir(dest, key_dest)
+                    asset_paths[artifact.key] = key_dest
 
         context_path = os.path.join(work_dir, "context.json")
         with open(context_path, "w", encoding="utf-8") as fh:
@@ -143,6 +152,24 @@ def _submission_paths(submission_dir: str) -> list[str]:
     for name in os.listdir(submission_dir):
         paths.append(os.path.join(submission_dir, name))
     return paths
+
+
+def _extract_zip_asset(path: str, dest_dir: str) -> None:
+    os.makedirs(dest_dir, exist_ok=True)
+    with zipfile.ZipFile(path) as zf:
+        root = os.path.abspath(dest_dir)
+        for info in zf.infolist():
+            dest = os.path.abspath(os.path.join(dest_dir, info.filename))
+            if dest != root and not dest.startswith(root + os.sep):
+                raise RuntimeError(f"unsafe zip entry in asset {os.path.basename(path)}")
+        zf.extractall(dest_dir)
+
+
+def _copy_file_asset_to_key_dir(path: str, dest_dir: str) -> None:
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, os.path.basename(path))
+    if os.path.abspath(dest) != os.path.abspath(path):
+        shutil.copyfile(path, dest)
 
 
 def _resolve_judge(judge_key: str, asset_paths: dict[str, str], assets_dir: str) -> str:

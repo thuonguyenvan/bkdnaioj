@@ -627,6 +627,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		_, _ = h.q.IncrementWorkerFailed(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "failed")
 		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
+		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo", req.ExecutionProfile)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})

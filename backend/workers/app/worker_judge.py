@@ -75,9 +75,16 @@ class JudgeWorker:
             dest = self._safe_dest(assets_dir, a.original_filename)
             downloaded = self._store.download(a.storage_path, dest)
             key_dest = self._safe_dest(assets_dir, a.asset_key)
-            if os.path.abspath(key_dest) != os.path.abspath(downloaded):
-                shutil.copyfile(downloaded, key_dest)
-            asset_paths[a.asset_key] = downloaded
+            if a.asset_key.endswith(".py"):
+                if os.path.abspath(key_dest) != os.path.abspath(downloaded):
+                    shutil.copyfile(downloaded, key_dest)
+                asset_paths[a.asset_key] = key_dest
+            elif zipfile.is_zipfile(downloaded):
+                self._extract_zip_asset(downloaded, key_dest)
+                asset_paths[a.asset_key] = key_dest
+            else:
+                self._copy_file_asset_to_key_dir(downloaded, key_dest)
+                asset_paths[a.asset_key] = key_dest
             asset_paths[a.original_filename] = downloaded
 
         schema = self._load_schema(sub.submission_schema)
@@ -164,6 +171,22 @@ class JudgeWorker:
                     if dest != root and not dest.startswith(root + os.sep):
                         raise RuntimeError("unsafe zip entry in final submission")
                 zf.extractall(submission_dir)
+
+    def _extract_zip_asset(self, path: str, dest_dir: str) -> None:
+        os.makedirs(dest_dir, exist_ok=True)
+        with zipfile.ZipFile(path) as zf:
+            root = os.path.abspath(dest_dir)
+            for info in zf.infolist():
+                dest = os.path.abspath(os.path.join(dest_dir, info.filename))
+                if dest != root and not dest.startswith(root + os.sep):
+                    raise RuntimeError(f"unsafe zip entry in asset {os.path.basename(path)}")
+            zf.extractall(dest_dir)
+
+    def _copy_file_asset_to_key_dir(self, path: str, dest_dir: str) -> None:
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, os.path.basename(path))
+        if os.path.abspath(dest) != os.path.abspath(path):
+            shutil.copyfile(path, dest)
 
     def _load_schema(self, raw: str) -> dict:
         try:

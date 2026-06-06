@@ -83,8 +83,10 @@ class ContractRunnerTest(unittest.TestCase):
                 p.add_argument("--context")
                 args = p.parse_args()
                 assert os.path.exists(os.path.join(args.submission_dir, "images.zip"))
-                assert os.path.exists(os.path.join(args.assets_dir, "ground_truth"))
-                assert os.path.exists(os.path.join(args.assets_dir, "inputs"))
+                assert os.path.isdir(os.path.join(args.assets_dir, "ground_truth"))
+                assert os.path.isfile(os.path.join(args.assets_dir, "ground_truth", "ground_truth.csv"))
+                assert os.path.isdir(os.path.join(args.assets_dir, "inputs"))
+                assert os.path.isfile(os.path.join(args.assets_dir, "inputs", "inputs.zip"))
                 print(json.dumps({"status":"success","raw_score":0.7,"display_score":70,"payload":{"mode":"non_final"}}))
                 """,
             )
@@ -143,8 +145,10 @@ class ContractRunnerTest(unittest.TestCase):
                 p.add_argument("--context")
                 args = p.parse_args()
                 assert os.path.exists(os.path.join(args.submission_dir, "generated_images.zip"))
-                assert os.path.exists(os.path.join(args.assets_dir, "ground_truth"))
-                assert os.path.exists(os.path.join(args.assets_dir, "inputs"))
+                assert os.path.isdir(os.path.join(args.assets_dir, "ground_truth"))
+                assert os.path.isfile(os.path.join(args.assets_dir, "ground_truth", "ground_truth.csv"))
+                assert os.path.isdir(os.path.join(args.assets_dir, "inputs"))
+                assert os.path.isfile(os.path.join(args.assets_dir, "inputs", "inputs.zip"))
                 print(json.dumps({"status":"success","raw_score":0.9,"display_score":90,"payload":{"mode":"final"}}))
                 """,
             )
@@ -163,6 +167,43 @@ class ContractRunnerTest(unittest.TestCase):
 
             self.assertEqual(result["display_score"], 90)
             self.assertEqual(result["payload"]["mode"], "final")
+
+    def test_zip_asset_key_is_extracted_to_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            artifact = os.path.join(td, "submission.zip")
+            with open(artifact, "wb") as fh:
+                fh.write(b"submission")
+            judge = os.path.join(td, "judge.py")
+            inputs = os.path.join(td, "inputs.zip")
+            with zipfile.ZipFile(inputs, "w") as zf:
+                zf.writestr("id_001.png", b"png")
+            self._write_script(
+                judge,
+                """
+                import argparse, json, os
+                p = argparse.ArgumentParser()
+                p.add_argument("--submission-dir")
+                p.add_argument("--assets-dir")
+                p.add_argument("--output-dir")
+                p.add_argument("--context")
+                args = p.parse_args()
+                assert os.path.isdir(os.path.join(args.assets_dir, "inputs"))
+                assert os.path.isfile(os.path.join(args.assets_dir, "inputs", "id_001.png"))
+                assert os.path.isfile(os.path.join(args.assets_dir, "inputs.zip"))
+                print(json.dumps({"status":"success","raw_score":1,"display_score":100}))
+                """,
+            )
+            worker = JudgeWorker(db=None, streams=None, stream_results="unused", store=FakeStore())
+
+            result = worker._run_with_artifacts(
+                td,
+                SubmissionRef(is_final=False),
+                [FileRef("submission.zip", artifact)],
+                [AssetRef("inputs", "inputs.zip", inputs)],
+                [AssetRef("judge.py", "judge.py", judge)],
+            )
+
+            self.assertEqual(result["display_score"], 100)
 
     def _write_script(self, path: str, source: str) -> None:
         with open(path, "w", encoding="utf-8") as fh:
