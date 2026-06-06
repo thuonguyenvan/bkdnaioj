@@ -804,6 +804,18 @@ export const PhaseHubPage: React.FC = () => {
                             {task?.score_label && (
                               <div className="text-muted" style={{ fontSize: '0.76rem', marginTop: '0.15rem' }}>{task.score_label}</div>
                             )}
+                            {sub.status === 'failed' && sub.error_message && (
+                              <div style={{
+                                marginTop: '0.35rem', fontSize: '0.72rem', color: '#b91c1c',
+                                background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4,
+                                padding: '0.25rem 0.5rem', fontFamily: 'monospace',
+                                maxWidth: 480, wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                              }}>
+                                {sub.error_message.length > 300
+                                  ? sub.error_message.slice(0, 300) + '…'
+                                  : sub.error_message}
+                              </div>
+                            )}
                           </td>
                           <td aria-label="spacing"></td>
                           <td>{getStatusBadge(sub.status)}</td>
