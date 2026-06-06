@@ -58,14 +58,14 @@ const formatDuration = (startValue: string, endValue: string) => {
   return `${minutes}m`;
 };
 
-const getEntryPolicyText = (policy: Contest['entry_policy']) => {
+const getEntryPolicyLabel = (policy: Contest['entry_policy']) => {
   switch (policy) {
     case 'individual':
       return 'Individual';
     case 'team':
       return 'Team';
     case 'both':
-      return 'Individual & Team';
+      return 'Indiv. & Team';
     default:
       return policy;
   }
@@ -154,66 +154,71 @@ export const ContestsPage: React.FC = () => {
 
         <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table className="oj-table">
+            <table className="oj-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+              <colgroup>
+                <col />                              {/* Contest Name — flexible */}
+                <col style={{ width: 160 }} />       {/* Start */}
+                <col style={{ width: 90 }} />        {/* Duration */}
+                <col style={{ width: 120 }} />       {/* Type */}
+                <col style={{ width: 170 }} />       {/* Last col (Ends In / Registration / Ended) */}
+                {(isRunning || isUpcoming) && <col style={{ width: 110 }} />}  {/* Action */}
+              </colgroup>
               <thead>
                 <tr>
                   <th>Contest Name</th>
-                  <th style={{ width: '180px' }}>Start</th>
-                  <th style={{ width: '140px' }}>Duration</th>
-                  <th style={{ width: '140px' }}>Type</th>
-                  {isUpcoming && <th style={{ width: '150px' }}>Registration</th>}
-                  {isUpcoming && <th style={{ width: '120px', textAlign: 'right' }}>Action</th>}
-                  {isRunning && <th style={{ width: '180px' }}>Ends In</th>}
-                  {isRunning && <th style={{ width: '120px', textAlign: 'right' }}>Enter</th>}
-                  {isEnded && <th style={{ width: '180px' }}>Ended</th>}
+                  <th>Start</th>
+                  <th>Duration</th>
+                  <th>Type</th>
+                  {isUpcoming && <th>Registration</th>}
+                  {isUpcoming && <th style={{ textAlign: 'right' }}>Action</th>}
+                  {isRunning && <th>Ends In</th>}
+                  {isRunning && <th style={{ textAlign: 'right' }}>Action</th>}
+                  {isEnded && <th>Ended</th>}
                 </tr>
               </thead>
               <tbody>
                 {list.map((contest) => {
                   const count = entryCounts[contest.id];
-
                   return (
                     <tr key={contest.id}>
-                      <td>
-                        <Link to={`/contests/${contest.id}`} style={{ color: 'hsl(var(--primary))', textDecoration: 'none', fontWeight: 500 }}>
+                      <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Link to={`/contests/${contest.id}`} style={{ color: 'hsl(var(--primary))', textDecoration: 'none', fontWeight: 600 }}>
                           {contest.title}
                         </Link>
                       </td>
-                      <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
+                      <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                         {formatDateTime(contest.start_time)}
                       </td>
-                      <td style={{ color: '#334155' }}>
+                      <td style={{ color: '#334155', whiteSpace: 'nowrap' }}>
                         {formatDuration(contest.start_time, contest.end_time)}
                       </td>
                       <td>
-                        <span className="badge badge-secondary">{getEntryPolicyText(contest.entry_policy)}</span>
+                        <span className="badge badge-secondary" style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
+                          {getEntryPolicyLabel(contest.entry_policy)}
+                        </span>
                       </td>
                       {isUpcoming && (
                         <>
-                          <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
-                            {count === undefined ? 'Loading...' : count < 0 ? '-' : `${count} ${contest.entry_policy === 'team' ? 'teams' : 'contestants'}`}
+                          <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                            {count === undefined ? '—' : count < 0 ? '—' : `${count} ${contest.entry_policy === 'team' ? 'teams' : 'contestants'}`}
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            <Link to={`/contests/${contest.id}`} className="btn btn-secondary btn-sm">
-                              Register
-                            </Link>
+                            <Link to={`/contests/${contest.id}`} className="btn btn-secondary btn-sm">Register</Link>
                           </td>
                         </>
                       )}
                       {isRunning && (
                         <>
-                          <td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             <CountdownTicker endTime={contest.end_time} />
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            <Link to={`/contests/${contest.id}`} className="btn btn-primary btn-sm">
-                              Enter
-                            </Link>
+                            <Link to={`/contests/${contest.id}`} className="btn btn-primary btn-sm">Enter</Link>
                           </td>
                         </>
                       )}
                       {isEnded && (
-                        <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem' }}>
+                        <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                           {formatDateTime(contest.end_time)}
                         </td>
                       )}
