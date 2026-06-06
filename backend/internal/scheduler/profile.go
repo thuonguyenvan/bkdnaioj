@@ -63,12 +63,12 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 		return int(v)
 	}
 	maxOutputSlots := getInt(caps, "max_output_slots")
-	if maxOutputSlots <= 0 {
+	if _, declared := caps["max_output_slots"]; !declared {
 		maxOutputSlots = maxWorkers
 	}
 	maxInferenceSlots := getInt(caps, "max_inference_slots")
-	if maxInferenceSlots <= 0 {
-		maxInferenceSlots = maxWorkers // default: same capacity as output slots
+	if _, declared := caps["max_inference_slots"]; !declared {
+		maxInferenceSlots = maxWorkers // legacy workers used one shared capacity
 	}
 
 	return &WorkerProfile{
@@ -159,8 +159,8 @@ func EstimateJobDemand(
 	}
 	if isFinal {
 		d.UnzipBytes = submissionBytes
-		d.CPUOps = 5_000_000           // fallback if no GPU
-		d.RAMBytes = 512 * 1024 * 1024 // 512 MB
+		d.CPUOps = 5_000_000                // fallback if no GPU
+		d.RAMBytes = 2 * 1024 * 1024 * 1024 // 2 GB for ML inference runtimes
 		// GPU demand for model inference — heuristic, replaced by dry-run profile later
 		d.GPUOps = 50_000_000_000            // 50 GFLOPS FP32 (typical small model)
 		d.VRAMBytes = 4 * 1024 * 1024 * 1024 // 4 GB VRAM heuristic

@@ -1,4 +1,11 @@
 services:
+  runtime-image:
+    profiles: ["runtime"]
+    image: olpai-final-runtime:latest
+    build:
+      context: ..
+      dockerfile: runtime/Dockerfile
+
   db:
     image: postgres:15-alpine
     environment:
@@ -66,6 +73,10 @@ services:
       S3_SECRET_KEY: "minioadmin"
       S3_SECURE: "false"
       SHARED_TEMP_VOLUME_NAME: "olpai_shared_temp"
+      OLPAI_SANDBOX_IMAGE: "olpai-final-runtime:latest"
+      OLPAI_SANDBOX_MEMORY: "8g"
+      OLPAI_SANDBOX_CPUS: "4"
+      OLPAI_SANDBOX_PIDS: "256"
     volumes:
       - shared-temp:/app/shared-temp
       # docker.sock unmounted → runner falls back to subprocess mode (worker env has PIL/numpy)

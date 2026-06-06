@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 
+DEFAULT_SANDBOX_IMAGE = "olpai-final-runtime:latest"
+
 
 class PhaseRunner:
     def run_non_final(self, *, judge: str, submission_dir: str, assets_dir: str, output_dir: str, context_path: str) -> dict:
@@ -32,13 +34,20 @@ class PhaseRunner:
             import docker
             client = docker.from_env()
             timeout = int(os.getenv("SANDBOX_TIMEOUT_S", "300"))
-            image_name = "python:3.11-slim"
+            image_name = os.getenv("OLPAI_SANDBOX_IMAGE", DEFAULT_SANDBOX_IMAGE)
             try:
                 client.images.get(image_name)
-            except docker.errors.ImageNotFound:
-                client.images.pull("python", tag="3.11-slim")
+            except docker.errors.ImageNotFound as exc:
+                raise RuntimeError(
+                    f"final inference runtime image '{image_name}' is not installed. "
+                    "Build it with: docker build -f runtime/Dockerfile "
+                    "-t olpai-final-runtime:latest ."
+                ) from exc
 
             volume_name = os.getenv("SHARED_TEMP_VOLUME_NAME", "olpai_shared_temp")
+            memory_limit = os.getenv("OLPAI_SANDBOX_MEMORY", "8g")
+            cpu_limit = max(1.0, float(os.getenv("OLPAI_SANDBOX_CPUS", "4")))
+            pids_limit = max(64, int(os.getenv("OLPAI_SANDBOX_PIDS", "256")))
             container = client.containers.create(
                 image=image_name,
                 command=[
@@ -51,8 +60,9 @@ class PhaseRunner:
                 ],
                 volumes={volume_name: {"bind": "/app/shared-temp", "mode": "rw"}},
                 network_mode="none",
-                mem_limit="512m",
-                nano_cpus=1000000000,
+                mem_limit=memory_limit,
+                nano_cpus=int(cpu_limit * 1_000_000_000),
+                pids_limit=pids_limit,
             )
             container.start()
             try:
