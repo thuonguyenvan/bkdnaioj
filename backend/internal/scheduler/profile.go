@@ -67,6 +67,9 @@ func ParseWorkerProfile(workerID uuid.UUID, capsJSON []byte, maxWorkers int) (*W
 		maxOutputSlots = maxWorkers
 	}
 	maxInferenceSlots := getInt(caps, "max_inference_slots")
+	if maxInferenceSlots <= 0 {
+		maxInferenceSlots = maxWorkers // default: same capacity as output slots
+	}
 
 	return &WorkerProfile{
 		WorkerID:             workerID,
