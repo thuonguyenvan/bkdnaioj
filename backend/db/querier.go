@@ -159,6 +159,7 @@ type Querier interface {
 	RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
 	RenewWorkerClaimLease(ctx context.Context, arg RenewWorkerClaimLeaseParams) (VolunteerWorkerClaim, error)
+	RequeueOrphanRunningSubmissions(ctx context.Context, arg RequeueOrphanRunningSubmissionsParams) ([]Submission, error)
 	ResetOtherFinalSubmissions(ctx context.Context, arg ResetOtherFinalSubmissionsParams) error
 	ResolveTicket(ctx context.Context, id uuid.UUID) (Ticket, error)
 	SetPhaseFrozen(ctx context.Context, arg SetPhaseFrozenParams) (Phase, error)

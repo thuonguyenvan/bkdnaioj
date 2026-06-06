@@ -104,6 +104,7 @@ type MockQuerier struct {
 	MarkSubmissionFinalFunc               func(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionQueuedFunc              func(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
 	MarkSubmissionRequeuedFunc            func(ctx context.Context, id uuid.UUID) (Submission, error)
+	RequeueOrphanRunningSubmissionsFunc   func(ctx context.Context, arg RequeueOrphanRunningSubmissionsParams) ([]Submission, error)
 	RemoveEntryMemberFunc                 func(ctx context.Context, arg RemoveEntryMemberParams) error
 	RemoveTeamMemberFunc                  func(ctx context.Context, arg RemoveTeamMemberParams) error
 	ResetOtherFinalSubmissionsFunc        func(ctx context.Context, arg ResetOtherFinalSubmissionsParams) error
@@ -638,6 +639,13 @@ func (m *MockQuerier) MarkSubmissionRequeued(ctx context.Context, id uuid.UUID) 
 		return m.MarkSubmissionRequeuedFunc(ctx, id)
 	}
 	return Submission{}, nil
+}
+
+func (m *MockQuerier) RequeueOrphanRunningSubmissions(ctx context.Context, arg RequeueOrphanRunningSubmissionsParams) ([]Submission, error) {
+	if m.RequeueOrphanRunningSubmissionsFunc != nil {
+		return m.RequeueOrphanRunningSubmissionsFunc(ctx, arg)
+	}
+	return nil, nil
 }
 
 func (m *MockQuerier) RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error {

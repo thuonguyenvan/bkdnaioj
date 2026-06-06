@@ -139,6 +139,7 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 	const (
 		nonFinalJobTimeout = 10 * time.Minute
 		finalJobTimeout    = 30 * time.Minute
+		orphanRunTimeout   = 3 * time.Minute
 	)
 	for {
 		select {
@@ -166,6 +167,23 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 				_, _ = q.IncrementWorkerFailedByID(ctx, claim.WorkerID)
 				metrics.JobTimeoutTotal.WithLabelValues("fifo").Inc()
 				log.Warn().Str("worker", claim.WorkerID.String()).Str("submission", claim.SubmissionID.String()).Msg("reclaimed stale job")
+			}
+
+			orphanCutoff := pgtype.Timestamptz{Time: time.Now().Add(-orphanRunTimeout), Valid: true}
+			orphans, err := q.RequeueOrphanRunningSubmissions(ctx, db.RequeueOrphanRunningSubmissionsParams{
+				UpdatedAt: orphanCutoff,
+				Limit:     100,
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("requeue orphan running submissions")
+				continue
+			}
+			for _, sub := range orphans {
+				if err := producer.EnqueueJudge(ctx, sub.ID, nil); err != nil {
+					log.Error().Err(err).Str("submission", sub.ID.String()).Msg("re-enqueue orphan running submission")
+					continue
+				}
+				log.Warn().Str("submission", sub.ID.String()).Msg("requeued orphan running submission")
 			}
 		}
 	}

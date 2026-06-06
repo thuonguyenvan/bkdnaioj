@@ -18,6 +18,26 @@ SET status='queued', updated_at=now(), error_message=NULL
 WHERE id=$1
 RETURNING *;
 
+-- name: RequeueOrphanRunningSubmissions :many
+WITH orphan AS (
+  SELECT s.id
+  FROM submissions s
+  WHERE s.status = 'running'
+    AND s.updated_at < $1
+    AND NOT EXISTS (
+      SELECT 1
+      FROM volunteer_worker_claims c
+      WHERE c.submission_id = s.id
+    )
+  ORDER BY s.updated_at ASC
+  LIMIT $2
+)
+UPDATE submissions s
+SET status='queued', updated_at=now(), error_message=NULL
+FROM orphan
+WHERE s.id = orphan.id
+RETURNING s.*;
+
 -- name: GetSubmissionByID :one
 SELECT * FROM submissions WHERE id = $1;
 

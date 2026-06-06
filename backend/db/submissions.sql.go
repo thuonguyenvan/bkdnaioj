@@ -489,6 +489,76 @@ func (q *Queries) MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Subm
 	return i, err
 }
 
+const requeueOrphanRunningSubmissions = `-- name: RequeueOrphanRunningSubmissions :many
+WITH orphan AS (
+  SELECT s.id
+  FROM submissions s
+  WHERE s.status = 'running'
+    AND s.updated_at < $1
+    AND NOT EXISTS (
+      SELECT 1
+      FROM volunteer_worker_claims c
+      WHERE c.submission_id = s.id
+    )
+  ORDER BY s.updated_at ASC
+  LIMIT $2
+)
+UPDATE submissions s
+SET status='queued', updated_at=now(), error_message=NULL
+FROM orphan
+WHERE s.id = orphan.id
+RETURNING s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id, s.submitted_by, s.status, s.submitted_at, s.file_count, s.total_size_bytes, s.manifest_hash, s.validation_result, s.error_message, s.raw_score, s.display_score, s.score_payload, s.evaluated_at, s.is_final, s.rejudge_count, s.client_ip, s.user_agent, s.created_at, s.updated_at
+`
+
+type RequeueOrphanRunningSubmissionsParams struct {
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	Limit     int32              `json:"limit"`
+}
+
+func (q *Queries) RequeueOrphanRunningSubmissions(ctx context.Context, arg RequeueOrphanRunningSubmissionsParams) ([]Submission, error) {
+	rows, err := q.db.Query(ctx, requeueOrphanRunningSubmissions, arg.UpdatedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Submission
+	for rows.Next() {
+		var i Submission
+		if err := rows.Scan(
+			&i.ID,
+			&i.ContestID,
+			&i.ContestEntryID,
+			&i.TaskID,
+			&i.PhaseID,
+			&i.SubmittedBy,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.FileCount,
+			&i.TotalSizeBytes,
+			&i.ManifestHash,
+			&i.ValidationResult,
+			&i.ErrorMessage,
+			&i.RawScore,
+			&i.DisplayScore,
+			&i.ScorePayload,
+			&i.EvaluatedAt,
+			&i.IsFinal,
+			&i.RejudgeCount,
+			&i.ClientIp,
+			&i.UserAgent,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resetOtherFinalSubmissions = `-- name: ResetOtherFinalSubmissions :exec
 UPDATE submissions
 SET is_final = false, updated_at = now()
