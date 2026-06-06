@@ -86,7 +86,8 @@ all_scores AS (
     u.email::text    AS user_email,
     ct.title         AS contest_title,
     t.title          AS task_title,
-    lb.score
+    lb.score,
+    lb.penalty_minutes
   FROM task_phase_leaderboard_entries lb
   JOIN phases             p   ON p.id   = lb.phase_id
   JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
@@ -102,18 +103,19 @@ all_scores AS (
     AND lb.is_disqualified = false
     AND lb.score      IS NOT NULL
 ),
--- Pick best score per (user, task) — handles users in multiple entries
+-- Pick best score per (user, task); if same score take earliest (lowest penalty)
 best_per_task AS (
   SELECT DISTINCT ON (user_id, contest_title, task_title)
-    phase_key, user_id, display_name, user_email, contest_title, task_title, score
+    phase_key, user_id, display_name, user_email, contest_title, task_title, score, penalty_minutes
   FROM all_scores
-  ORDER BY user_id, contest_title, task_title, score DESC
+  ORDER BY user_id, contest_title, task_title, score DESC, penalty_minutes ASC
 ),
 agg AS (
   SELECT
     phase_key, user_id, display_name, user_email,
-    SUM(score)::numeric AS total_score,
-    COUNT(*)::int       AS task_count,
+    SUM(score)::numeric          AS total_score,
+    SUM(penalty_minutes)::numeric AS total_penalty,
+    COUNT(*)::int                AS task_count,
     jsonb_agg(
       jsonb_build_object('contest_title', contest_title, 'task_title', task_title, 'score', score)
       ORDER BY contest_title, task_title
@@ -123,7 +125,8 @@ agg AS (
 ),
 ranked AS (
   SELECT *,
-    dense_rank() OVER (ORDER BY total_score DESC NULLS LAST)::int AS rank
+    -- Tiebreaker: same score → who achieved it first (lower total_penalty wins)
+    dense_rank() OVER (ORDER BY total_score DESC NULLS LAST, total_penalty ASC NULLS LAST)::int AS rank
   FROM agg
 )
 INSERT INTO global_phase_rankings (phase_key, user_id, rank, display_name, user_email, total_score, task_count, details)
