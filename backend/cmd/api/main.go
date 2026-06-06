@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/config"
 	"github.com/mank1/olpai-backend/internal/email"
@@ -21,7 +22,6 @@ import (
 	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/mank1/olpai-backend/internal/storage"
 	"github.com/mank1/olpai-backend/pkg/logger"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 )
 
@@ -136,21 +136,29 @@ func main() {
 func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue.Producer, log zerolog.Logger) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
-	const jobTimeout = 10 * time.Minute
+	const (
+		nonFinalJobTimeout = 10 * time.Minute
+		finalJobTimeout    = 30 * time.Minute
+	)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := pgtype.Timestamptz{Time: time.Now().Add(-jobTimeout), Valid: true}
+			nonFinalCutoff := pgtype.Timestamptz{Time: time.Now().Add(-nonFinalJobTimeout), Valid: true}
+			finalCutoff := pgtype.Timestamptz{Time: time.Now().Add(-finalJobTimeout), Valid: true}
 			// Batch delete all stale claims in one query
-			stale, err := q.DeleteStaleWorkerClaims(ctx, cutoff)
+			stale, err := q.DeleteStaleWorkerClaims(ctx, db.DeleteStaleWorkerClaimsParams{
+				ClaimedAt:   nonFinalCutoff,
+				ClaimedAt_2: finalCutoff,
+			})
 			if err != nil {
 				log.Error().Err(err).Msg("batch delete stale worker claims")
 				continue
 			}
 			// Re-enqueue in a pipeline for efficiency
 			for _, claim := range stale {
+				_, _ = q.MarkSubmissionRequeued(ctx, claim.SubmissionID)
 				if err := producer.EnqueueJudge(ctx, claim.SubmissionID, nil); err != nil {
 					log.Error().Err(err).Str("submission", claim.SubmissionID.String()).Msg("re-enqueue stale job")
 					continue

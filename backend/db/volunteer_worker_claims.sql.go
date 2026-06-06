@@ -26,7 +26,7 @@ func (q *Queries) CountWorkerActiveClaims(ctx context.Context, workerID uuid.UUI
 const createWorkerClaim = `-- name: CreateWorkerClaim :one
 INSERT INTO volunteer_worker_claims (worker_id, submission_id)
 VALUES ($1, $2)
-RETURNING id, worker_id, submission_id, claimed_at, predicted_finish_at
+RETURNING id, worker_id, submission_id, claimed_at, predicted_finish_at, attempt_id, lease_expires_at, last_heartbeat_at
 `
 
 type CreateWorkerClaimParams struct {
@@ -43,6 +43,9 @@ func (q *Queries) CreateWorkerClaim(ctx context.Context, arg CreateWorkerClaimPa
 		&i.SubmissionID,
 		&i.ClaimedAt,
 		&i.PredictedFinishAt,
+		&i.AttemptID,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
 	)
 	return i, err
 }
@@ -63,7 +66,7 @@ func (q *Queries) DeleteWorkerClaim(ctx context.Context, arg DeleteWorkerClaimPa
 }
 
 const getWorkerClaimBySubmission = `-- name: GetWorkerClaimBySubmission :one
-SELECT id, worker_id, submission_id, claimed_at, predicted_finish_at FROM volunteer_worker_claims WHERE submission_id = $1
+SELECT id, worker_id, submission_id, claimed_at, predicted_finish_at, attempt_id, lease_expires_at, last_heartbeat_at FROM volunteer_worker_claims WHERE submission_id = $1
 `
 
 func (q *Queries) GetWorkerClaimBySubmission(ctx context.Context, submissionID uuid.UUID) (VolunteerWorkerClaim, error) {
@@ -75,12 +78,15 @@ func (q *Queries) GetWorkerClaimBySubmission(ctx context.Context, submissionID u
 		&i.SubmissionID,
 		&i.ClaimedAt,
 		&i.PredictedFinishAt,
+		&i.AttemptID,
+		&i.LeaseExpiresAt,
+		&i.LastHeartbeatAt,
 	)
 	return i, err
 }
 
 const listStaleWorkerClaims2 = `-- name: ListStaleWorkerClaims2 :many
-SELECT c.id, c.worker_id, c.submission_id, c.claimed_at, c.predicted_finish_at, w.id AS wid
+SELECT c.id, c.worker_id, c.submission_id, c.claimed_at, c.predicted_finish_at, c.attempt_id, c.lease_expires_at, c.last_heartbeat_at, w.id AS wid
 FROM volunteer_worker_claims c
 JOIN volunteer_workers w ON w.id = c.worker_id
 WHERE c.claimed_at < $1
@@ -92,6 +98,9 @@ type ListStaleWorkerClaims2Row struct {
 	SubmissionID      uuid.UUID          `json:"submission_id"`
 	ClaimedAt         pgtype.Timestamptz `json:"claimed_at"`
 	PredictedFinishAt pgtype.Timestamptz `json:"predicted_finish_at"`
+	AttemptID         uuid.UUID          `json:"attempt_id"`
+	LeaseExpiresAt    pgtype.Timestamptz `json:"lease_expires_at"`
+	LastHeartbeatAt   pgtype.Timestamptz `json:"last_heartbeat_at"`
 	Wid               uuid.UUID          `json:"wid"`
 }
 
@@ -110,6 +119,9 @@ func (q *Queries) ListStaleWorkerClaims2(ctx context.Context, claimedAt pgtype.T
 			&i.SubmissionID,
 			&i.ClaimedAt,
 			&i.PredictedFinishAt,
+			&i.AttemptID,
+			&i.LeaseExpiresAt,
+			&i.LastHeartbeatAt,
 			&i.Wid,
 		); err != nil {
 			return nil, err

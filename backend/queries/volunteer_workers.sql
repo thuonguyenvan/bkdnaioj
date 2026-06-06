@@ -90,10 +90,16 @@ FROM (
 ) sub;
 
 -- name: DeleteStaleWorkerClaims :many
--- Batch delete all stale claims in one query; RETURNING for re-enqueue loop.
+-- Batch delete stale claims in one query; RETURNING for re-enqueue loop.
 DELETE FROM volunteer_worker_claims
-WHERE claimed_at < $1
-RETURNING worker_id, submission_id;
+USING submissions s
+WHERE volunteer_worker_claims.submission_id = s.id
+  AND (
+    volunteer_worker_claims.lease_expires_at < now()
+    OR (s.is_final = false AND volunteer_worker_claims.claimed_at < $1)
+    OR (s.is_final = true  AND volunteer_worker_claims.claimed_at < $2)
+  )
+RETURNING volunteer_worker_claims.worker_id, volunteer_worker_claims.submission_id, volunteer_worker_claims.attempt_id;
 
 -- ── Global Best Finish Time Scheduling ──────────────────────────────────────
 
@@ -114,7 +120,17 @@ WHERE w.status = 'active'
 GROUP BY w.id, w.capabilities, w.max_workers;
 
 -- name: CreateWorkerClaimWithFinish :one
--- Creates a claim with predicted finish time for global best finish time scheduling.
-INSERT INTO volunteer_worker_claims (worker_id, submission_id, predicted_finish_at)
-VALUES ($1, $2, $3)
+-- Creates a claim with lease + predicted finish time for scheduling.
+INSERT INTO volunteer_worker_claims (
+    worker_id, submission_id, predicted_finish_at, lease_expires_at, last_heartbeat_at
+)
+VALUES ($1, $2, $3, $4, now())
+RETURNING *;
+
+-- name: RenewWorkerClaimLease :one
+UPDATE volunteer_worker_claims
+SET lease_expires_at = $3,
+    last_heartbeat_at = now()
+WHERE submission_id = $1
+  AND attempt_id = $2
 RETURNING *;

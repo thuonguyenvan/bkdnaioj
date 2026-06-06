@@ -23,7 +23,7 @@ SELECT
 FROM job_execution_logs
 WHERE phase_key = $1
   AND is_final  = $2
-  AND created_at > now() - interval '7 days'
+  AND created_at > now() - interval '30 days'
   AND error_ratio IS NOT NULL
   AND error_ratio > 0
 `
@@ -38,7 +38,7 @@ type GetCorrectionFactorRow struct {
 	SampleCount      int64   `json:"sample_count"`
 }
 
-// Returns median(error_ratio) for jobs in same group over last 7 days.
+// Returns median(error_ratio) for jobs in same group over last 30 days.
 // error_ratio = actual / predicted; ratio > 1 means T0 underestimates.
 // Falls back to 1.0 if fewer than 3 samples (not enough data).
 func (q *Queries) GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error) {

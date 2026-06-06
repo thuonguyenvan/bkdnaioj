@@ -43,7 +43,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVolunteerWorker(ctx context.Context, arg CreateVolunteerWorkerParams) (VolunteerWorker, error)
 	CreateWorkerClaim(ctx context.Context, arg CreateWorkerClaimParams) (VolunteerWorkerClaim, error)
-	// Creates a claim with predicted finish time for global best finish time scheduling.
+	// Creates a claim with lease + predicted finish time for scheduling.
 	CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error)
 	DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	DeleteAnnouncement(ctx context.Context, id uuid.UUID) error
@@ -51,8 +51,8 @@ type Querier interface {
 	DeleteContestEntry(ctx context.Context, id uuid.UUID) error
 	DeletePhase(ctx context.Context, id uuid.UUID) error
 	DeletePhaseDef(ctx context.Context, id uuid.UUID) error
-	// Batch delete all stale claims in one query; RETURNING for re-enqueue loop.
-	DeleteStaleWorkerClaims(ctx context.Context, claimedAt pgtype.Timestamptz) ([]DeleteStaleWorkerClaimsRow, error)
+	// Batch delete stale claims in one query; RETURNING for re-enqueue loop.
+	DeleteStaleWorkerClaims(ctx context.Context, arg DeleteStaleWorkerClaimsParams) ([]DeleteStaleWorkerClaimsRow, error)
 	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
 	DeleteTask(ctx context.Context, id uuid.UUID) error
 	DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
@@ -72,7 +72,7 @@ type Querier interface {
 	GetContestEntryByID(ctx context.Context, id uuid.UUID) (ContestEntry, error)
 	// Contest-phase leaderboard
 	GetContestPhaseLeaderboard(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
-	// Returns median(error_ratio) for jobs in same group over last 7 days.
+	// Returns median(error_ratio) for jobs in same group over last 30 days.
 	// error_ratio = actual / predicted; ratio > 1 means T0 underestimates.
 	// Falls back to 1.0 if fewer than 3 samples (not enough data).
 	GetCorrectionFactor(ctx context.Context, arg GetCorrectionFactorParams) (GetCorrectionFactorRow, error)
@@ -134,6 +134,7 @@ type Querier interface {
 	MarkSubmissionFailed(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error)
 	MarkSubmissionFinal(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
+	MarkSubmissionRequeued(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionRunning(ctx context.Context, id uuid.UUID) (Submission, error)
 	RecomputeContestPhaseLeaderboard(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
 	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error
@@ -141,6 +142,7 @@ type Querier interface {
 	RejectVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
+	RenewWorkerClaimLease(ctx context.Context, arg RenewWorkerClaimLeaseParams) (VolunteerWorkerClaim, error)
 	ResetOtherFinalSubmissions(ctx context.Context, arg ResetOtherFinalSubmissionsParams) error
 	ResolveTicket(ctx context.Context, id uuid.UUID) (Ticket, error)
 	SetPhaseFrozen(ctx context.Context, arg SetPhaseFrozenParams) (Phase, error)

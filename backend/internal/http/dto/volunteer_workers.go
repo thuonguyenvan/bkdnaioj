@@ -20,11 +20,16 @@ type HeartbeatRequest struct {
 }
 
 type JobResultRequest struct {
+	AttemptID    uuid.UUID       `json:"attempt_id" validate:"required"`
 	Status       string          `json:"status" validate:"required,oneof=done failed"`
 	RawScore     *float64        `json:"raw_score"`
 	DisplayScore *float64        `json:"display_score"`
 	Payload      json.RawMessage `json:"payload"`
 	ErrorMessage *string         `json:"error_message"`
+}
+
+type JobHeartbeatRequest struct {
+	AttemptID uuid.UUID `json:"attempt_id" validate:"required"`
 }
 
 type WorkerResponse struct {
@@ -56,6 +61,7 @@ type ArtifactURL struct {
 
 type JobResponse struct {
 	SubmissionID uuid.UUID       `json:"submission_id"`
+	AttemptID    uuid.UUID       `json:"attempt_id"`
 	TaskID       uuid.UUID       `json:"task_id"`
 	PhaseID      uuid.UUID       `json:"phase_id"`
 	IsFinal      bool            `json:"is_final"`
@@ -67,10 +73,10 @@ type JobResponse struct {
 
 // SchedulerSnapshot is the SSE payload streamed to the admin dashboard.
 type SchedulerSnapshot struct {
-	Workers    []WorkerSnapshotItem  `json:"workers"`
-	QueueDepth int64                 `json:"queue_depth"`
-	RecentLogs []ScheduleLogItem     `json:"recent_logs"`
-	Timestamp  time.Time             `json:"timestamp"`
+	Workers    []WorkerSnapshotItem `json:"workers"`
+	QueueDepth int64                `json:"queue_depth"`
+	RecentLogs []ScheduleLogItem    `json:"recent_logs"`
+	Timestamp  time.Time            `json:"timestamp"`
 }
 
 type WorkerSnapshotItem struct {
@@ -89,15 +95,15 @@ type WorkerSnapshotItem struct {
 }
 
 type ScheduleLogItem struct {
-	SubmissionID     uuid.UUID  `json:"submission_id"`
-	WorkerID         uuid.UUID  `json:"worker_id"`
-	WorkerName       string     `json:"worker_name"`
-	PhaseKey         string     `json:"phase_key"`
-	IsFinal          bool       `json:"is_final"`
-	PredictedSeconds *float32   `json:"predicted_seconds"`
-	ActualSeconds    *float32   `json:"actual_seconds"`
-	ErrorRatio       *float32   `json:"error_ratio"`
-	CreatedAt        time.Time  `json:"created_at"`
+	SubmissionID     uuid.UUID `json:"submission_id"`
+	WorkerID         uuid.UUID `json:"worker_id"`
+	WorkerName       string    `json:"worker_name"`
+	PhaseKey         string    `json:"phase_key"`
+	IsFinal          bool      `json:"is_final"`
+	PredictedSeconds *float32  `json:"predicted_seconds"`
+	ActualSeconds    *float32  `json:"actual_seconds"`
+	ErrorRatio       *float32  `json:"error_ratio"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func VolunteerWorkerToResponse(w db.VolunteerWorker) WorkerResponse {
@@ -125,4 +131,3 @@ func VolunteerWorkerToResponse(w db.VolunteerWorker) WorkerResponse {
 	}
 	return r
 }
-

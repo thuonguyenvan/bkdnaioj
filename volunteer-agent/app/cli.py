@@ -765,14 +765,31 @@ def start(
                     continue
 
                 log.info("job_received", worker=worker_idx, submission_id=job.submission_id,
-                         is_final=job.is_final)
+                         is_final=job.is_final, attempt_id=job.attempt_id)
                 with tempfile.TemporaryDirectory(
                     prefix=f"olpai-vol-{job.submission_id[:8]}-",
                     dir=td_root,
                 ) as td:
+                    job_stop_event = threading.Event()
+
+                    def job_heartbeat_loop() -> None:
+                        while not job_stop_event.wait(30):
+                            try:
+                                client.job_heartbeat(job.submission_id, job.attempt_id)
+                            except Exception as hb_exc:
+                                log.warning(
+                                    "job_heartbeat_failed",
+                                    worker=worker_idx,
+                                    submission_id=job.submission_id,
+                                    error=str(hb_exc),
+                                )
+
+                    hb_thread = threading.Thread(target=job_heartbeat_loop, daemon=True)
+                    hb_thread.start()
                     try:
                         result = judge_worker.run(job, td)
                         client.submit_result(job.submission_id, {
+                            "attempt_id":    job.attempt_id,
                             "status":        "done",
                             "raw_score":     result["raw_score"],
                             "display_score": result["display_score"],
@@ -786,9 +803,15 @@ def start(
                                   error=err_msg)
                         try:
                             client.submit_result(job.submission_id,
-                                                 {"status": "failed", "error_message": err_msg})
+                                                 {
+                                                     "attempt_id": job.attempt_id,
+                                                     "status": "failed",
+                                                     "error_message": err_msg,
+                                                 })
                         except Exception:
                             pass
+                    finally:
+                        job_stop_event.set()
             except Exception as exc:
                 log.error("poll_error", worker=worker_idx, error=str(exc))
                 stop_event.wait(s.poll_interval_s)

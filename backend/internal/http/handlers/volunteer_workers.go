@@ -24,7 +24,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const workerJobTimeoutMinutes = 10
+const (
+	workerJobTimeoutMinutes = 10
+	workerLeaseDuration     = 2 * time.Minute
+)
 
 type VolunteerWorkerHandler struct {
 	q        db.Querier
@@ -137,11 +140,13 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 	}
 
 	// Create claim in DB (FIFO path — predicted_finish_at unknown)
-	if _, err := h.q.CreateWorkerClaimWithFinish(ctx, db.CreateWorkerClaimWithFinishParams{
+	claim, err := h.q.CreateWorkerClaimWithFinish(ctx, db.CreateWorkerClaimWithFinishParams{
 		WorkerID:          worker.ID,
 		SubmissionID:      sub.ID,
 		PredictedFinishAt: pgtype.Timestamptz{}, // not known for FIFO path
-	}); err != nil {
+		LeaseExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(workerLeaseDuration), Valid: true},
+	})
+	if err != nil {
 		_ = h.producer.Ack(ctx, msgID)
 		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
 		return mw.ErrInternal("claim job failed")
@@ -176,6 +181,7 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, dto.JobResponse{
 		SubmissionID: sub.ID,
+		AttemptID:    claim.AttemptID,
 		TaskID:       sub.TaskID,
 		PhaseID:      sub.PhaseID,
 		IsFinal:      sub.IsFinal,
@@ -378,11 +384,13 @@ func (h *VolunteerWorkerHandler) dispatchJob(
 		}
 	}
 
-	if _, err := h.q.CreateWorkerClaimWithFinish(ctx, db.CreateWorkerClaimWithFinishParams{
+	claim, err := h.q.CreateWorkerClaimWithFinish(ctx, db.CreateWorkerClaimWithFinishParams{
 		WorkerID:          worker.ID,
 		SubmissionID:      sub.ID,
 		PredictedFinishAt: predictedFinishAt,
-	}); err != nil {
+		LeaseExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(workerLeaseDuration), Valid: true},
+	})
+	if err != nil {
 		_ = h.producer.Ack(ctx, msgID)
 		_ = h.producer.EnqueueJudge(ctx, envelope.SubmissionID, nil)
 		return mw.ErrInternal("claim job failed")
@@ -406,6 +414,7 @@ func (h *VolunteerWorkerHandler) dispatchJob(
 
 	return c.JSON(http.StatusOK, dto.JobResponse{
 		SubmissionID: sub.ID,
+		AttemptID:    claim.AttemptID,
 		TaskID:       sub.TaskID,
 		PhaseID:      sub.PhaseID,
 		IsFinal:      sub.IsFinal,
@@ -414,6 +423,52 @@ func (h *VolunteerWorkerHandler) dispatchJob(
 		Artifacts:    artifacts,
 		TimeoutSecs:  workerJobTimeoutMinutes * 60,
 	})
+}
+
+// POST /api/v1/worker/jobs/:id/heartbeat — renews the active job lease.
+func (h *VolunteerWorkerHandler) JobHeartbeat(c echo.Context) error {
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return mw.ErrBadRequest("invalid submission id")
+	}
+	var req dto.JobHeartbeatRequest
+	if err := c.Bind(&req); err != nil {
+		return mw.ErrBadRequest("invalid request body")
+	}
+	if err := h.val.Struct(req); err != nil {
+		return mw.ErrBadRequest(err.Error())
+	}
+
+	token := mw.GetWorkerToken(c)
+	ctx := c.Request().Context()
+	worker, err := h.q.GetVolunteerWorkerByToken(ctx, &token)
+	if err != nil {
+		return mw.ErrInternal("fetch worker failed")
+	}
+	claim, err := h.q.GetWorkerClaimBySubmission(ctx, subID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrForbidden("not your job")
+		}
+		return mw.ErrInternal("fetch claim failed")
+	}
+	if claim.WorkerID != worker.ID {
+		return mw.ErrForbidden("not your job")
+	}
+	if claim.AttemptID != req.AttemptID {
+		return mw.ErrForbidden("stale job attempt")
+	}
+	if _, err := h.q.RenewWorkerClaimLease(ctx, db.RenewWorkerClaimLeaseParams{
+		SubmissionID:   subID,
+		AttemptID:      req.AttemptID,
+		LeaseExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(workerLeaseDuration), Valid: true},
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrForbidden("not your job")
+		}
+		return mw.ErrInternal("renew job lease failed")
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // POST /api/v1/worker/jobs/:id/result — requires X-Worker-Token
@@ -448,6 +503,9 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 	}
 	if claim.WorkerID != worker.ID {
 		return mw.ErrForbidden("not your job")
+	}
+	if claim.AttemptID != req.AttemptID {
+		return mw.ErrForbidden("stale job attempt")
 	}
 
 	// Capture actual runtime before claim is deleted

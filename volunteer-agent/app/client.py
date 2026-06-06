@@ -15,6 +15,7 @@ class Artifact:
 @dataclass
 class Job:
     submission_id: str
+    attempt_id: str
     task_id: str
     phase_id: str
     is_final: bool
@@ -48,8 +49,8 @@ class APIClient:
         )
 
     def next_job(self) -> Job | None:
-        r = httpx.get(
-            f"{self._base}/api/v1/worker/jobs/next",
+        r = httpx.post(
+            f"{self._base}/api/v1/worker/jobs/claim-next",
             headers=self._headers,
             timeout=20,
         )
@@ -59,6 +60,7 @@ class APIClient:
             return None
         return Job(
             submission_id=data["submission_id"],
+            attempt_id=data["attempt_id"],
             task_id=data["task_id"],
             phase_id=data["phase_id"],
             is_final=data.get("is_final", False),
@@ -76,10 +78,20 @@ class APIClient:
             timeout_secs=data.get("timeout_secs", 600),
         )
 
+    def job_heartbeat(self, submission_id: str, attempt_id: str) -> None:
+        r = httpx.post(
+            f"{self._base}/api/v1/worker/jobs/{submission_id}/heartbeat",
+            json={"attempt_id": attempt_id},
+            headers=self._headers,
+            timeout=10,
+        )
+        r.raise_for_status()
+
     def submit_result(self, submission_id: str, result: dict) -> None:
-        httpx.post(
+        r = httpx.post(
             f"{self._base}/api/v1/worker/jobs/{submission_id}/result",
             json=result,
             headers=self._headers,
             timeout=15,
         )
+        r.raise_for_status()

@@ -10,10 +10,11 @@ import (
 // Corrector applies EMA-based correction to T0 estimates using job_execution_logs.
 //
 // Two-Layer Estimator (design doc Section 7A):
-//   Layer 1 — T0: deterministic estimate from benchmark (EstimateRuntime)
-//   Layer 2 — Correction: T(i,j) = T0 × correction_factor(phase_key, is_final)
 //
-// correction_factor = median(actual_runtime / predicted_runtime) over last 7 days.
+//	Layer 1 — T0: deterministic estimate from benchmark (EstimateRuntime)
+//	Layer 2 — Correction: T(i,j) = T0 × correction_factor(phase_key, is_final)
+//
+// correction_factor = median(actual_runtime / predicted_runtime) over last 30 days.
 // Falls back to 1.0 when < 3 samples exist (cold start).
 type Corrector struct {
 	q db.Querier
@@ -58,9 +59,10 @@ func (c *Corrector) CorrectedRuntime(
 // reacts to approximately the last N jobs.
 //
 // Recommended N values:
-//   N=5  → alpha≈0.33  (responsive, fewer samples needed)
-//   N=10 → alpha≈0.18  (balanced)
-//   N=20 → alpha≈0.095 (stable, slower to adapt)
+//
+//	N=5  → alpha≈0.33  (responsive, fewer samples needed)
+//	N=10 → alpha≈0.18  (balanced)
+//	N=20 → alpha≈0.095 (stable, slower to adapt)
 func ChooseAlpha(n int) float64 {
 	if n <= 0 {
 		n = 10

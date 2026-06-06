@@ -12,6 +12,12 @@ SET status='queued', file_count=$2, total_size_bytes=$3, updated_at=now(), error
 WHERE id=$1
 RETURNING *;
 
+-- name: MarkSubmissionRequeued :one
+UPDATE submissions
+SET status='queued', updated_at=now(), error_message=NULL
+WHERE id=$1
+RETURNING *;
+
 -- name: GetSubmissionByID :one
 SELECT * FROM submissions WHERE id = $1;
 
@@ -68,4 +74,3 @@ JOIN phases         p  ON p.id  = s.phase_id
 JOIN tasks          t  ON t.id  = s.task_id
 JOIN contest_entries ce ON ce.id = s.contest_entry_id
 WHERE s.id = $1;
-

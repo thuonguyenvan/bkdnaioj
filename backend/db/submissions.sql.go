@@ -406,6 +406,44 @@ func (q *Queries) MarkSubmissionQueued(ctx context.Context, arg MarkSubmissionQu
 	return i, err
 }
 
+const markSubmissionRequeued = `-- name: MarkSubmissionRequeued :one
+UPDATE submissions
+SET status='queued', updated_at=now(), error_message=NULL
+WHERE id=$1
+RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
+`
+
+func (q *Queries) MarkSubmissionRequeued(ctx context.Context, id uuid.UUID) (Submission, error) {
+	row := q.db.QueryRow(ctx, markSubmissionRequeued, id)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.ContestID,
+		&i.ContestEntryID,
+		&i.TaskID,
+		&i.PhaseID,
+		&i.SubmittedBy,
+		&i.Status,
+		&i.SubmittedAt,
+		&i.FileCount,
+		&i.TotalSizeBytes,
+		&i.ManifestHash,
+		&i.ValidationResult,
+		&i.ErrorMessage,
+		&i.RawScore,
+		&i.DisplayScore,
+		&i.ScorePayload,
+		&i.EvaluatedAt,
+		&i.IsFinal,
+		&i.RejudgeCount,
+		&i.ClientIp,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markSubmissionRunning = `-- name: MarkSubmissionRunning :one
 UPDATE submissions
 SET status = 'running', updated_at = now()

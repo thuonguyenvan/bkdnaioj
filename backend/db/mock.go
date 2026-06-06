@@ -101,6 +101,7 @@ type MockQuerier struct {
 	ListUsersAdminFunc                    func(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error)
 	MarkSubmissionFinalFunc               func(ctx context.Context, id uuid.UUID) (Submission, error)
 	MarkSubmissionQueuedFunc              func(ctx context.Context, arg MarkSubmissionQueuedParams) (Submission, error)
+	MarkSubmissionRequeuedFunc            func(ctx context.Context, id uuid.UUID) (Submission, error)
 	RemoveEntryMemberFunc                 func(ctx context.Context, arg RemoveEntryMemberParams) error
 	RemoveTeamMemberFunc                  func(ctx context.Context, arg RemoveTeamMemberParams) error
 	ResetOtherFinalSubmissionsFunc        func(ctx context.Context, arg ResetOtherFinalSubmissionsParams) error
@@ -125,6 +126,7 @@ type MockQuerier struct {
 	RecomputeTaskPhaseLeaderboardFunc     func(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
 	RecomputeContestPhaseLeaderboardFunc  func(ctx context.Context, arg RecomputeContestPhaseLeaderboardParams) error
 	RecomputeGlobalPhaseRankingFunc       func(ctx context.Context, phaseKey ContestPhaseKey) error
+	RenewWorkerClaimLeaseFunc             func(ctx context.Context, arg RenewWorkerClaimLeaseParams) (VolunteerWorkerClaim, error)
 }
 
 var _ Querier = (*MockQuerier)(nil)
@@ -612,6 +614,13 @@ func (m *MockQuerier) MarkSubmissionQueued(ctx context.Context, arg MarkSubmissi
 	return Submission{}, nil
 }
 
+func (m *MockQuerier) MarkSubmissionRequeued(ctx context.Context, id uuid.UUID) (Submission, error) {
+	if m.MarkSubmissionRequeuedFunc != nil {
+		return m.MarkSubmissionRequeuedFunc(ctx, id)
+	}
+	return Submission{}, nil
+}
+
 func (m *MockQuerier) RemoveEntryMember(ctx context.Context, arg RemoveEntryMemberParams) error {
 	if m.RemoveEntryMemberFunc != nil {
 		return m.RemoveEntryMemberFunc(ctx, arg)
@@ -943,7 +952,7 @@ func (m *MockQuerier) UpdateSingleLeaderboardEntry(ctx context.Context, arg Upda
 	return nil
 }
 
-func (m *MockQuerier) DeleteStaleWorkerClaims(ctx context.Context, claimedAt pgtype.Timestamptz) ([]DeleteStaleWorkerClaimsRow, error) {
+func (m *MockQuerier) DeleteStaleWorkerClaims(ctx context.Context, arg DeleteStaleWorkerClaimsParams) ([]DeleteStaleWorkerClaimsRow, error) {
 	return nil, nil
 }
 
@@ -972,6 +981,13 @@ func (m *MockQuerier) GetAllActiveWorkersWithEarliestAvailable(ctx context.Conte
 }
 
 func (m *MockQuerier) CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error) {
+	return VolunteerWorkerClaim{}, nil
+}
+
+func (m *MockQuerier) RenewWorkerClaimLease(ctx context.Context, arg RenewWorkerClaimLeaseParams) (VolunteerWorkerClaim, error) {
+	if m.RenewWorkerClaimLeaseFunc != nil {
+		return m.RenewWorkerClaimLeaseFunc(ctx, arg)
+	}
 	return VolunteerWorkerClaim{}, nil
 }
 

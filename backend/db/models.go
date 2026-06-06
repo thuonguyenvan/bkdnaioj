@@ -1440,4 +1440,7 @@ type VolunteerWorkerClaim struct {
 	SubmissionID      uuid.UUID          `json:"submission_id"`
 	ClaimedAt         pgtype.Timestamptz `json:"claimed_at"`
 	PredictedFinishAt pgtype.Timestamptz `json:"predicted_finish_at"`
+	AttemptID         uuid.UUID          `json:"attempt_id"`
+	LeaseExpiresAt    pgtype.Timestamptz `json:"lease_expires_at"`
+	LastHeartbeatAt   pgtype.Timestamptz `json:"last_heartbeat_at"`
 }
