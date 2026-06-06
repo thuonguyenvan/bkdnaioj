@@ -56,6 +56,16 @@ def _docker_info() -> tuple[bool, str]:
     return False, (result.stderr or result.stdout or "docker info failed").strip()
 
 
+def _docker_image_available(image: str) -> bool:
+    result = subprocess.run(
+        ["docker", "image", "inspect", image],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return result.returncode == 0
+
+
 def _run_start_command(cmd: list[str], wait_seconds: float = 2.0) -> bool:
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
     if result.returncode != 0:
@@ -395,6 +405,20 @@ def setup() -> None:
     native_final_allowed = _ask_native_final_mode(caps, s.native_final_allowed)
     s.native_final_allowed = native_final_allowed
     caps["native_final_allowed"] = native_final_allowed
+    if caps.get("docker_available"):
+        s.sandbox_image = _ask("Final inference runtime image", s.sandbox_image)
+        if not _docker_image_available(s.sandbox_image):
+            _warn(f"Runtime image not found: {s.sandbox_image}")
+            _echo(
+                "  Build the standard image from the platform repository:\n"
+                "  docker build -f runtime/Dockerfile -t olpai-final-runtime:latest ."
+            )
+            caps["docker_runtime_available"] = False
+        else:
+            caps["docker_runtime_available"] = True
+            _ok(f"Final runtime image available: {s.sandbox_image}")
+    else:
+        caps["docker_runtime_available"] = False
 
     # 4. Benchmark
     run_bench = _ask("\nRun quick benchmark? (y/n)", "y").lower().startswith("y")
@@ -407,11 +431,12 @@ def setup() -> None:
     ram_bytes = caps.get("available_ram_bytes", 0)
     cpu_cores = caps.get("cpu_cores", 1) or 1
     has_docker = caps.get("docker_available", False)
-    can_run_final = has_docker or native_final_allowed
+    has_docker_runtime = has_docker and caps.get("docker_runtime_available", False)
+    can_run_final = has_docker_runtime or native_final_allowed
 
     # Use same heuristic values as EstimateJobDemand in Go scheduler
     RAM_PER_OUTPUT_JOB = 256 * 1024 * 1024    # 256 MB (from scheduler/profile.go)
-    RAM_PER_FINAL_JOB  = 512 * 1024 * 1024    # 512 MB (from scheduler/profile.go)
+    RAM_PER_FINAL_JOB  = 2 * 1024 * 1024 * 1024  # 2 GB (from scheduler/profile.go)
 
     recommended_output = max(1, min(
         ram_bytes // RAM_PER_OUTPUT_JOB if ram_bytes else cpu_cores,
@@ -424,7 +449,7 @@ def setup() -> None:
             ram_bytes // RAM_PER_FINAL_JOB if ram_bytes else 1,
             4,
         ))
-        final_mode = "Docker" if has_docker else "trusted native GPU"
+        final_mode = "Docker" if has_docker_runtime else "trusted native GPU"
         recommended_exclusive = True
         _echo("Recommended worker slots:")
         _echo(f"  Output-only jobs (public_test, private_test): {recommended_output}")
@@ -806,6 +831,7 @@ def status() -> None:
     _echo(f"  Name     : {s.worker_name}")
     _echo(f"  Token    : {'set (' + s.worker_token[:8] + '...)' if s.worker_token else 'not set'}")
     _echo(f"  Final    : {'trusted native enabled' if s.native_final_allowed else 'Docker sandbox required'}")
+    _echo(f"  Runtime  : {s.sandbox_image}")
     _echo(f"  Slots    : output={s.max_output_slots}, inference={s.max_inference_slots}, exclusive_inference={s.exclusive_inference}")
     _echo(f"  Poll     : every {s.poll_interval_s}s")
     _echo(f"  Heartbeat: every {s.heartbeat_interval_s}s")

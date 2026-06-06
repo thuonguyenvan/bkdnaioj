@@ -22,6 +22,7 @@ class Settings:
     poll_interval_s:      int  = 10
     heartbeat_interval_s: int  = 30
     sandbox_timeout_s:    int  = 600
+    sandbox_image:        str  = "olpai-final-runtime:latest"
     temp_dir:             str  = ""
     log_level:            str  = "INFO"
     native_final_allowed: bool = False
@@ -50,6 +51,7 @@ def load() -> Settings:
         "poll_interval_s":      os.getenv("POLL_INTERVAL_S"),
         "heartbeat_interval_s": os.getenv("HEARTBEAT_INTERVAL_S"),
         "sandbox_timeout_s":    os.getenv("SANDBOX_TIMEOUT_S"),
+        "sandbox_image":        os.getenv("OLPAI_SANDBOX_IMAGE"),
         "temp_dir":             os.getenv("TEMP_DIR"),
         "log_level":            os.getenv("LOG_LEVEL"),
         "native_final_allowed": os.getenv("OLPAI_ALLOW_NATIVE_FINAL"),
@@ -84,6 +86,7 @@ def save(s: Settings) -> None:
         f'poll_interval_s = {s.poll_interval_s}',
         f'heartbeat_interval_s = {s.heartbeat_interval_s}',
         f'sandbox_timeout_s = {s.sandbox_timeout_s}',
+        f'sandbox_image = "{s.sandbox_image}"',
         f'native_final_allowed = {str(s.native_final_allowed).lower()}',
     ]
     if s.temp_dir:

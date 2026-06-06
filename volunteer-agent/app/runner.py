@@ -8,6 +8,8 @@ import time
 
 from . import config as cfg
 
+DEFAULT_SANDBOX_IMAGE = "olpai-final-runtime:latest"
+
 
 def _docker_available() -> bool:
     try:
@@ -17,16 +19,35 @@ def _docker_available() -> bool:
         return False
 
 
+def _sandbox_image(client) -> str:
+    import docker
+
+    image_name = os.getenv("OLPAI_SANDBOX_IMAGE") or cfg.load().sandbox_image or DEFAULT_SANDBOX_IMAGE
+    try:
+        client.images.get(image_name)
+    except docker.errors.ImageNotFound as exc:
+        raise RuntimeError(
+            f"final inference runtime image '{image_name}' is not installed. "
+            "Build it from the platform repository with: "
+            "docker build -f runtime/Dockerfile -t olpai-final-runtime:latest . "
+            "or set OLPAI_SANDBOX_IMAGE to an equivalent prebuilt image."
+        ) from exc
+    return image_name
+
+
 def _create_sandbox_container(client, image_name: str, command: list[str], volumes: dict, timeout: int):
     """Create Docker container with full isolation constraints."""
+    memory_limit = os.getenv("OLPAI_SANDBOX_MEMORY", "8g")
+    cpu_limit = max(1.0, float(os.getenv("OLPAI_SANDBOX_CPUS", "4")))
+    pids_limit = max(64, int(os.getenv("OLPAI_SANDBOX_PIDS", "256")))
     return client.containers.create(
         image=image_name,
         command=command,
         volumes=volumes,
         network_mode="none",
-        mem_limit="512m",
-        nano_cpus=1_000_000_000,  # 1 CPU
-        pids_limit=64,            # prevent fork bomb
+        mem_limit=memory_limit,
+        nano_cpus=int(cpu_limit * 1_000_000_000),
+        pids_limit=pids_limit,
     )
 
 
@@ -59,11 +80,7 @@ class PhaseRunner:
             import docker
             client = docker.from_env()
             timeout = int(os.getenv("SANDBOX_TIMEOUT_S", "300"))
-            image_name = "python:3.11-slim"
-            try:
-                client.images.get(image_name)
-            except docker.errors.ImageNotFound:
-                client.images.pull("python", tag="3.11-slim")
+            image_name = _sandbox_image(client)
 
             volume_name = os.getenv("SHARED_TEMP_VOLUME_NAME", "olpai_shared_temp")
             container = _create_sandbox_container(
@@ -105,28 +122,18 @@ class PhaseRunner:
                     "final inference requires Docker sandbox. For trusted GPU containers, "
                     "enable trusted native final inference during setup."
                 )
-            try:
-                subprocess.run(
-                    [
-                        "python",
-                        inference_entrypoint,
-                        "--submission-dir", submission_dir,
-                        "--assets-dir", assets_dir,
-                        "--output-dir", generated_dir,
-                        "--context", context_path,
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
-                )
-            except subprocess.CalledProcessError as exc:
-                stderr = (exc.stderr or "").strip()
-                stdout = (exc.stdout or "").strip()
-                detail = stderr or stdout or "(no output)"
-                raise RuntimeError(
-                    f"infer.py failed (exit {exc.returncode}):\n{detail}"
-                ) from None
+            self._run_command(
+                [
+                    "python",
+                    inference_entrypoint,
+                    "--submission-dir", submission_dir,
+                    "--assets-dir", assets_dir,
+                    "--output-dir", generated_dir,
+                    "--context", context_path,
+                ],
+                timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
+                label="inference",
+            )
         return self._run_judge(
             judge=judge,
             submission_dir=generated_dir,
@@ -235,7 +242,7 @@ class PhaseRunner:
                 context_path=context_path,
             )
 
-        p = subprocess.run(
+        p = self._run_command(
             [
                 "python", judge,
                 "--submission-dir", submission_dir,
@@ -243,15 +250,51 @@ class PhaseRunner:
                 "--output-dir", output_dir,
                 "--context", context_path,
             ],
-            capture_output=True,
-            text=True,
-            check=True,
             timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
+            label="judge",
         )
-        out = json.loads(p.stdout.strip())
+        try:
+            out = json.loads(p.stdout.strip())
+        except json.JSONDecodeError as exc:
+            stdout = (p.stdout or "").strip()
+            stderr = (p.stderr or "").strip()
+            detail = stdout or stderr or "no output"
+            raise RuntimeError(f"judge returned invalid JSON: {detail}") from exc
         if out.get("status") != "success":
             raise RuntimeError(out.get("message") or "judge failed")
         return out
+
+    def _run_command(
+        self,
+        command: list[str],
+        *,
+        timeout: int,
+        label: str,
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            detail = stderr or stdout
+            suffix = f": {detail}" if detail else ""
+            raise RuntimeError(
+                f"{label} command timed out after {timeout}s{suffix}"
+            ) from None
+
+        if process.returncode != 0:
+            stderr = (process.stderr or "").strip()
+            stdout = (process.stdout or "").strip()
+            detail = stderr or stdout or "no output"
+            raise RuntimeError(
+                f"{label} command failed with exit {process.returncode}: {detail}"
+            )
+        return process
 
     def _run_judge_sandboxed(
         self,
@@ -266,12 +309,7 @@ class PhaseRunner:
         import docker
         client = docker.from_env()
         timeout = int(os.getenv("SANDBOX_TIMEOUT_S", "300"))
-        image_name = "python:3.11-slim"
-
-        try:
-            client.images.get(image_name)
-        except docker.errors.ImageNotFound:
-            client.images.pull("python", tag="3.11-slim")
+        image_name = _sandbox_image(client)
 
         # Write result to a temp file shared via volume
         with tempfile.TemporaryDirectory() as host_out:
