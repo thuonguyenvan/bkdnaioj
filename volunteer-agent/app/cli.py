@@ -944,16 +944,6 @@ def start(
                         execution_profile = profiler.stop("done")
                         if result.get("dry_run_profile") is not None:
                             execution_profile["dry_run_profile"] = result.get("dry_run_profile")
-                        client.submit_result(job.submission_id, {
-                            "attempt_id":        job.attempt_id,
-                            "status":            "done",
-                            "raw_score":         result["raw_score"],
-                            "display_score":     result["display_score"],
-                            "payload":           result.get("payload"),
-                            "execution_profile": execution_profile,
-                        })
-                        log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
-                                 score=result["raw_score"])
                     except Exception as exc:
                         execution_profile = profiler.stop("failed")
                         err_msg = str(exc)[:4000]
@@ -967,8 +957,35 @@ def start(
                                                      "error_message": err_msg,
                                                      "execution_profile": execution_profile,
                                                  })
-                        except Exception:
-                            pass
+                        except Exception as submit_exc:
+                            log.error(
+                                "job_failed_result_submit_failed",
+                                worker=worker_idx,
+                                submission_id=job.submission_id,
+                                error=str(submit_exc),
+                            )
+                        finally:
+                            job_stop_event.set()
+                        continue
+
+                    try:
+                        client.submit_result(job.submission_id, {
+                            "attempt_id":        job.attempt_id,
+                            "status":            "done",
+                            "raw_score":         result["raw_score"],
+                            "display_score":     result["display_score"],
+                            "payload":           result.get("payload"),
+                            "execution_profile": execution_profile,
+                        })
+                        log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
+                                 score=result["raw_score"])
+                    except Exception as submit_exc:
+                        log.error(
+                            "job_done_result_submit_failed",
+                            worker=worker_idx,
+                            submission_id=job.submission_id,
+                            error=str(submit_exc),
+                        )
                     finally:
                         job_stop_event.set()
             except Exception as exc:

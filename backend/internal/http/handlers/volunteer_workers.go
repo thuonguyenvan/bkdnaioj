@@ -592,6 +592,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 			DisplayScore: dispScore,
 			Column4:      payloadBytes,
 		}); err != nil {
+			log.Error().Err(err).Str("submission_id", subID.String()).Msg("mark submission done failed")
 			return mw.ErrInternal("mark done failed")
 		}
 		_, _ = h.q.IncrementWorkerCompleted(ctx, &token)
@@ -614,6 +615,7 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 			ID:           subID,
 			ErrorMessage: &errMsg,
 		}); err != nil {
+			log.Error().Err(err).Str("submission_id", subID.String()).Msg("mark submission failed failed")
 			return mw.ErrInternal("mark failed failed")
 		}
 		_, _ = h.q.IncrementWorkerFailed(ctx, &token)
