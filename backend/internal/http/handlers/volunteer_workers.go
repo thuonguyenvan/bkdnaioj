@@ -22,6 +22,7 @@ import (
 	"github.com/mank1/olpai-backend/internal/scheduler"
 	"github.com/mank1/olpai-backend/internal/storage"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -829,7 +830,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 	predicted32 := float32(predictedRuntime)
 	actual32 := float32(actualRuntime)
 	peakRAM, peakVRAM, executionPath, profilePayload := parseExecutionProfile(executionProfile)
-	_ = h.q.InsertJobExecutionLog(ctx, db.InsertJobExecutionLogParams{
+	if err := h.q.InsertJobExecutionLog(ctx, db.InsertJobExecutionLogParams{
 		SubmissionID:            sub.ID,
 		WorkerID:                worker.ID,
 		PhaseKey:                phaseKey,
@@ -840,7 +841,9 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 		PeakVramBytes:           peakVRAM,
 		ExecutionPath:           executionPath,
 		ProfilePayload:          profilePayload,
-	})
+	}); err != nil {
+		log.Warn().Err(err).Str("submission_id", sub.ID.String()).Msg("insert job execution log failed")
+	}
 
 	// Emit Prometheus metrics
 	metrics.JobActualRuntime.
