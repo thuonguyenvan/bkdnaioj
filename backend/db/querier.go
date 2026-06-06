@@ -53,6 +53,8 @@ type Querier interface {
 	DeleteContestEntry(ctx context.Context, id uuid.UUID) error
 	DeletePhase(ctx context.Context, id uuid.UUID) error
 	DeletePhaseDef(ctx context.Context, id uuid.UUID) error
+	// Remove users from global ranking who no longer have any leaderboard entries.
+	DeleteStaleGlobalRankings(ctx context.Context, phaseKey ContestPhaseKey) error
 	// Batch delete stale claims in one query; RETURNING for re-enqueue loop.
 	DeleteStaleWorkerClaims(ctx context.Context, arg DeleteStaleWorkerClaimsParams) ([]DeleteStaleWorkerClaimsRow, error)
 	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
@@ -145,6 +147,7 @@ type Querier interface {
 	// Uses leaderboard scores (already scaled). Each user appears once per task
 	// with their BEST score across all entries (individual + team), preventing
 	// score accumulation for users who joined multiple entries.
+	// Uses UPSERT to avoid DELETE-CTE optimization bug in PostgreSQL 12+.
 	// Pick best score per (user, task); if same score take earliest (lowest penalty)
 	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error
 	// penalty_minutes = minutes from contest start to the FIRST submission achieving the best score (ICPC-style).

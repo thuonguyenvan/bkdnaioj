@@ -957,6 +957,10 @@ func (m *MockQuerier) GetAllLeaderboardEntriesForPhase(ctx context.Context, phas
 	return nil, nil
 }
 
+func (m *MockQuerier) DeleteStaleGlobalRankings(ctx context.Context, phaseKey ContestPhaseKey) error {
+	return nil
+}
+
 func (m *MockQuerier) GetBestSubmissionForEntry(ctx context.Context, arg GetBestSubmissionForEntryParams) (GetBestSubmissionForEntryRow, error) {
 	return GetBestSubmissionForEntryRow{}, nil
 }

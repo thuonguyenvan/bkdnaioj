@@ -91,10 +91,8 @@ LIMIT $2 OFFSET $3;
 -- Uses leaderboard scores (already scaled). Each user appears once per task
 -- with their BEST score across all entries (individual + team), preventing
 -- score accumulation for users who joined multiple entries.
-WITH cleared AS (
-  DELETE FROM global_phase_rankings WHERE global_phase_rankings.phase_key::text = sqlc.arg('phase_key')
-),
-all_scores AS (
+-- Uses UPSERT to avoid DELETE-CTE optimization bug in PostgreSQL 12+.
+WITH all_scores AS (
   SELECT
     cpd.key          AS phase_key,
     u.id             AS user_id,
@@ -147,7 +145,26 @@ ranked AS (
 )
 INSERT INTO global_phase_rankings (phase_key, user_id, rank, display_name, user_email, total_score, task_count, details)
 SELECT phase_key, user_id, rank, display_name, user_email, total_score, task_count, details
-FROM ranked;
+FROM ranked
+ON CONFLICT (phase_key, user_id) DO UPDATE SET
+  rank         = EXCLUDED.rank,
+  display_name = EXCLUDED.display_name,
+  total_score  = EXCLUDED.total_score,
+  task_count   = EXCLUDED.task_count,
+  details      = EXCLUDED.details;
+
+-- name: DeleteStaleGlobalRankings :exec
+-- Remove users from global ranking who no longer have any leaderboard entries.
+DELETE FROM global_phase_rankings gpr
+WHERE gpr.phase_key::text = sqlc.arg('phase_key')
+  AND NOT EXISTS (
+    SELECT 1 FROM task_phase_leaderboard_entries lb
+    JOIN phases p ON p.id = lb.phase_id
+    JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
+    JOIN contest_entry_members cem ON cem.contest_entry_id = lb.contest_entry_id
+    WHERE cpd.key::text = sqlc.arg('phase_key')
+      AND cem.user_id = gpr.user_id
+  );
 
 -- name: UpsertContestPhaseLeaderboard :one
 INSERT INTO contest_phase_leaderboard_entries (

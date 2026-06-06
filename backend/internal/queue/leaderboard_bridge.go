@@ -531,6 +531,10 @@ func (b *LeaderboardBridge) recomputeGlobalPhase(ctx context.Context, sub db.Sub
 	if err != nil {
 		return fmt.Errorf("get phase def: %w", err)
 	}
+	// Delete stale entries first (users no longer in any leaderboard for this phase)
+	if err := q.DeleteStaleGlobalRankings(ctx, def.Key); err != nil {
+		b.log.Warn().Err(err).Msg("delete stale global rankings")
+	}
 	if err := q.RecomputeGlobalPhaseRanking(ctx, def.Key); err != nil {
 		return fmt.Errorf("recompute global phase ranking: %w", err)
 	}
