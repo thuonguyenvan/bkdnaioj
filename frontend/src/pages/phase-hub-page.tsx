@@ -786,7 +786,6 @@ export const PhaseHubPage: React.FC = () => {
                       <th>Status</th>
                       <th style={{ textAlign: 'right' }}>Raw Score</th>
                       <th style={{ textAlign: 'right' }}>Size</th>
-                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -810,15 +809,6 @@ export const PhaseHubPage: React.FC = () => {
                           </td>
                           <td className="font-mono" style={{ fontSize: '0.82rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
                             {formatFileSize(sub.total_size_bytes)}
-                          </td>
-                          <td>
-                            {sub.status === 'failed' && sub.error_message ? (
-                              <span className="badge badge-danger" title={sub.error_message}>
-                                Error
-                              </span>
-                            ) : (
-                              <span className="text-muted font-mono" style={{ fontSize: '0.8rem' }}>-</span>
-                            )}
                           </td>
                         </tr>
                       );

@@ -54,7 +54,7 @@ func (b *LeaderboardBridge) WithHandlers(
 	b.getSubmissionFn = getSubmission
 	b.recomputeTaskPhaseFn = recomputeTaskPhase
 	b.recomputeContestFn = recomputeContest
-	b.recomputeGlobalFn = func(ctx context.Context, sub db.Submission) error { return nil }
+	b.recomputeGlobalFn = nil // uses recomputeGlobalPhase by default
 	return b
 }
 
