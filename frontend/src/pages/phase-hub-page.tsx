@@ -5,7 +5,7 @@ import axios from 'axios';
 import { api, API_BASE_URL, type Contest, type PhaseDef, type Task, type Phase, type ContestEntry, type Submission, type LeaderboardRow, type Team } from '../lib/api-client';
 import { useAuth } from '../contexts/auth-context';
 import {
-  FileText, UploadCloud, Play, RefreshCw, ArrowLeft, Star, ShieldAlert, Lock, Unlock
+  FileText, UploadCloud, Play, RefreshCw, ArrowLeft, ShieldAlert, Lock, Unlock
 } from 'lucide-react';
 
 const formatParticipantName = (row: { display_name: string; entry_type: string; usernames?: string[] }) => {
@@ -305,15 +305,6 @@ export const PhaseHubPage: React.FC = () => {
     }
   });
 
-  const markFinalMutation = useMutation({
-    mutationFn: (subId: string) => api.markFinalSubmission(subId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['submissions', userEntry?.id] });
-      refetchLeaderboard();
-      refetchOverallLeaderboard();
-    }
-  });
-
   const recomputeLeaderboardMutation = useMutation({
     mutationFn: (phaseId: string) => api.recomputeTaskPhaseLeaderboard(phaseId),
     onSuccess: () => {
@@ -403,7 +394,12 @@ export const PhaseHubPage: React.FC = () => {
   const sortedSubmissions = [...submissions].sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime());
   const doneSubmissions = submissions.filter(sub => sub.status === 'done');
   const runningSubmissions = submissions.filter(sub => ['uploaded', 'validating', 'queued', 'running'].includes(sub.status));
-  const finalSubmission = submissions.find(sub => sub.is_final);
+  const bestSubmission = doneSubmissions.reduce<typeof submissions[0] | null>((best, s) => {
+    if (!best) return s;
+    const bScore = Number(best.raw_score ?? -Infinity);
+    const sScore = Number(s.raw_score ?? -Infinity);
+    return sScore > bScore ? s : best;
+  }, null);
   const formatRawScore = (score: number | string | null) => {
     if (score === null || score === '') return '-';
     const numericScore = typeof score === 'number' ? score : Number(score);
@@ -758,8 +754,8 @@ export const PhaseHubPage: React.FC = () => {
                 <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800 }}>{runningSubmissions.length}</div>
               </div>
               <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', padding: '0.75rem', backgroundColor: 'hsl(var(--background))' }}>
-                <div className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>Final Raw Score</div>
-                <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800 }}>{finalSubmission ? formatRawScore(finalSubmission.raw_score) : '-'}</div>
+                <div className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>Best Score</div>
+                <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800 }}>{bestSubmission ? formatRawScore(bestSubmission.raw_score) : '-'}</div>
               </div>
             </div>
           </div>
@@ -790,7 +786,6 @@ export const PhaseHubPage: React.FC = () => {
                       <th>Status</th>
                       <th style={{ textAlign: 'right' }}>Raw Score</th>
                       <th style={{ textAlign: 'right' }}>Size</th>
-                      <th>Final</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -798,7 +793,7 @@ export const PhaseHubPage: React.FC = () => {
                     {sortedSubmissions.map(sub => {
                       const task = tasks.find(t => t.id === sub.task_id);
                       return (
-                        <tr key={sub.id} style={{ backgroundColor: sub.is_final ? 'hsl(var(--success-bg))' : undefined }}>
+                        <tr key={sub.id} style={{ backgroundColor: bestSubmission?.id === sub.id ? 'hsl(var(--success-bg))' : undefined }}>
                           <td className="font-mono" style={{ fontSize: '0.8rem', color: 'hsl(var(--text-muted))', whiteSpace: 'nowrap' }}>
                             {new Date(sub.submitted_at).toLocaleString()}
                           </td>
@@ -817,26 +812,7 @@ export const PhaseHubPage: React.FC = () => {
                             {formatFileSize(sub.total_size_bytes)}
                           </td>
                           <td>
-                            {sub.is_final ? (
-                              <span className="badge badge-success flex items-center gap-1" style={{ width: 'fit-content' }}>
-                                <Star size={12} fill="currentColor" /> Final
-                              </span>
-                            ) : (
-                              <span className="badge badge-secondary" style={{ color: 'hsl(var(--text-muted))' }}>Alt</span>
-                            )}
-                          </td>
-                          <td>
-                            {!sub.is_final && sub.status === 'done' ? (
-                              <button
-                                onClick={() => markFinalMutation.mutate(sub.id)}
-                                className="btn btn-secondary flex items-center gap-1"
-                                style={{ padding: '0.25rem 0.45rem', fontSize: '0.72rem' }}
-                                disabled={markFinalMutation.isPending}
-                                title="Set as final submission"
-                              >
-                                <Star size={12} /> Final
-                              </button>
-                            ) : sub.status === 'failed' && sub.error_message ? (
+                            {sub.status === 'failed' && sub.error_message ? (
                               <span className="badge badge-danger" title={sub.error_message}>
                                 Error
                               </span>
