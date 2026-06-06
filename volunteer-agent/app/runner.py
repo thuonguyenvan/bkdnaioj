@@ -105,22 +105,28 @@ class PhaseRunner:
                     "final inference requires Docker sandbox. For trusted GPU containers, "
                     "enable trusted native final inference during setup."
                 )
-            subprocess.run(
-                [
-                    "python",
-                    inference_entrypoint,
-                    "--submission-dir",
-                    submission_dir,
-                    "--assets-dir",
-                    assets_dir,
-                    "--output-dir",
-                    generated_dir,
-                    "--context",
-                    context_path,
-                ],
-                check=True,
-                timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
-            )
+            try:
+                subprocess.run(
+                    [
+                        "python",
+                        inference_entrypoint,
+                        "--submission-dir", submission_dir,
+                        "--assets-dir", assets_dir,
+                        "--output-dir", generated_dir,
+                        "--context", context_path,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
+                )
+            except subprocess.CalledProcessError as exc:
+                stderr = (exc.stderr or "").strip()
+                stdout = (exc.stdout or "").strip()
+                detail = stderr or stdout or "(no output)"
+                raise RuntimeError(
+                    f"infer.py failed (exit {exc.returncode}):\n{detail}"
+                ) from None
         return self._run_judge(
             judge=judge,
             submission_dir=generated_dir,
