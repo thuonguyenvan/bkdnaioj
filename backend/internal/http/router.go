@@ -100,10 +100,15 @@ func registerTeams(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) 
 	h := handlers.NewTeamHandler(q)
 	teams := api.Group("/teams", mw.JWTAuth(jwtMgr))
 	teams.POST("", h.Create)
+	teams.GET("/invitations", h.ListInvitations)
 	teams.GET("/:id", h.Get)
+	teams.PATCH("/:id", h.Update)
+	teams.DELETE("/:id", h.Delete)
 	teams.GET("/:id/members", h.ListMembers)
 	teams.POST("/:id/members", h.AddMember)
 	teams.DELETE("/:id/members/:user_id", h.RemoveMember)
+	teams.POST("/:id/accept", h.AcceptInvitation)
+	teams.POST("/:id/decline", h.DeclineInvitation)
 }
 
 func registerContests(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {

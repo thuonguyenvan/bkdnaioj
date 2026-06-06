@@ -34,6 +34,15 @@ type TeamMemberResponse struct {
 	UserID   uuid.UUID `json:"user_id"`
 	Email    string    `json:"email"`
 	FullName string    `json:"full_name"`
+	Username *string   `json:"username"`
 	Role     string    `json:"role"`
+	Status   string    `json:"status"`
 	JoinedAt time.Time `json:"joined_at"`
+}
+
+type TeamInvitationResponse struct {
+	TeamID   uuid.UUID `json:"team_id"`
+	TeamName string    `json:"team_name"`
+	TeamSlug string    `json:"team_slug"`
+	Role     string    `json:"role"`
 }

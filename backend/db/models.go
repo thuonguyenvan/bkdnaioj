@@ -1384,6 +1384,7 @@ type TeamMember struct {
 	UserID   uuid.UUID          `json:"user_id"`
 	Role     TeamRole           `json:"role"`
 	JoinedAt pgtype.Timestamptz `json:"joined_at"`
+	Status   string             `json:"status"`
 }
 
 type Ticket struct {

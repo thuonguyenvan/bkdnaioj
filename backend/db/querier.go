@@ -12,6 +12,7 @@ import (
 )
 
 type Querier interface {
+	AcceptTeamInvitation(ctx context.Context, arg AcceptTeamInvitationParams) error
 	AddEntryMember(ctx context.Context, arg AddEntryMemberParams) error
 	AddTeamMember(ctx context.Context, arg AddTeamMemberParams) error
 	AnswerClarification(ctx context.Context, arg AnswerClarificationParams) (Clarification, error)
@@ -46,6 +47,7 @@ type Querier interface {
 	// Creates a claim with lease + predicted finish time for scheduling.
 	CreateWorkerClaimWithFinish(ctx context.Context, arg CreateWorkerClaimWithFinishParams) (VolunteerWorkerClaim, error)
 	DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	DeclineTeamInvitation(ctx context.Context, arg DeclineTeamInvitationParams) error
 	DeleteAnnouncement(ctx context.Context, id uuid.UUID) error
 	DeleteContest(ctx context.Context, id uuid.UUID) error
 	DeleteContestEntry(ctx context.Context, id uuid.UUID) error
@@ -55,6 +57,7 @@ type Querier interface {
 	DeleteStaleWorkerClaims(ctx context.Context, arg DeleteStaleWorkerClaimsParams) ([]DeleteStaleWorkerClaimsRow, error)
 	DeleteSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) error
 	DeleteTask(ctx context.Context, id uuid.UUID) error
+	DeleteTeam(ctx context.Context, arg DeleteTeamParams) error
 	DeleteVolunteerWorker(ctx context.Context, id uuid.UUID) error
 	DeleteWorkerClaim(ctx context.Context, arg DeleteWorkerClaimParams) error
 	DisqualifyContestEntry(ctx context.Context, id uuid.UUID) (ContestEntry, error)
@@ -104,6 +107,7 @@ type Querier interface {
 	IncrementWorkerFailed(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailedByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
 	InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error
+	InviteTeamMember(ctx context.Context, arg InviteTeamMemberParams) error
 	ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
 	ListContestEntries(ctx context.Context, arg ListContestEntriesParams) ([]ContestEntry, error)
@@ -111,6 +115,7 @@ type Querier interface {
 	ListEntryMembers(ctx context.Context, contestEntryID uuid.UUID) ([]ListEntryMembersRow, error)
 	ListEvaluationSetAssets(ctx context.Context, evaluationSetID uuid.UUID) ([]EvaluationSetAsset, error)
 	ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
+	ListPendingInvitations(ctx context.Context, userID uuid.UUID) ([]ListPendingInvitationsRow, error)
 	ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
 	ListRecentJobExecutionLogs(ctx context.Context, limit int32) ([]ListRecentJobExecutionLogsRow, error)
@@ -157,6 +162,7 @@ type Querier interface {
 	// Updates one entry after incremental recompute (O(log n) path).
 	UpdateSingleLeaderboardEntry(ctx context.Context, arg UpdateSingleLeaderboardEntryParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error)
+	UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error)
 	UpdateTicket(ctx context.Context, arg UpdateTicketParams) (Ticket, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)

@@ -263,8 +263,17 @@ export interface TeamMember {
   user_id: string;
   email: string;
   full_name: string;
+  username: string | null;
   role: 'manager' | 'member';
+  status: 'pending' | 'accepted';
   joined_at: string;
+}
+
+export interface TeamInvitation {
+  team_id: string;
+  team_name: string;
+  team_slug: string;
+  role: 'manager' | 'member';
 }
 
 export interface EntryMember {
@@ -653,13 +662,29 @@ export const api = {
     const res = await apiClient.get(`/teams/${id}/members`);
     return res.data as TeamMember[];
   },
+  async updateTeam(id: string, payload: { name: string }) {
+    const res = await apiClient.patch(`/teams/${id}`, payload);
+    return res.data as Team;
+  },
+  async deleteTeam(id: string) {
+    await apiClient.delete(`/teams/${id}`);
+  },
   async addTeamMember(id: string, payload: { username: string; role: 'manager' | 'member' }) {
     const res = await apiClient.post(`/teams/${id}/members`, payload);
     return res.data;
   },
   async removeTeamMember(teamId: string, userId: string) {
-    const res = await apiClient.delete(`/teams/${teamId}/members/${userId}`);
-    return res.data;
+    await apiClient.delete(`/teams/${teamId}/members/${userId}`);
+  },
+  async listInvitations() {
+    const res = await apiClient.get('/teams/invitations');
+    return res.data as TeamInvitation[];
+  },
+  async acceptInvitation(teamId: string) {
+    await apiClient.post(`/teams/${teamId}/accept`);
+  },
+  async declineInvitation(teamId: string) {
+    await apiClient.post(`/teams/${teamId}/decline`);
   },
 
   // Entry Lineup Members API

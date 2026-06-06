@@ -12,9 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acceptTeamInvitation = `-- name: AcceptTeamInvitation :exec
+UPDATE team_members SET status = 'accepted' WHERE team_id = $1 AND user_id = $2 AND status = 'pending'
+`
+
+type AcceptTeamInvitationParams struct {
+	TeamID uuid.UUID `json:"team_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) AcceptTeamInvitation(ctx context.Context, arg AcceptTeamInvitationParams) error {
+	_, err := q.db.Exec(ctx, acceptTeamInvitation, arg.TeamID, arg.UserID)
+	return err
+}
+
 const addTeamMember = `-- name: AddTeamMember :exec
-INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
-ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role
+INSERT INTO team_members (team_id, user_id, role, status) VALUES ($1, $2, $3, 'accepted')
+ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'accepted'
 `
 
 type AddTeamMemberParams struct {
@@ -50,6 +64,34 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, e
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const declineTeamInvitation = `-- name: DeclineTeamInvitation :exec
+DELETE FROM team_members WHERE team_id = $1 AND user_id = $2 AND status = 'pending'
+`
+
+type DeclineTeamInvitationParams struct {
+	TeamID uuid.UUID `json:"team_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeclineTeamInvitation(ctx context.Context, arg DeclineTeamInvitationParams) error {
+	_, err := q.db.Exec(ctx, declineTeamInvitation, arg.TeamID, arg.UserID)
+	return err
+}
+
+const deleteTeam = `-- name: DeleteTeam :exec
+DELETE FROM teams WHERE id = $1 AND owner_id = $2
+`
+
+type DeleteTeamParams struct {
+	ID      uuid.UUID `json:"id"`
+	OwnerID uuid.UUID `json:"owner_id"`
+}
+
+func (q *Queries) DeleteTeam(ctx context.Context, arg DeleteTeamParams) error {
+	_, err := q.db.Exec(ctx, deleteTeam, arg.ID, arg.OwnerID)
+	return err
 }
 
 const getTeamByID = `-- name: GetTeamByID :one
@@ -88,8 +130,71 @@ func (q *Queries) GetTeamBySlug(ctx context.Context, slug string) (Team, error) 
 	return i, err
 }
 
+const inviteTeamMember = `-- name: InviteTeamMember :exec
+INSERT INTO team_members (team_id, user_id, role, status) VALUES ($1, $2, $3, 'pending')
+ON CONFLICT (team_id, user_id) DO NOTHING
+`
+
+type InviteTeamMemberParams struct {
+	TeamID uuid.UUID `json:"team_id"`
+	UserID uuid.UUID `json:"user_id"`
+	Role   TeamRole  `json:"role"`
+}
+
+func (q *Queries) InviteTeamMember(ctx context.Context, arg InviteTeamMemberParams) error {
+	_, err := q.db.Exec(ctx, inviteTeamMember, arg.TeamID, arg.UserID, arg.Role)
+	return err
+}
+
+const listPendingInvitations = `-- name: ListPendingInvitations :many
+SELECT t.id, t.slug, t.name, t.owner_id, t.created_at, t.updated_at, tm.role
+FROM teams t
+JOIN team_members tm ON tm.team_id = t.id
+WHERE tm.user_id = $1 AND tm.status = 'pending'
+ORDER BY tm.joined_at DESC
+`
+
+type ListPendingInvitationsRow struct {
+	ID        uuid.UUID          `json:"id"`
+	Slug      string             `json:"slug"`
+	Name      string             `json:"name"`
+	OwnerID   uuid.UUID          `json:"owner_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	Role      TeamRole           `json:"role"`
+}
+
+func (q *Queries) ListPendingInvitations(ctx context.Context, userID uuid.UUID) ([]ListPendingInvitationsRow, error) {
+	rows, err := q.db.Query(ctx, listPendingInvitations, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingInvitationsRow
+	for rows.Next() {
+		var i ListPendingInvitationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTeamMembers = `-- name: ListTeamMembers :many
-SELECT tm.team_id, tm.user_id, tm.role, tm.joined_at, u.email, u.full_name
+SELECT tm.team_id, tm.user_id, tm.role, tm.status, tm.joined_at,
+       u.email, u.full_name, u.username
 FROM team_members tm
 JOIN users u ON u.id = tm.user_id
 WHERE tm.team_id = $1
@@ -100,9 +205,11 @@ type ListTeamMembersRow struct {
 	TeamID   uuid.UUID          `json:"team_id"`
 	UserID   uuid.UUID          `json:"user_id"`
 	Role     TeamRole           `json:"role"`
+	Status   string             `json:"status"`
 	JoinedAt pgtype.Timestamptz `json:"joined_at"`
 	Email    string             `json:"email"`
 	FullName string             `json:"full_name"`
+	Username *string            `json:"username"`
 }
 
 func (q *Queries) ListTeamMembers(ctx context.Context, teamID uuid.UUID) ([]ListTeamMembersRow, error) {
@@ -118,9 +225,11 @@ func (q *Queries) ListTeamMembers(ctx context.Context, teamID uuid.UUID) ([]List
 			&i.TeamID,
 			&i.UserID,
 			&i.Role,
+			&i.Status,
 			&i.JoinedAt,
 			&i.Email,
 			&i.FullName,
+			&i.Username,
 		); err != nil {
 			return nil, err
 		}
@@ -136,7 +245,7 @@ const listTeamsByUser = `-- name: ListTeamsByUser :many
 SELECT t.id, t.slug, t.name, t.owner_id, t.created_at, t.updated_at
 FROM teams t
 JOIN team_members tm ON tm.team_id = t.id
-WHERE tm.user_id = $1
+WHERE tm.user_id = $1 AND tm.status = 'accepted'
 ORDER BY t.created_at DESC
 `
 
@@ -179,4 +288,28 @@ type RemoveTeamMemberParams struct {
 func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error {
 	_, err := q.db.Exec(ctx, removeTeamMember, arg.TeamID, arg.UserID)
 	return err
+}
+
+const updateTeam = `-- name: UpdateTeam :one
+UPDATE teams SET name = $2, updated_at = now() WHERE id = $1 AND owner_id = $3 RETURNING id, slug, name, owner_id, created_at, updated_at
+`
+
+type UpdateTeamParams struct {
+	ID      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	OwnerID uuid.UUID `json:"owner_id"`
+}
+
+func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error) {
+	row := q.db.QueryRow(ctx, updateTeam, arg.ID, arg.Name, arg.OwnerID)
+	var i Team
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

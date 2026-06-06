@@ -138,6 +138,23 @@ func (m *MockQuerier) AddEntryMember(ctx context.Context, arg AddEntryMemberPara
 	return nil
 }
 
+func (m *MockQuerier) AcceptTeamInvitation(ctx context.Context, arg AcceptTeamInvitationParams) error {
+	return nil
+}
+func (m *MockQuerier) DeclineTeamInvitation(ctx context.Context, arg DeclineTeamInvitationParams) error {
+	return nil
+}
+func (m *MockQuerier) DeleteTeam(ctx context.Context, arg DeleteTeamParams) error { return nil }
+func (m *MockQuerier) InviteTeamMember(ctx context.Context, arg InviteTeamMemberParams) error {
+	return nil
+}
+func (m *MockQuerier) ListPendingInvitations(ctx context.Context, userID uuid.UUID) ([]ListPendingInvitationsRow, error) {
+	return nil, nil
+}
+func (m *MockQuerier) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error) {
+	return Team{}, nil
+}
+
 func (m *MockQuerier) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) error {
 	if m.AddTeamMemberFunc != nil {
 		return m.AddTeamMemberFunc(ctx, arg)
