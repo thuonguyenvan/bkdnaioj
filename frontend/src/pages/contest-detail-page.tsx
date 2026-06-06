@@ -33,7 +33,7 @@ export const ContestDetailPage: React.FC = () => {
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [activeContestTab, setActiveContestTab] = useState<'overview' | 'standings' | 'clarifications' | 'tickets'>('overview');
   const [selectedContestStandingPhaseId, setSelectedContestStandingPhaseId] = useState('');
-  const [selectedContestStandingMode, setSelectedContestStandingMode] = useState<'both' | 'official' | 'virtual' | 'practice'>('both');
+  const [selectedContestStandingMode, setSelectedContestStandingMode] = useState<'both' | 'official' | 'practice'>('both');
   const [qaQuestion, setQaQuestion] = useState('');
   const [qaTaskId, setQaTaskId] = useState('');
   const [qaError, setQaError] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export const ContestDetailPage: React.FC = () => {
   useEffect(() => {
     if (!contest) return;
     const ended = new Date(contest.end_time).getTime() < Date.now();
-    const timeAllowed = ended ? (['virtual', 'practice'] as const) : (['official'] as const);
+    const timeAllowed = ended ? (['practice'] as const) : (['official'] as const);
     const regModes = userEntries.map(e => e.entry_mode);
     const availModes = timeAllowed.filter(m => !regModes.includes(m));
     if (availModes.length > 0 && !availModes.includes(selectedEntryMode)) {
@@ -160,7 +160,7 @@ export const ContestDetailPage: React.FC = () => {
 
   // Registration UI Form State
   const [selectedRegType, setSelectedRegType] = useState<'individual' | 'team'>('individual');
-  const [selectedEntryMode, setSelectedEntryMode] = useState<'official' | 'virtual' | 'practice'>('official');
+  const [selectedEntryMode, setSelectedEntryMode] = useState<'official' | 'practice'>('official');
   const [showRegFormForce, setShowRegFormForce] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [, setCustomDisplayName] = useState('');
@@ -189,7 +189,7 @@ export const ContestDetailPage: React.FC = () => {
   const registerMutation = useMutation({
     mutationFn: (payload: {
       entry_type: 'individual' | 'team';
-      entry_mode: 'official' | 'virtual' | 'practice';
+      entry_mode: 'official' | 'practice';
       user_id?: string | null;
       team_id?: string | null;
       display_name: string;
@@ -275,15 +275,6 @@ export const ContestDetailPage: React.FC = () => {
 
     let startAt: string | undefined;
     let endAt: string | undefined;
-
-    if (selectedEntryMode === 'virtual') {
-      const start = new Date(contest.start_time).getTime();
-      const end = new Date(contest.end_time).getTime();
-      const duration = end - start;
-      const now = new Date();
-      startAt = now.toISOString();
-      endAt = new Date(now.getTime() + duration).toISOString();
-    }
 
     if (selectedRegType === 'individual') {
       registerMutation.mutate({
@@ -479,9 +470,9 @@ export const ContestDetailPage: React.FC = () => {
 
   const renderRegistrationForm = () => {
     const contestEnded = new Date(contest.end_time).getTime() < Date.now();
-    // Official mode only while the contest is upcoming/running; virtual & practice only after it ends.
+    // Official mode only while the contest is upcoming/running; practice only after it ends.
     const timeAllowedModes = contestEnded
-      ? (['virtual', 'practice'] as const)
+      ? (['practice'] as const)
       : (['official'] as const);
     const registeredModes = userEntries.map(e => e.entry_mode);
     const availableModes = timeAllowedModes.filter(mode => !registeredModes.includes(mode));
@@ -547,7 +538,7 @@ export const ContestDetailPage: React.FC = () => {
           >
             {availableModes.map(m => (
               <option key={m} value={m}>
-                {m === 'official' ? 'Official Contest Entry' : m === 'virtual' ? 'Virtual Replay' : 'Practice Mode'}
+                {m === 'official' ? 'Official Contest Entry' : 'Practice Mode'}
               </option>
             ))}
           </select>
@@ -881,7 +872,7 @@ export const ContestDetailPage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'hsl(var(--text-muted))' }}>Mode:</span>
                     <div className="flex gap-1" style={{ border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', padding: '0.15rem', backgroundColor: '#fff' }}>
-                      {(['both', 'official', 'virtual', 'practice'] as const).map(mode => (
+                      {(['both', 'official', 'practice'] as const).map(mode => (
                         <button
                           key={mode}
                           type="button"

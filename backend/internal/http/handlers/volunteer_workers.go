@@ -269,7 +269,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 
 		demand := scheduler.EstimateJobDemand(
 			sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
-			sub.SubmittedAt.Time, string(sub.EntryMode),
+			sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
 		)
 		plan := scheduler.EstimateRuntime(profile, demand)
 		if !plan.HardConstraintsOK {
@@ -279,7 +279,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 
 		// Apply EMA correction factor (Two-Layer Estimator — Section 7A)
 		corrector := scheduler.NewCorrector(h.q)
-		correctedRuntime, _ := corrector.CorrectedRuntime(ctx, profile, demand, sub.PhaseID.String())
+		correctedRuntime, _ := corrector.CorrectedRuntime(ctx, profile, demand, string(sub.PhaseKey))
 
 		// Global best finish time check (Section 8-9 design doc):
 		// Only assign if requesting worker will finish this job at least as fast
@@ -753,7 +753,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 	}
 	demand := scheduler.EstimateJobDemand(
 		sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
-		sub.SubmittedAt.Time, string(sub.EntryMode),
+		sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
 	)
 	plan := scheduler.EstimateRuntime(profile, demand)
 	predictedRuntime := plan.RuntimeSeconds
@@ -762,7 +762,7 @@ func (h *VolunteerWorkerHandler) logExecutionRuntime(
 	if sub.IsFinal {
 		isFinalStr = "true"
 	}
-	phaseKey := sub.PhaseID.String() // use phase UUID as grouping key
+	phaseKey := string(sub.PhaseKey)
 
 	// Insert into job_execution_logs
 	predicted32 := float32(predictedRuntime)

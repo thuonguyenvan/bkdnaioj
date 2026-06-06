@@ -10,7 +10,7 @@ import (
 
 type CreateEntryRequest struct {
 	EntryType     string      `json:"entry_type" validate:"required,oneof=individual team"`
-	EntryMode     string      `json:"entry_mode" validate:"required,oneof=official virtual practice"`
+	EntryMode     string      `json:"entry_mode" validate:"required,oneof=official practice"`
 	UserID        *uuid.UUID  `json:"user_id,omitempty"`
 	TeamID        *uuid.UUID  `json:"team_id,omitempty"`
 	DisplayName   string      `json:"display_name" validate:"required,min=1,max=255"`

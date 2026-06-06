@@ -94,24 +94,27 @@ func EstimateJobDemand(
 	timeoutSecs int,
 	createdAt time.Time,
 	entryMode string,
+	submissionBytes int64,
 ) *JobDemand {
+	if submissionBytes < 0 {
+		submissionBytes = 0
+	}
 	d := &JobDemand{
 		SubmissionID: submissionID,
 		IsFinal:      isFinal,
 		TimeoutSecs:  timeoutSecs,
 		CreatedAt:    createdAt,
 		EntryMode:    entryMode,
+		NetworkBytes: submissionBytes,
 	}
 	if isFinal {
-		d.UnzipBytes = 50 * 1024 * 1024 // 50 MB compressed artifact
-		d.NetworkBytes = 50 * 1024 * 1024
+		d.UnzipBytes = submissionBytes
 		d.CPUOps = 5_000_000           // fallback if no GPU
 		d.RAMBytes = 512 * 1024 * 1024 // 512 MB
 		// GPU demand for model inference — heuristic, replaced by dry-run profile later
 		d.GPUOps = 50_000_000_000            // 50 GFLOPS FP32 (typical small model)
 		d.VRAMBytes = 4 * 1024 * 1024 * 1024 // 4 GB VRAM heuristic
 	} else {
-		d.NetworkBytes = 5 * 1024 * 1024 // 5 MB prediction file
 		d.CPUOps = 500_000
 		d.RAMBytes = 256 * 1024 * 1024 // 256 MB
 		// Output-only: no GPU needed

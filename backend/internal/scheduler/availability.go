@@ -15,9 +15,9 @@ type WorkerAvailability struct {
 	EarliestAvailableAt time.Time // now if free slot, else predicted_finish_at of last claim
 }
 
-// GlobalBestThreshold: requesting worker's finish time may be at most 10% worse
-// than the global best before we decline to assign. Accounts for estimation error.
-const GlobalBestThreshold = 1.10
+// GlobalBestThreshold: requesting worker's finish time must match the global best.
+// Runtime uncertainty is handled by correction factors, not a fixed tolerance.
+const GlobalBestThreshold = 1.0
 
 // GlobalBestFinishTime returns the minimum estimated finish time for job demand d
 // across all workers (seconds from now). Returns math.MaxFloat64 if no worker can handle d.
@@ -45,7 +45,7 @@ func GlobalBestFinishTime(workers []WorkerAvailability, d *JobDemand, now time.T
 //
 // Returns true (assign) when:
 //   - No other worker can handle the job (fallback).
-//   - Requesting worker's finish_time ≤ global_best × 1.10.
+//   - Requesting worker's finish_time ≤ global_best.
 func IsGloballyBestWorker(
 	requestingProfile *WorkerProfile,
 	requestingAvailableAt time.Time,

@@ -39,7 +39,7 @@ const contractForPhase = (task: Task | undefined, isFinal: boolean) => {
   return isFinal ? schema.final : schema.non_final;
 };
 
-type StandingsEntryMode = 'both' | 'official' | 'virtual' | 'practice';
+type StandingsEntryMode = 'both' | 'official' | 'practice';
 
 const PHASE_LABELS: Record<PhaseDef['key'], string> = {
   public_test: 'Public Test',
@@ -103,7 +103,7 @@ export const PhaseHubPage: React.FC = () => {
   const [standingsMode, setStandingsMode] = useState<'task' | 'overall'>('task');
   const [leaderboardMode, setLeaderboardMode] = useState<StandingsEntryMode>(() => {
     const m = searchParams.get('mode');
-    return (m === 'both' || m === 'official' || m === 'virtual' || m === 'practice') ? m : 'both';
+    return (m === 'both' || m === 'official' || m === 'practice') ? m : 'both';
   });
 
   // File Upload State
@@ -165,18 +165,7 @@ export const PhaseHubPage: React.FC = () => {
     let closeTime = new Date(phase.close_time);
     let modeText = 'Official Timeline';
 
-    if (userEntry?.entry_mode === 'virtual' && userEntry.start_at && contest) {
-      const contestStart = new Date(contest.start_time).getTime();
-      const phaseOpen = new Date(phase.open_time).getTime();
-      const phaseClose = new Date(phase.close_time).getTime();
-      const phaseOpenOffset = phaseOpen - contestStart;
-      const phaseCloseOffset = phaseClose - contestStart;
-
-      const virtualStartAt = new Date(userEntry.start_at).getTime();
-      openTime = new Date(virtualStartAt + phaseOpenOffset);
-      closeTime = new Date(virtualStartAt + phaseCloseOffset);
-      modeText = 'Virtual Timeline';
-    } else if (userEntry?.entry_mode === 'practice') {
+    if (userEntry?.entry_mode === 'practice') {
       modeText = 'Practice Timeline';
     }
 
@@ -449,8 +438,8 @@ export const PhaseHubPage: React.FC = () => {
           padding: '0.75rem 1rem',
           borderRadius: 'var(--radius)',
           marginBottom: '1.5rem',
-          backgroundColor: userEntry.entry_mode === 'official' ? 'hsla(var(--primary), 0.05)' : userEntry.entry_mode === 'virtual' ? 'hsla(var(--warning), 0.05)' : 'hsla(var(--success), 0.05)',
-          border: userEntry.entry_mode === 'official' ? '1px solid hsl(var(--primary))' : userEntry.entry_mode === 'virtual' ? '1px solid hsl(var(--warning))' : '1px solid hsl(var(--success))',
+          backgroundColor: userEntry.entry_mode === 'official' ? 'hsla(var(--primary), 0.05)' : 'hsla(var(--success), 0.05)',
+          border: userEntry.entry_mode === 'official' ? '1px solid hsl(var(--primary))' : '1px solid hsl(var(--success))',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -458,11 +447,6 @@ export const PhaseHubPage: React.FC = () => {
         }}>
           <div>
             You are participating in <strong>{userEntry.entry_mode.toUpperCase()}</strong> mode.
-            {userEntry.entry_mode === 'virtual' && userEntry.start_at && userEntry.end_at && (
-              <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem' }} className="text-muted">
-                (Virtual timer: {new Date(userEntry.start_at).toLocaleString()} to {new Date(userEntry.end_at).toLocaleString()})
-              </span>
-            )}
             {userEntry.entry_mode === 'practice' && (
               <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem' }} className="text-muted">
                 (Practice submissions do not affect official standings rankings)
@@ -914,11 +898,11 @@ export const PhaseHubPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Filter by Entry Mode (Official, Virtual, Practice) */}
+            {/* Filter by Entry Mode */}
             <div className="flex items-center gap-2" style={{ marginLeft: 'auto' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'hsl(var(--text-muted))' }}>Mode:</span>
               <div className="flex gap-1" style={{ border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', padding: '0.15rem', backgroundColor: 'hsl(var(--background))' }}>
-                {(['both', 'official', 'virtual', 'practice'] as const).map(mode => (
+                {(['both', 'official', 'practice'] as const).map(mode => (
                   <button
                     key={mode}
                     onClick={() => setLeaderboardMode(mode)}

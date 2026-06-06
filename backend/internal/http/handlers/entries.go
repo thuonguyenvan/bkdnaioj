@@ -62,9 +62,9 @@ func (h *EntryHandler) Create(c echo.Context) error {
 	// Mode vs timing: official only while upcoming/running; virtual & practice only after the contest ends.
 	contestEnded := contest.EndTime.Valid && contest.EndTime.Time.Before(time.Now())
 	switch req.EntryMode {
-	case "virtual", "practice":
+	case "practice":
 		if !contestEnded {
-			return mw.ErrBadRequest("virtual and practice modes are only available after the contest ends")
+			return mw.ErrBadRequest("practice mode is only available after the contest ends")
 		}
 	case "official":
 		if contestEnded {

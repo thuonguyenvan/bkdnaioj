@@ -158,7 +158,7 @@ export interface ContestEntry {
   id: string;
   contest_id: string;
   entry_type: 'individual' | 'team';
-  entry_mode: 'official' | 'virtual' | 'practice';
+  entry_mode: 'official' | 'practice';
   user_id: string | null;
   team_id: string | null;
   display_name: string;
@@ -232,7 +232,7 @@ export interface LeaderboardRow {
   submission_id?: string;
   entry_id: string;
   entry_type: 'individual' | 'team';
-  entry_mode: 'official' | 'virtual' | 'practice';
+  entry_mode: 'official' | 'practice';
   usernames: string[];
   last_submitted_at: string | null;
   penalty_minutes: number;
@@ -505,7 +505,7 @@ export const api = {
   // Contest Entries
   async createEntry(contestId: string, payload: {
     entry_type: 'individual' | 'team';
-    entry_mode: 'official' | 'virtual' | 'practice';
+    entry_mode: 'official' | 'practice';
     user_id?: string | null;
     team_id?: string | null;
     display_name: string;

@@ -114,11 +114,14 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submissi
 const getSubmissionForWorker = `-- name: GetSubmissionForWorker :one
 SELECT s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id,
        p.judge_key, p.contest_phase_def_id, p.evaluation_set_id, p.is_final,
+       cpd.key AS phase_key,
        t.submission_schema::text AS submission_schema,
        ce.entry_mode,
-       s.submitted_at
+       s.submitted_at,
+       s.total_size_bytes
 FROM submissions s
 JOIN phases         p  ON p.id  = s.phase_id
+JOIN contest_phase_defs cpd ON cpd.id = p.contest_phase_def_id
 JOIN tasks          t  ON t.id  = s.task_id
 JOIN contest_entries ce ON ce.id = s.contest_entry_id
 WHERE s.id = $1
@@ -134,9 +137,11 @@ type GetSubmissionForWorkerRow struct {
 	ContestPhaseDefID uuid.UUID          `json:"contest_phase_def_id"`
 	EvaluationSetID   uuid.UUID          `json:"evaluation_set_id"`
 	IsFinal           bool               `json:"is_final"`
+	PhaseKey          ContestPhaseKey    `json:"phase_key"`
 	SubmissionSchema  string             `json:"submission_schema"`
 	EntryMode         EntryMode          `json:"entry_mode"`
 	SubmittedAt       pgtype.Timestamptz `json:"submitted_at"`
+	TotalSizeBytes    int64              `json:"total_size_bytes"`
 }
 
 func (q *Queries) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (GetSubmissionForWorkerRow, error) {
@@ -152,9 +157,11 @@ func (q *Queries) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (Get
 		&i.ContestPhaseDefID,
 		&i.EvaluationSetID,
 		&i.IsFinal,
+		&i.PhaseKey,
 		&i.SubmissionSchema,
 		&i.EntryMode,
 		&i.SubmittedAt,
+		&i.TotalSizeBytes,
 	)
 	return i, err
 }

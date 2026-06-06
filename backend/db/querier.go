@@ -145,7 +145,7 @@ type Querier interface {
 	// Uses leaderboard scores (already scaled). Each user appears once per task
 	// with their BEST score across all entries (individual + team), preventing
 	// score accumulation for users who joined multiple entries.
-	// Pick best score per (user, task) — handles users in multiple entries
+	// Pick best score per (user, task); if same score take earliest (lowest penalty)
 	RecomputeGlobalPhaseRanking(ctx context.Context, phaseKey ContestPhaseKey) error
 	// penalty_minutes = minutes from contest start to the FIRST submission achieving the best score (ICPC-style).
 	RecomputeTaskPhaseLeaderboard(ctx context.Context, arg RecomputeTaskPhaseLeaderboardParams) error
