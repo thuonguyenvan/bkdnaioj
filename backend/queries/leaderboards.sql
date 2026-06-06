@@ -92,7 +92,7 @@ LIMIT $2 OFFSET $3;
 -- with their BEST score across all entries (individual + team), preventing
 -- score accumulation for users who joined multiple entries.
 WITH cleared AS (
-  DELETE FROM global_phase_rankings WHERE phase_key = sqlc.arg('phase_key')::contest_phase_key
+  DELETE FROM global_phase_rankings WHERE global_phase_rankings.phase_key::text = sqlc.arg('phase_key')
 ),
 all_scores AS (
   SELECT
@@ -112,7 +112,7 @@ all_scores AS (
   JOIN contest_entries    ce  ON ce.id  = lb.contest_entry_id
   JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
   JOIN users              u   ON u.id   = cem.user_id
-  WHERE cpd.key        = sqlc.arg('phase_key')::contest_phase_key
+  WHERE cpd.key::text  = sqlc.arg('phase_key')
     AND ct.visibility  = 'public'
     AND ct.status     <> 'draft'
     AND ce.status     <> 'disqualified'

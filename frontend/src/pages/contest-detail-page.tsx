@@ -789,9 +789,18 @@ export const ContestDetailPage: React.FC = () => {
                       <div style={{ color: '#334155', fontSize: '0.8rem', textTransform: 'capitalize' }}>Type: {entry.entry_type}</div>
                     </div>
                   ))}
-                  <button onClick={() => setShowRegFormForce(true)} className="btn btn-secondary" style={{ width: '100%' }}>
-                    <Plus size={14} /> Register for another mode
-                  </button>
+                  {/* Only show if there's actually an available mode left */}
+                  {(() => {
+                    const contestEnded = new Date(contest.end_time).getTime() < Date.now();
+                    const timeAllowed = contestEnded ? (['practice'] as const) : (['official'] as const);
+                    const registered = userEntries.map(e => e.entry_mode);
+                    const hasMore = timeAllowed.some(m => !registered.includes(m));
+                    return hasMore ? (
+                      <button onClick={() => setShowRegFormForce(true)} className="btn btn-secondary" style={{ width: '100%' }}>
+                        <Plus size={14} /> Register for another mode
+                      </button>
+                    ) : null;
+                  })()}
                 </div>
               ) : renderRegistrationForm()}
             </div>

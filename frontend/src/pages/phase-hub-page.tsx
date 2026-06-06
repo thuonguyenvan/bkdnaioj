@@ -142,7 +142,12 @@ export const PhaseHubPage: React.FC = () => {
   );
 
   const activeMode = searchParams.get('mode') || 'official';
-  const userEntry = userEntries.find(e => e.entry_mode === activeMode) || userEntries[0];
+  const activeEntryId = searchParams.get('entryId');
+  // Multiple entries with same mode: prefer the one selected via URL param, then first match
+  const entriesInMode = userEntries.filter(e => e.entry_mode === activeMode);
+  const userEntry = (activeEntryId ? userEntries.find(e => e.id === activeEntryId) : null)
+    ?? entriesInMode[0]
+    ?? userEntries[0];
 
   // Helper to compute active phase times based on participation mode
   const getPhaseTimes = (phase: Phase | null) => {
@@ -439,26 +444,45 @@ export const PhaseHubPage: React.FC = () => {
               </span>
             )}
           </div>
-          {userEntries.length > 1 && (
-            <div className="flex items-center gap-2">
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>Mode:</label>
-              <select
-                className="form-input"
-                style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', height: 'auto', width: 'fit-content', margin: 0 }}
-                value={activeMode}
-                onChange={(e) => {
-                  setSearchParams({ tab: activeTab, mode: e.target.value });
-                  setLeaderboardMode(e.target.value as any);
-                }}
-              >
-                {userEntries.map(e => (
-                  <option key={e.id} value={e.entry_mode} style={{ textTransform: 'capitalize' }}>
-                    {e.entry_mode} Mode
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+            {/* Mode selector — only if user has entries in multiple modes */}
+            {Array.from(new Set(userEntries.map(e => e.entry_mode))).length > 1 && (
+              <>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>Mode:</label>
+                <select
+                  className="form-input"
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', height: 'auto', width: 'fit-content', margin: 0 }}
+                  value={activeMode}
+                  onChange={(e) => {
+                    setSearchParams({ tab: activeTab, mode: e.target.value });
+                    setLeaderboardMode(e.target.value as any);
+                  }}
+                >
+                  {Array.from(new Set(userEntries.map(e => e.entry_mode))).map(m => (
+                    <option key={m} value={m} style={{ textTransform: 'capitalize' }}>{m} Mode</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {/* Entry selector — only if user has multiple entries in the same mode */}
+            {entriesInMode.length > 1 && (
+              <>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>Submitting as:</label>
+                <select
+                  className="form-input"
+                  style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', height: 'auto', width: 'fit-content', margin: 0 }}
+                  value={userEntry?.id ?? ''}
+                  onChange={(e) => setSearchParams({ tab: activeTab, mode: activeMode, entryId: e.target.value })}
+                >
+                  {entriesInMode.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.entry_type === 'team' ? `Team: ${e.display_name}` : `Individual: ${e.display_name}`}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+          </div>
         </div>
       )}
 

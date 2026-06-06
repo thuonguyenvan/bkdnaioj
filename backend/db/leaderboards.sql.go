@@ -481,7 +481,7 @@ func (q *Queries) RecomputeContestPhaseLeaderboard(ctx context.Context, arg Reco
 
 const recomputeGlobalPhaseRanking = `-- name: RecomputeGlobalPhaseRanking :exec
 WITH cleared AS (
-  DELETE FROM global_phase_rankings WHERE phase_key = $1::contest_phase_key
+  DELETE FROM global_phase_rankings WHERE global_phase_rankings.phase_key::text = $1
 ),
 all_scores AS (
   SELECT
@@ -501,7 +501,7 @@ all_scores AS (
   JOIN contest_entries    ce  ON ce.id  = lb.contest_entry_id
   JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
   JOIN users              u   ON u.id   = cem.user_id
-  WHERE cpd.key        = $1::contest_phase_key
+  WHERE cpd.key::text  = $1
     AND ct.visibility  = 'public'
     AND ct.status     <> 'draft'
     AND ce.status     <> 'disqualified'
