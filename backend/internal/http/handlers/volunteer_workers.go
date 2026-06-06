@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -578,19 +580,26 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		if req.RawScore == nil || req.DisplayScore == nil {
 			return mw.ErrBadRequest("raw_score and display_score required for done status")
 		}
-		rawScore := pgtype.Numeric{}
-		_ = rawScore.Scan(fmt.Sprintf("%f", *req.RawScore))
-		dispScore := pgtype.Numeric{}
-		_ = dispScore.Scan(fmt.Sprintf("%f", *req.DisplayScore))
-		payloadBytes := []byte("null")
+		rawScore, err := numericFromFloat(*req.RawScore)
+		if err != nil {
+			return mw.ErrBadRequest("invalid raw_score")
+		}
+		dispScore, err := numericFromFloat(*req.DisplayScore)
+		if err != nil {
+			return mw.ErrBadRequest("invalid display_score")
+		}
+		payloadText := "null"
 		if len(req.Payload) > 0 {
-			payloadBytes = []byte(req.Payload)
+			if !json.Valid(req.Payload) {
+				return mw.ErrBadRequest("payload must be valid JSON")
+			}
+			payloadText = string(req.Payload)
 		}
 		if _, err := h.q.MarkSubmissionDone(ctx, db.MarkSubmissionDoneParams{
 			ID:           subID,
 			RawScore:     rawScore,
 			DisplayScore: dispScore,
-			Column4:      payloadBytes,
+			Column4:      payloadText,
 		}); err != nil {
 			log.Error().Err(err).Str("submission_id", subID.String()).Msg("mark submission done failed")
 			return mw.ErrInternal("mark done failed")
@@ -632,6 +641,17 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func numericFromFloat(v float64) (pgtype.Numeric, error) {
+	var n pgtype.Numeric
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return n, fmt.Errorf("non-finite numeric")
+	}
+	if err := n.Scan(strconv.FormatFloat(v, 'f', -1, 64)); err != nil {
+		return n, err
+	}
+	return n, nil
 }
 
 // GET /api/v1/admin/workers
