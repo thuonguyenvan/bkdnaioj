@@ -160,8 +160,8 @@ export const ContestsPage: React.FC = () => {
                 <col style={{ width: 160 }} />       {/* Start */}
                 <col style={{ width: 90 }} />        {/* Duration */}
                 <col style={{ width: 120 }} />       {/* Type */}
-                <col style={{ width: 170 }} />       {/* Last col (Ends In / Registration / Ended) */}
-                {(isRunning || isUpcoming) && <col style={{ width: 110 }} />}  {/* Action */}
+                <col style={{ width: 170 }} />       {/* 5th col */}
+                <col style={{ width: 110 }} />       {/* 6th col (Action or Ended or empty) */}
               </colgroup>
               <thead>
                 <tr>
@@ -174,6 +174,7 @@ export const ContestsPage: React.FC = () => {
                   {isRunning && <th>Ends In</th>}
                   {isRunning && <th style={{ textAlign: 'right' }}>Action</th>}
                   {isEnded && <th>Ended</th>}
+                  {isEnded && <th></th>}
                 </tr>
               </thead>
               <tbody>
@@ -218,9 +219,12 @@ export const ContestsPage: React.FC = () => {
                         </>
                       )}
                       {isEnded && (
-                        <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                          {formatDateTime(contest.end_time)}
-                        </td>
+                        <>
+                          <td className="font-mono" style={{ color: '#334155', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                            {formatDateTime(contest.end_time)}
+                          </td>
+                          <td></td>
+                        </>
                       )}
                     </tr>
                   );
