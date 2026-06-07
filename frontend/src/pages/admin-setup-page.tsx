@@ -3,7 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { MarkdownContent } from '../components/markdown-content';
-import { api, API_BASE_URL, type Contest, type Task, type ContestEntry, type PhaseDef, type Phase, type EvaluationSet } from '../lib/api-client';
+import { api, type Contest, type Task, type ContestEntry, type PhaseDef, type Phase, type EvaluationSet } from '../lib/api-client';
+import { resolvePdfUrl } from '../lib/pdf-url';
 import {
   Settings, CheckCircle2, XCircle, Plus, Upload, ArrowLeft, Trash2, AlertTriangle,
   LayoutGrid, FileText, Layers, Users, Volume2, LifeBuoy, UploadCloud,
@@ -82,6 +83,7 @@ export const AdminSetupPage: React.FC = () => {
   const [taskHigherBetter, setTaskHigherBetter] = useState(true);
   const [taskSortOrder, setTaskSortOrder] = useState(1);
   const [taskDatasetUrl, setTaskDatasetUrl] = useState('');
+  const [taskStatementUrl, setTaskStatementUrl] = useState('');
   const [taskError, setTaskError] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<{ [taskId: string]: boolean }>({});
@@ -220,6 +222,7 @@ export const AdminSetupPage: React.FC = () => {
       setTaskHigherBetter(true);
       setTaskSortOrder(tasks.length + 2);
       setTaskDatasetUrl('');
+      setTaskStatementUrl('');
       setTaskError(null);
       
       try {
@@ -310,6 +313,7 @@ export const AdminSetupPage: React.FC = () => {
       setTaskHigherBetter(true);
       setTaskSortOrder(tasks.length + 1);
       setTaskDatasetUrl('');
+      setTaskStatementUrl('');
       setTaskError(null);
       refetchTasks();
     },
@@ -471,6 +475,7 @@ export const AdminSetupPage: React.FC = () => {
       higher_is_better: taskHigherBetter,
       sort_order: Number(taskSortOrder) || 1,
       dataset_url: taskDatasetUrl || null,
+      problem_statement_url: taskStatementUrl.trim() || null,
     };
     if (editingTask) {
       updateTaskMutation.mutate({
@@ -499,6 +504,7 @@ export const AdminSetupPage: React.FC = () => {
     setTaskHigherBetter(t.higher_is_better);
     setTaskSortOrder(t.sort_order || 1);
     setTaskDatasetUrl(t.dataset_url || '');
+    setTaskStatementUrl(t.problem_statement_url || '');
     setTaskError(null);
     // Smooth scroll to the top of the form
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -513,14 +519,8 @@ export const AdminSetupPage: React.FC = () => {
     setTaskHigherBetter(true);
     setTaskSortOrder(tasks.length + 1);
     setTaskDatasetUrl('');
+    setTaskStatementUrl('');
     setTaskError(null);
-  };
-
-  const getPdfUrl = (url: string | null | undefined) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    const apiBase = API_BASE_URL.endsWith('/api/v1') ? API_BASE_URL.slice(0, -7) : API_BASE_URL;
-    return `${apiBase}${url}`;
   };
 
   const handlePdfUploadForTask = async (taskId: string, file: File) => {
@@ -1207,6 +1207,21 @@ export const AdminSetupPage: React.FC = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Problem Statement PDF Link</label>
+                <input
+                  type="url"
+                  className="form-input"
+                  style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                  value={taskStatementUrl}
+                  onChange={(e) => setTaskStatementUrl(e.target.value)}
+                  placeholder="Google Drive share link or direct PDF URL"
+                />
+                <div style={{ marginTop: '0.3rem', fontSize: '0.72rem', color: '#64748b', lineHeight: 1.4 }}>
+                  Google Drive files must be accessible to anyone with the link. Leave blank to upload the PDF after saving the task.
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.8rem', color: '#475569' }}>Training Dataset Link (Drive, Kaggle...)</label>
                 <input
                   type="text"
@@ -1408,7 +1423,7 @@ export const AdminSetupPage: React.FC = () => {
                             </button>
                             {t.problem_statement_url && (
                               <a
-                                href={getPdfUrl(t.problem_statement_url)}
+                                href={resolvePdfUrl(t.problem_statement_url)}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{ fontSize: '0.8rem', textDecoration: 'underline', color: 'hsl(var(--primary))' }}

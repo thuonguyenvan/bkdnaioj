@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { api, API_BASE_URL, type Contest, type PhaseDef, type Task, type Phase, type ContestEntry, type Submission, type LeaderboardRow, type Team } from '../lib/api-client';
+import { api, type Contest, type PhaseDef, type Task, type Phase, type ContestEntry, type Submission, type LeaderboardRow, type Team } from '../lib/api-client';
+import { resolvePdfEmbedUrl, resolvePdfUrl } from '../lib/pdf-url';
 import { useAuth } from '../contexts/auth-context';
 import {
   FileText, UploadCloud, Play, RefreshCw, ArrowLeft, ShieldAlert, Lock, Unlock
@@ -19,6 +20,14 @@ const formatPenalty = (minutes: number): string => {
 
 
 const artifactContentType = (file: File) => file.type || 'application/octet-stream';
+const NON_FINAL_SUBMISSION_MAX_BYTES = 50 * 1024 * 1024;
+const FINAL_SUBMISSION_MAX_BYTES = 500 * 1024 * 1024;
+
+const submissionSizeLimit = (isFinal: boolean) =>
+  isFinal ? FINAL_SUBMISSION_MAX_BYTES : NON_FINAL_SUBMISSION_MAX_BYTES;
+
+const submissionSizeLimitLabel = (isFinal: boolean) =>
+  isFinal ? '500 MB' : '50 MB';
 
 const contractForPhase = (task: Task | undefined, isFinal: boolean) => {
   const schema = task?.submission_schema || {};
@@ -43,13 +52,6 @@ export const PhaseHubPage: React.FC = () => {
   const { contestId, phaseKey } = useParams<{ contestId: string, phaseKey: string }>();
   const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
-
-  const getPdfUrl = (url: string | null | undefined) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    const apiBase = API_BASE_URL.endsWith('/api/v1') ? API_BASE_URL.slice(0, -7) : API_BASE_URL;
-    return `${apiBase}${url}`;
-  };
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
@@ -348,15 +350,28 @@ export const PhaseHubPage: React.FC = () => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-      setUploadError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isFinal = activePhase?.is_final ?? false;
+    if (file.size > submissionSizeLimit(isFinal)) {
+      setSelectedFile(null);
+      setUploadError(`File exceeds the ${submissionSizeLimitLabel(isFinal)} limit for this phase.`);
+      e.target.value = '';
+      return;
     }
+    setSelectedFile(file);
+    setUploadError(null);
   };
 
   const triggerUpload = () => {
     if (!selectedFile || !selectedTaskId || !activePhase) {
       setUploadError('Please select a file first.');
+      return;
+    }
+    if (selectedFile.size > submissionSizeLimit(activePhase.is_final)) {
+      setUploadError(`File exceeds the ${submissionSizeLimitLabel(activePhase.is_final)} limit for this phase.`);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     submitPredictionMutation.mutate({
@@ -630,7 +645,7 @@ export const PhaseHubPage: React.FC = () => {
             </div>
             {selectedTask?.problem_statement_url && (
               <div style={{ padding: '0 0.75rem 0.9rem 0.75rem' }}>
-                <a href={getPdfUrl(selectedTask.problem_statement_url)} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ width: '100%', fontSize: '0.85rem' }}>
+                <a href={resolvePdfUrl(selectedTask.problem_statement_url)} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ width: '100%', fontSize: '0.85rem' }}>
                   <FileText size={15} /> Open Statement PDF
                 </a>
               </div>
@@ -682,7 +697,7 @@ export const PhaseHubPage: React.FC = () => {
 
                   {selectedTask.problem_statement_url && (
                     <div style={{ marginTop: '1.25rem', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                      <iframe src={getPdfUrl(selectedTask.problem_statement_url)} width="100%" height="420" style={{ border: 'none', display: 'block' }} title="Problem Statement PDF" />
+                      <iframe src={resolvePdfEmbedUrl(selectedTask.problem_statement_url)} width="100%" height="420" style={{ border: 'none', display: 'block' }} title="Problem Statement PDF" />
                     </div>
                   )}
                 </section>
@@ -725,7 +740,9 @@ export const PhaseHubPage: React.FC = () => {
                       <div className="dropzone" onClick={() => fileInputRef.current?.click()} style={{ padding: '1.8rem 1rem', border: '2px dashed hsl(var(--border-dark))', backgroundColor: '#fff' }}>
                         <UploadCloud size={32} style={{ color: 'hsl(var(--text-muted))', margin: '0 auto 0.6rem auto' }} />
                         <span style={{ fontSize: '0.82rem', fontWeight: 700, display: 'block' }}>Drop a file here or click to choose</span>
-                        <span style={{ fontSize: '0.72rem', color: 'hsl(var(--text-muted))' }}>Artifact for the current phase contract</span>
+                        <span style={{ fontSize: '0.72rem', color: 'hsl(var(--text-muted))' }}>
+                          Maximum file size: {submissionSizeLimitLabel(activePhase.is_final)}
+                        </span>
                         <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
                       </div>
 
