@@ -38,6 +38,10 @@ FROM orphan
 WHERE s.id = orphan.id
 RETURNING s.*;
 
+-- name: CountSubmissionsByEntryPhase :one
+SELECT COUNT(*)::int FROM submissions
+WHERE contest_entry_id = $1 AND task_id = $2 AND phase_id = $3;
+
 -- name: GetSubmissionByID :one
 SELECT * FROM submissions WHERE id = $1;
 

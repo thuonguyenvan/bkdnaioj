@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countSubmissionsByEntryPhase = `-- name: CountSubmissionsByEntryPhase :one
+SELECT COUNT(*)::int FROM submissions
+WHERE contest_entry_id = $1 AND task_id = $2 AND phase_id = $3
+`
+
+type CountSubmissionsByEntryPhaseParams struct {
+	ContestEntryID uuid.UUID `json:"contest_entry_id"`
+	TaskID         uuid.UUID `json:"task_id"`
+	PhaseID        uuid.UUID `json:"phase_id"`
+}
+
+func (q *Queries) CountSubmissionsByEntryPhase(ctx context.Context, arg CountSubmissionsByEntryPhaseParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countSubmissionsByEntryPhase, arg.ContestEntryID, arg.TaskID, arg.PhaseID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createSubmission = `-- name: CreateSubmission :one
 INSERT INTO submissions (
   contest_id, contest_entry_id, task_id, phase_id, submitted_by,

@@ -94,6 +94,19 @@ func (h *SubmissionHandler) InitiateUpload(c echo.Context) error {
 	if err := validateSubmissionSize(fileSizes, phase.IsFinal); err != nil {
 		return err
 	}
+	if phase.SubmissionLimit != nil {
+		used, err := h.q.CountSubmissionsByEntryPhase(ctx, db.CountSubmissionsByEntryPhaseParams{
+			ContestEntryID: entryID,
+			TaskID:         req.TaskID,
+			PhaseID:        req.PhaseID,
+		})
+		if err != nil {
+			return mw.ErrInternal("count submissions failed")
+		}
+		if used >= *phase.SubmissionLimit {
+			return mw.ErrBadRequest("submission limit reached (" + strconv.FormatInt(int64(*phase.SubmissionLimit), 10) + " submissions allowed for this phase)")
+		}
+	}
 
 	ip := c.RealIP()
 	ua := c.Request().UserAgent()

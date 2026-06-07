@@ -40,6 +40,7 @@ type MockQuerier struct {
 	CountActiveEntriesFunc                func(ctx context.Context) (int64, error)
 	CountContestsFunc                     func(ctx context.Context) (int64, error)
 	CountSubmissionsFunc                  func(ctx context.Context) (int64, error)
+	CountSubmissionsByEntryPhaseFunc      func(ctx context.Context, arg CountSubmissionsByEntryPhaseParams) (int32, error)
 	CountTasksFunc                        func(ctx context.Context) (int64, error)
 	CountUsersFunc                        func(ctx context.Context) (int64, error)
 	GetTaskSubmissionStatsFunc            func(ctx context.Context) ([]GetTaskSubmissionStatsRow, error)
@@ -196,6 +197,13 @@ func (m *MockQuerier) CountContests(ctx context.Context) (int64, error) {
 func (m *MockQuerier) CountSubmissions(ctx context.Context) (int64, error) {
 	if m.CountSubmissionsFunc != nil {
 		return m.CountSubmissionsFunc(ctx)
+	}
+	return 0, nil
+}
+
+func (m *MockQuerier) CountSubmissionsByEntryPhase(ctx context.Context, arg CountSubmissionsByEntryPhaseParams) (int32, error) {
+	if m.CountSubmissionsByEntryPhaseFunc != nil {
+		return m.CountSubmissionsByEntryPhaseFunc(ctx, arg)
 	}
 	return 0, nil
 }

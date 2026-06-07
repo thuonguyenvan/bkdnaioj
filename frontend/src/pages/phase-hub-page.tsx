@@ -424,6 +424,11 @@ export const PhaseHubPage: React.FC = () => {
   const phaseTasks = tasks.filter(task => !!taskPhasesMap[task.id]);
   const phaseTitle = getPhaseLabel(currentDef, phaseKey);
   const sortedSubmissions = [...submissions].sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime());
+  const taskPhaseSubmissions = selectedTaskId && activePhase
+    ? submissions.filter(s => s.task_id === selectedTaskId && s.phase_id === activePhase.id)
+    : submissions;
+  const submissionLimit = activePhase?.submission_limit ?? null;
+  const submissionsRemaining = submissionLimit !== null ? Math.max(0, submissionLimit - taskPhaseSubmissions.length) : null;
   const doneSubmissions = submissions.filter(sub => sub.status === 'done');
   const runningSubmissions = submissions.filter(sub => ['uploaded', 'validating', 'queued', 'running'].includes(sub.status));
   const bestSubmission = doneSubmissions.reduce<typeof submissions[0] | null>((best, s) => {
@@ -805,6 +810,20 @@ export const PhaseHubPage: React.FC = () => {
                 <div className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>Best Score</div>
                 <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800 }}>{bestSubmission ? formatRawScore(bestSubmission.raw_score) : '-'}</div>
               </div>
+              {submissionLimit !== null && (
+                <div style={{
+                  border: `1px solid ${submissionsRemaining === 0 ? '#fca5a5' : 'hsl(var(--border))'}`,
+                  borderRadius: 'var(--radius)', padding: '0.75rem',
+                  backgroundColor: submissionsRemaining === 0 ? '#fef2f2' : 'hsl(var(--background))',
+                }}>
+                  <div className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Submissions Left
+                  </div>
+                  <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800, color: submissionsRemaining === 0 ? '#dc2626' : undefined }}>
+                    {submissionsRemaining} / {submissionLimit}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
