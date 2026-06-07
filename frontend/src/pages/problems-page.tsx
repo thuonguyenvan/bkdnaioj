@@ -132,7 +132,6 @@ export const ProblemsPage: React.FC = () => {
                     <tr key={task.id}>
                       <td>
                         <div style={{ fontWeight: 600, color: '#0f172a' }}>{task.title}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontFamily: 'monospace', marginTop: '0.2rem' }}>ID: {task.id}</div>
                       </td>
                       <td style={{ color: '#475569' }}>
                         {task.contestTitle}
