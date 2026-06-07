@@ -378,7 +378,35 @@ export const PhaseHubPage: React.FC = () => {
     }
   };
 
+  const summarizeSubmissionError = (message: string | null): string => {
+    if (!message) return 'Failed';
+    const normalized = message.replace(/\r/g, '').trim();
+    const lines = normalized.split('\n').map(line => line.trim()).filter(Boolean);
+    const lastLine = lines.at(-1) || normalized;
+
+    if (/^Command \[/.test(normalized)) return 'Judge execution failed';
+    if (/server error.*500|500 internal server error/i.test(normalized)) return 'Result upload failed (HTTP 500)';
+
+    const inferenceExit = normalized.match(/infer(?:ence|\.py)? (?:command )?failed(?: with exit | \(exit )(\d+)\)?/i);
+    if (inferenceExit) {
+      const cause = lastLine.startsWith('Traceback') ? '' : lastLine;
+      return cause && !cause.toLowerCase().includes('infer')
+        ? `Inference failed: ${cause}`
+        : `Inference failed (exit ${inferenceExit[1]})`;
+    }
+
+    const judgeExit = normalized.match(/judge command failed with exit (\d+):?\s*(.*)/is);
+    if (judgeExit) {
+      const cause = (judgeExit[2] || lastLine).split('\n').at(-1)?.trim();
+      return cause ? `Judge failed: ${cause}` : `Judge failed (exit ${judgeExit[1]})`;
+    }
+
+    const concise = lastLine.replace(/^RuntimeError:\s*/i, '');
+    return concise.length > 90 ? `${concise.slice(0, 87)}...` : concise;
+  };
+
   const selectedTask = tasks.find(t => t.id === selectedTaskId);
+  const phaseTasks = tasks.filter(task => !!taskPhasesMap[task.id]);
   const phaseTitle = getPhaseLabel(currentDef, phaseKey);
   const sortedSubmissions = [...submissions].sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime());
   const doneSubmissions = submissions.filter(sub => sub.status === 'done');
@@ -773,19 +801,15 @@ export const PhaseHubPage: React.FC = () => {
                 <table className="oj-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                   <colgroup>
                     <col style={{ width: '180px' }} />
-                    <col style={{ width: '360px' }} />
-                    <col />
-                    <col style={{ width: '112px' }} />
+                    <col style={{ width: '340px' }} />
+                    <col style={{ width: '300px' }} />
                     <col style={{ width: '112px' }} />
                     <col style={{ width: '104px' }} />
-                    <col style={{ width: '108px' }} />
-                    <col style={{ width: '88px' }} />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Submitted At</th>
                       <th>Problem</th>
-                      <th aria-label="spacing"></th>
                       <th>Status</th>
                       <th style={{ textAlign: 'right' }}>Raw Score</th>
                       <th style={{ textAlign: 'right' }}>Size</th>
@@ -804,21 +828,24 @@ export const PhaseHubPage: React.FC = () => {
                             {task?.score_label && (
                               <div className="text-muted" style={{ fontSize: '0.76rem', marginTop: '0.15rem' }}>{task.score_label}</div>
                             )}
-                            {sub.status === 'failed' && sub.error_message && (
-                              <div style={{
-                                marginTop: '0.35rem', fontSize: '0.72rem', color: '#b91c1c',
-                                background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4,
-                                padding: '0.25rem 0.5rem', fontFamily: 'monospace',
-                                maxWidth: 480, wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-                              }}>
-                                {sub.error_message.length > 300
-                                  ? sub.error_message.slice(0, 300) + '…'
-                                  : sub.error_message}
-                              </div>
-                            )}
                           </td>
-                          <td aria-label="spacing"></td>
-                          <td>{getStatusBadge(sub.status)}</td>
+                          <td style={{ minWidth: 0 }}>
+                            {sub.status === 'failed' ? (
+                              <div title={sub.error_message || 'Submission failed'} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                {getStatusBadge(sub.status)}
+                                <span style={{
+                                  color: '#b91c1c',
+                                  fontSize: '0.76rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}>
+                                  {summarizeSubmissionError(sub.error_message)}
+                                </span>
+                              </div>
+                            ) : getStatusBadge(sub.status)}
+                          </td>
                           <td className="font-mono" style={{ fontWeight: 800, color: sub.status === 'done' ? 'hsl(var(--primary))' : 'hsl(var(--text-muted))', textAlign: 'right', whiteSpace: 'nowrap' }}>
                             {sub.status === 'done' ? formatRawScore(sub.raw_score) : '-'}
                           </td>
@@ -905,7 +932,7 @@ export const PhaseHubPage: React.FC = () => {
               >
                 Overall Standing
               </button>
-              {tasks.filter(t => !!taskPhasesMap[t.id]).map(t => (
+              {phaseTasks.map(t => (
                 <button
                   key={t.id}
                   onClick={() => {
@@ -965,7 +992,14 @@ export const PhaseHubPage: React.FC = () => {
                   <tr>
                     <th style={{ width: '80px' }}>Rank</th>
                     <th>Participant</th>
-                    <th className="font-mono">Score</th>
+                    {standingsMode === 'overall' && phaseTasks.map((task, taskIndex) => (
+                      <th key={task.id} title={task.title} aria-label={task.title} style={{ width: '90px', textAlign: 'right' }}>
+                        {String.fromCharCode(65 + taskIndex)}
+                      </th>
+                    ))}
+                    <th className="font-mono" style={{ textAlign: 'right' }}>
+                      {standingsMode === 'overall' ? 'Total' : 'Score'}
+                    </th>
                     <th style={{ width: '120px' }}>Run Count</th>
                     <th>Penalty</th>
                   </tr>
@@ -988,7 +1022,15 @@ export const PhaseHubPage: React.FC = () => {
                               : (row.usernames?.join(', ') ?? '')}
                           </div>
                         </td>
-                        <td className="font-mono" style={{ fontWeight: 'bold', color: 'hsl(var(--primary))' }}>
+                        {standingsMode === 'overall' && phaseTasks.map(task => {
+                          const taskScore = row.score_breakdown?.[task.id];
+                          return (
+                            <td key={task.id} className="font-mono" style={{ fontWeight: 700, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              {taskScore === undefined || taskScore === null ? '—' : formatRawScore(taskScore)}
+                            </td>
+                          );
+                        })}
+                        <td className="font-mono" style={{ fontWeight: 'bold', color: 'hsl(var(--primary))', textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {Number(row.score || 0).toFixed(6)}
                         </td>
                         <td className="font-mono">{row.entries_count}</td>

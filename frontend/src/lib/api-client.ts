@@ -225,6 +225,7 @@ export interface LeaderboardRow {
   display_name: string;
   score: number;
   raw_score: number;
+  score_breakdown?: Record<string, number | string> | null;
   entries_count: number;
   is_frozen: boolean;
   is_disqualified: boolean;
