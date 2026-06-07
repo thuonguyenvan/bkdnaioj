@@ -26,8 +26,32 @@ type SubmissionHandler struct {
 	val      *validator.Validate
 }
 
+const (
+	nonFinalSubmissionMaxBytes int64 = 50 * 1024 * 1024
+	finalSubmissionMaxBytes    int64 = 500 * 1024 * 1024
+)
+
 func NewSubmissionHandler(q db.Querier, producer *queue.Producer, s3 *storage.S3) *SubmissionHandler {
 	return &SubmissionHandler{q: q, producer: producer, s3: s3, val: validator.New()}
+}
+
+func submissionSizeLimit(isFinal bool) int64 {
+	if isFinal {
+		return finalSubmissionMaxBytes
+	}
+	return nonFinalSubmissionMaxBytes
+}
+
+func validateSubmissionSize(files []int64, isFinal bool) error {
+	var total int64
+	for _, size := range files {
+		if size > submissionSizeLimit(isFinal)-total {
+			limitMB := submissionSizeLimit(isFinal) / (1024 * 1024)
+			return mw.ErrBadRequest("submission exceeds the " + strconv.FormatInt(limitMB, 10) + " MB limit for this phase")
+		}
+		total += size
+	}
+	return nil
 }
 
 // POST /api/v1/entries/:entry_id/submissions:initiate
@@ -55,6 +79,20 @@ func (h *SubmissionHandler) InitiateUpload(c echo.Context) error {
 			return mw.ErrNotFound("entry not found")
 		}
 		return mw.ErrInternal("fetch entry failed")
+	}
+	phase, err := h.q.GetPhaseByID(ctx, req.PhaseID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("phase not found")
+		}
+		return mw.ErrInternal("fetch phase failed")
+	}
+	fileSizes := make([]int64, len(req.Files))
+	for i, file := range req.Files {
+		fileSizes[i] = file.SizeBytes
+	}
+	if err := validateSubmissionSize(fileSizes, phase.IsFinal); err != nil {
+		return err
 	}
 
 	ip := c.RealIP()
@@ -102,12 +140,19 @@ func (h *SubmissionHandler) CompleteUpload(c echo.Context) error {
 	}
 	ctx := c.Request().Context()
 
-	_, err = h.q.GetSubmissionByID(ctx, subID)
+	sub, err := h.q.GetSubmissionByID(ctx, subID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return mw.ErrNotFound("submission not found")
 		}
 		return mw.ErrInternal("fetch submission failed")
+	}
+	phase, err := h.q.GetPhaseByID(ctx, sub.PhaseID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mw.ErrNotFound("phase not found")
+		}
+		return mw.ErrInternal("fetch phase failed")
 	}
 
 	total := int64(0)
@@ -117,6 +162,16 @@ func (h *SubmissionHandler) CompleteUpload(c echo.Context) error {
 			return mw.ErrBadRequest("invalid object_key")
 		}
 		total += f.SizeBytes
+	}
+	fileSizes := make([]int64, len(req.Files))
+	for i, file := range req.Files {
+		fileSizes[i] = file.SizeBytes
+	}
+	if err := validateSubmissionSize(fileSizes, phase.IsFinal); err != nil {
+		return err
+	}
+
+	for _, f := range req.Files {
 		_, err := h.q.CreateSubmissionFile(ctx, db.CreateSubmissionFileParams{
 			SubmissionID:     subID,
 			OriginalFilename: f.Filename,
@@ -235,4 +290,3 @@ func (h *SubmissionHandler) MarkFinal(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, dto.SubmissionToResponse(sub))
 }
-

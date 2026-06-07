@@ -75,10 +75,14 @@ func TestSubmissionHandler_ListByEntry_Success(t *testing.T) {
 
 func TestSubmissionHandler_CompleteUpload_PreservesGenericFilename(t *testing.T) {
 	subID := uuid.New()
+	phaseID := uuid.New()
 	var captured db.CreateSubmissionFileParams
 	mock := &db.MockQuerier{
 		GetSubmissionByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Submission, error) {
-			return db.Submission{ID: subID}, nil
+			return db.Submission{ID: subID, PhaseID: phaseID}, nil
+		},
+		GetPhaseByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Phase, error) {
+			return db.Phase{ID: phaseID, IsFinal: false}, nil
 		},
 		CreateSubmissionFileFunc: func(ctx context.Context, arg db.CreateSubmissionFileParams) (db.SubmissionFile, error) {
 			captured = arg
@@ -107,6 +111,49 @@ func TestSubmissionHandler_CompleteUpload_PreservesGenericFilename(t *testing.T)
 	assert.Equal(t, "adversarial_images.zip", captured.OriginalFilename)
 	assert.Equal(t, "submissions/"+subID.String()+"/adversarial_images.zip", captured.StoragePath)
 	assert.Equal(t, int64(2048), captured.FileSize)
+}
+
+func TestValidateSubmissionSizeLimits(t *testing.T) {
+	assert.NoError(t, validateSubmissionSize([]int64{50 * 1024 * 1024}, false))
+	assert.NoError(t, validateSubmissionSize([]int64{500 * 1024 * 1024}, true))
+
+	err := validateSubmissionSize([]int64{50*1024*1024 + 1}, false)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, err.(*mw.AppError).Status)
+	assert.Contains(t, err.Error(), "50 MB")
+
+	err = validateSubmissionSize([]int64{500*1024*1024 + 1}, true)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, err.(*mw.AppError).Status)
+	assert.Contains(t, err.Error(), "500 MB")
+}
+
+func TestSubmissionHandler_CompleteUpload_RejectsOversizedFinalBeforeWritingFiles(t *testing.T) {
+	subID := uuid.New()
+	phaseID := uuid.New()
+	createFileCalled := false
+	mock := &db.MockQuerier{
+		GetSubmissionByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Submission, error) {
+			return db.Submission{ID: subID, PhaseID: phaseID}, nil
+		},
+		GetPhaseByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Phase, error) {
+			return db.Phase{ID: phaseID, IsFinal: true}, nil
+		},
+		CreateSubmissionFileFunc: func(ctx context.Context, arg db.CreateSubmissionFileParams) (db.SubmissionFile, error) {
+			createFileCalled = true
+			return db.SubmissionFile{}, nil
+		},
+	}
+	h := NewSubmissionHandler(mock, nil, nil)
+	body := `{"files":[{"filename":"model.zip","object_key":"submissions/` + subID.String() + `/model.zip","size_bytes":524288001,"content_type":"application/zip"}]}`
+	c, _ := newTestContext("POST", "/api/v1/submissions/"+subID.String()+"/complete", body)
+	c.SetParamNames("id")
+	c.SetParamValues(subID.String())
+
+	err := h.CompleteUpload(c)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, err.(*mw.AppError).Status)
+	assert.False(t, createFileCalled)
 }
 
 func TestSubmissionHandler_MarkFinal_Success(t *testing.T) {
