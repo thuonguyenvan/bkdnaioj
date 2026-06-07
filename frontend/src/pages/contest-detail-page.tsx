@@ -929,7 +929,17 @@ export const ContestDetailPage: React.FC = () => {
                             <th style={{ width: '80px' }}>Rank</th>
                             <th>Participant</th>
                             <th style={{ width: '120px' }}>Type</th>
-                            <th style={{ width: '140px', textAlign: 'right' }}>Score</th>
+                            {tasks.map((task, taskIndex) => (
+                              <th
+                                key={task.id}
+                                title={task.title}
+                                aria-label={task.title}
+                                style={{ width: '90px', textAlign: 'right' }}
+                              >
+                                {String.fromCharCode(65 + taskIndex)}
+                              </th>
+                            ))}
+                            <th style={{ width: '140px', textAlign: 'right' }}>Total</th>
                             <th style={{ width: '120px' }}>Runs</th>
                             <th style={{ width: '120px' }}>Penalty</th>
                           </tr>
@@ -951,6 +961,18 @@ export const ContestDetailPage: React.FC = () => {
                                 </div>
                               </td>
                               <td><span className="badge badge-secondary">{row.entry_type}</span></td>
+                              {tasks.map(task => {
+                                const taskScore = row.score_breakdown?.[task.id];
+                                return (
+                                  <td
+                                    key={task.id}
+                                    className="font-mono"
+                                    style={{ textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}
+                                  >
+                                    {taskScore === undefined || taskScore === null ? '—' : formatScore(taskScore)}
+                                  </td>
+                                );
+                              })}
                               <td className="font-mono" style={{ textAlign: 'right', color: 'hsl(var(--primary))', fontWeight: 800 }}>
                                 {formatScore(row.score)}
                               </td>
