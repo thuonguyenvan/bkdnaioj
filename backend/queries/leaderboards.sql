@@ -335,6 +335,7 @@ WITH phases_in_def AS (
 per_phase_choice AS (
   SELECT
     s.contest_id,
+    s.task_id,
     s.phase_id,
     s.contest_entry_id,
     s.id AS submission_id,
@@ -378,6 +379,17 @@ agg AS (
       END
     ) AS total_score,
     SUM(c.display_score) AS raw_score,
+    jsonb_object_agg(
+      c.task_id::text,
+      CASE
+        WHEN ct.scale_scores = TRUE THEN
+          CASE
+            WHEN COALESCE(c.max_phase_score, 0) > 0 THEN (c.display_score / c.max_phase_score) * 100
+            ELSE 0
+          END
+        ELSE c.display_score
+      END
+    ) AS score_breakdown,
     -- Sum penalty minutes across tasks (ICPC-style)
     SUM(GREATEST(0, EXTRACT(EPOCH FROM (c.submitted_at - ct.start_time)) / 60))::numeric AS penalty_minutes,
     COUNT(*)::int AS entries_count
@@ -407,7 +419,7 @@ SELECT
   r.rank,
   r.total_score,
   r.raw_score,
-  NULL::jsonb,
+  r.score_breakdown,
   r.entries_count,
   r.penalty_minutes,
   false,
