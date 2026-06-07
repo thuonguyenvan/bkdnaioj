@@ -106,6 +106,39 @@ class ContractRunnerTest(unittest.TestCase):
             self.assertEqual(result["display_score"], 70)
             self.assertEqual(result["payload"]["mode"], "non_final")
 
+    def test_non_final_extracts_zip_and_preserves_original_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            artifact = os.path.join(td, "adversarial.zip")
+            with zipfile.ZipFile(artifact, "w") as zf:
+                zf.writestr("id_001.png", b"png")
+            judge = os.path.join(td, "judge.py")
+            self._write_script(
+                judge,
+                """
+                import argparse, json, os
+                p = argparse.ArgumentParser()
+                p.add_argument("--submission-dir")
+                p.add_argument("--assets-dir")
+                p.add_argument("--output-dir")
+                p.add_argument("--context")
+                args = p.parse_args()
+                assert os.path.isfile(os.path.join(args.submission_dir, "adversarial.zip"))
+                assert os.path.isfile(os.path.join(args.submission_dir, "id_001.png"))
+                print(json.dumps({"status":"success","raw_score":0.92,"display_score":92}))
+                """,
+            )
+            worker = JudgeWorker(db=None, streams=None, stream_results="unused", store=FakeStore())
+
+            result = worker._run_with_artifacts(
+                td,
+                SubmissionRef(is_final=False),
+                [FileRef("adversarial.zip", artifact)],
+                [],
+                [AssetRef("judge.py", "judge.py", judge)],
+            )
+
+            self.assertEqual(result["display_score"], 92)
+
     def test_final_extracts_archive_runs_inference_then_judge(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             final_zip = os.path.join(td, "final_submission.zip")

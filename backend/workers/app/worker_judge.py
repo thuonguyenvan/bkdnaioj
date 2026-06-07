@@ -116,8 +116,8 @@ class JudgeWorker:
             )
 
         judge = self._resolve_judge(sub.judge_key, asset_paths, assets_dir)
+        self._extract_submission_archives(submission_paths, submission_dir)
         if sub.is_final:
-            self._extract_final_archives(submission_paths, submission_dir)
             inference = self._resolve_inference_entrypoint(schema, submission_dir)
             return self._runner.run_final(
                 inference_entrypoint=inference,
@@ -169,7 +169,7 @@ class JudgeWorker:
                 return path
         raise RuntimeError(f"inference entrypoint not found ({configured or 'infer.py'})")
 
-    def _extract_final_archives(self, paths: list[str], submission_dir: str) -> None:
+    def _extract_submission_archives(self, paths: list[str], submission_dir: str) -> None:
         for path in paths:
             if not zipfile.is_zipfile(path):
                 continue

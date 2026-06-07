@@ -80,9 +80,9 @@ class VolunteerJudgeWorker:
             json.dump(job.context, fh)
 
         judge = _resolve_judge(job.judge_key, asset_paths, assets_dir)
+        self._extract_submission_archives(_submission_paths(submission_dir), submission_dir)
 
         if job.is_final:
-            self._extract_final_archives(_submission_paths(submission_dir), submission_dir)
             inference = self._resolve_inference(job.context.get("submission_schema", {}), submission_dir)
             profiling = self._resolve_profiling(job.context.get("submission_schema", {}))
             dry_run_profile = self._runner.profile_final(
@@ -144,7 +144,7 @@ class VolunteerJudgeWorker:
             return profiling
         return {}
 
-    def _extract_final_archives(self, paths: list[str], submission_dir: str) -> None:
+    def _extract_submission_archives(self, paths: list[str], submission_dir: str) -> None:
         for path in paths:
             if not zipfile.is_zipfile(path):
                 continue
