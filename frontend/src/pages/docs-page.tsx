@@ -78,6 +78,17 @@ const SECTIONS: SectionDef[] = [
           ['Environment limits', 'Contestants must follow the library, network, storage, and runtime restrictions specified by the organizer for the contest.'],
         ]} />
 
+        <h3 className="section-heading">Preinstalled Contest Environment</h3>
+        <SimpleTable rows={[
+          ['Machine learning and NLP', 'torch, tensorflow, scikit-learn, xgboost, catboost, transformers, spacy, nltk, gensim, fasttext'],
+          ['Data processing', 'pandas, numpy, scipy, csv, json, pickle'],
+          ['Image processing', 'opencv-python, Pillow, torchvision, scikit-image'],
+          ['Visualization', 'matplotlib, seaborn, plotly, autoviz'],
+          ['Utilities', 'joblib, datasets, evaluate, os, sys, re, itertools, collections, time, pdb, pytorch-lightning, tensorboard, tqdm'],
+          ['Package installation', 'Contestants must not use pip, conda, or another package manager to install additional libraries during evaluation.'],
+          ['External access', 'Internet access is disabled during evaluation. External models and datasets cannot be downloaded at runtime.'],
+        ]} />
+
         <h3 className="section-heading">Final Inference Contract</h3>
         <CodeBlock>{`submission.zip
   infer.py
@@ -186,6 +197,7 @@ Optional JSON fields:
           ['Disk space', 'Keep sufficient temporary space for submissions, extracted datasets, and model artifacts.'],
           ['Docker', 'Required for sandboxed final inference jobs. Trusted native final execution may be enabled only on controlled machines.'],
           ['Network', 'The worker must be able to reach the platform API and artifact storage endpoints.'],
+          ['Runtime image', 'Docker workers that accept final inference jobs must provide olpai-final-runtime:latest or configure OLPAI_SANDBOX_IMAGE with an equivalent image containing the published contest libraries.'],
         ]} />
 
         <h3 className="section-heading">Setup</h3>
@@ -193,6 +205,13 @@ Optional JSON fields:
 olpai-volunteer setup
 olpai-volunteer approve-token <TOKEN>
 olpai-volunteer start`}</CodeBlock>
+
+        <h3 className="section-heading">Final Runtime Image</h3>
+        <CodeBlock>{`docker build -f runtime/Dockerfile \
+  -t olpai-final-runtime:latest .
+
+# Optional override:
+export OLPAI_SANDBOX_IMAGE=<registry>/<image>:<tag>`}</CodeBlock>
 
         <h3 className="section-heading">Operational Notes</h3>
         <SimpleTable rows={[

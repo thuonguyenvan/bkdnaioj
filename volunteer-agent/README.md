@@ -8,12 +8,27 @@ Volunteer workers help judge submissions during AI contests by running the judge
 - 4 GB RAM minimum
 - 10 GB free disk
 - Docker (optional — needed for final-phase inference sandbox)
+- `olpai-final-runtime:latest` Docker image for sandboxed final inference
 
 ## Install
 
 ```bash
 pip install olpai-volunteer-agent
 ```
+
+Build the standard final inference image from the platform repository:
+
+```bash
+docker build -f runtime/Dockerfile -t olpai-final-runtime:latest .
+```
+
+Use `OLPAI_SANDBOX_IMAGE` or the `sandbox_image` config field when an equivalent
+prebuilt image is hosted in a registry.
+
+The standard environment includes the published machine-learning, NLP, data,
+image-processing, visualization, and utility libraries. Contest code cannot
+install additional packages during evaluation, and sandbox network access is
+disabled.
 
 Or from source:
 ```bash

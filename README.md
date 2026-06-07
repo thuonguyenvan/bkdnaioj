@@ -167,6 +167,22 @@ olpai-volunteer cache --clear # Xoá cache artifact cũ
 * Hệ thống tự phát hiện năng lực máy và chỉ gán job phù hợp — không cần cấu hình thêm.
 * Xem đầy đủ tài liệu tại **[/docs](https://www.bkdnaioj.app/docs)** hoặc `volunteer-agent/README.md`.
 
+### Final inference runtime
+
+Worker nhận final-phase jobs phải có runtime image chứa bộ thư viện chuẩn của cuộc thi:
+
+```bash
+docker build -f runtime/Dockerfile -t olpai-final-runtime:latest .
+```
+
+Khi dùng image riêng, cấu hình:
+
+```bash
+export OLPAI_SANDBOX_IMAGE=<registry>/<image>:<tag>
+```
+
+Môi trường đánh giá không cho phép cài thêm package bằng `pip` hoặc `conda`, và không có kết nối Internet.
+
 ---
 
 ## 🧪 Hướng dẫn Kiểm thử Toàn trình (E2E Testing)
