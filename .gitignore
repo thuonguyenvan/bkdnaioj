@@ -39,3 +39,9 @@ load-tests/results/
 
 # local generated datasets and drafts
 draft/
+
+# local artifacts / contest materials (not part of source)
+releases/
+statements/
+tools/
+sample.tex

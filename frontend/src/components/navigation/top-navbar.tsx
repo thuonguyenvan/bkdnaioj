@@ -73,15 +73,8 @@ export const TopNavbar: React.FC = () => {
           </nav>
         </div>
 
-        {/* Right Section: Language & Auth Controls */}
+        {/* Right Section: Auth Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          {/* Language Selector mockup */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#ffffff', cursor: 'pointer', fontWeight: 500 }}>
-            <span style={{ fontSize: '1rem' }}>🇻🇳</span>
-            <span>English</span>
-            <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>▼</span>
-          </div>
-
           {/* User Auth controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {user ? (
