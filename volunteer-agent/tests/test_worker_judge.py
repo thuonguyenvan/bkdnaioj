@@ -5,10 +5,37 @@ import tempfile
 import unittest
 import zipfile
 
-from app.worker_judge import VolunteerJudgeWorker
+from app.client import Artifact, Job
+from app.worker_judge import VolunteerJudgeWorker, _artifact_cache_key
 
 
 class VolunteerJudgeWorkerTest(unittest.TestCase):
+    def test_cache_key_is_scoped_by_task_for_task_assets(self) -> None:
+        artifact = Artifact(
+            type="task_asset",
+            key="judge.py",
+            original_filename="judge.py",
+            url="https://example.test/judge.py",
+        )
+
+        self.assertNotEqual(
+            _artifact_cache_key(self._job("task-1", "phase-1"), artifact),
+            _artifact_cache_key(self._job("task-2", "phase-2"), artifact),
+        )
+
+    def test_cache_key_is_scoped_by_phase_for_evaluation_assets(self) -> None:
+        artifact = Artifact(
+            type="asset",
+            key="inputs",
+            original_filename="inputs.zip",
+            url="https://example.test/inputs.zip",
+        )
+
+        self.assertNotEqual(
+            _artifact_cache_key(self._job("task-1", "public"), artifact),
+            _artifact_cache_key(self._job("task-1", "private"), artifact),
+        )
+
     def test_submission_archive_is_extracted_without_removing_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             archive = os.path.join(temp_dir, "adversarial.zip")
@@ -30,6 +57,19 @@ class VolunteerJudgeWorkerTest(unittest.TestCase):
             worker = VolunteerJudgeWorker.__new__(VolunteerJudgeWorker)
             with self.assertRaisesRegex(RuntimeError, "unsafe zip entry"):
                 worker._extract_submission_archives([archive], temp_dir)
+
+    def _job(self, task_id: str, phase_id: str) -> Job:
+        return Job(
+            submission_id="submission",
+            attempt_id="attempt",
+            task_id=task_id,
+            phase_id=phase_id,
+            is_final=False,
+            judge_key="judge.py",
+            context={},
+            artifacts=[],
+            timeout_secs=600,
+        )
 
 
 if __name__ == "__main__":

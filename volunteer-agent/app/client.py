@@ -20,6 +20,7 @@ class Artifact:
     key: str
     original_filename: str
     url: str
+    sha256: str | None = None
 
 
 @dataclass
@@ -83,6 +84,7 @@ class APIClient:
                     key=a["key"],
                     original_filename=a["original_filename"],
                     url=a["url"],
+                    sha256=a.get("sha256"),
                 )
                 for a in (data.get("artifacts") or [])
             ],

@@ -39,8 +39,8 @@ class VolunteerJudgeWorker:
 
             else:
                 # Static assets (judge.py, inputs, ground_truth): cache on disk
-                cache_key = f"{artifact.key}__{artifact.original_filename}"
-                sha256    = getattr(artifact, "sha256", None)
+                cache_key = _artifact_cache_key(job, artifact)
+                sha256 = artifact.sha256
 
                 cached = self._cache.get(cache_key, artifact.url, sha256)
 
@@ -162,6 +162,11 @@ def _submission_paths(submission_dir: str) -> list[str]:
     for name in os.listdir(submission_dir):
         paths.append(os.path.join(submission_dir, name))
     return paths
+
+
+def _artifact_cache_key(job: Job, artifact: Artifact) -> str:
+    scope = job.task_id if artifact.type == "task_asset" else job.phase_id
+    return f"{artifact.type}__{scope}__{artifact.key}__{artifact.original_filename}"
 
 
 def _extract_zip_asset(path: str, dest_dir: str) -> None:
