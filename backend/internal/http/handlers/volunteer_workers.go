@@ -770,6 +770,7 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 			Key:              f.OriginalFilename,
 			OriginalFilename: f.OriginalFilename,
 			URL:              u,
+			SHA256:           f.HashSha256,
 		})
 	}
 
@@ -787,6 +788,7 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 			Key:              a.AssetKey,
 			OriginalFilename: a.OriginalFilename,
 			URL:              u,
+			SHA256:           a.HashSha256,
 		})
 	}
 
@@ -804,6 +806,7 @@ func (h *VolunteerWorkerHandler) buildArtifactURLs(ctx context.Context, sub db.G
 			Key:              a.AssetKey,
 			OriginalFilename: a.OriginalFilename,
 			URL:              u,
+			SHA256:           a.HashSha256,
 		})
 	}
 

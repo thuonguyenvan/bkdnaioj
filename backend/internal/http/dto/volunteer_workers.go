@@ -58,6 +58,7 @@ type ArtifactURL struct {
 	Key              string `json:"key"`
 	OriginalFilename string `json:"original_filename"`
 	URL              string `json:"url"`
+	SHA256           *string `json:"sha256,omitempty"`
 }
 
 type JobResponse struct {
