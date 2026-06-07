@@ -697,7 +697,7 @@ export const PhaseHubPage: React.FC = () => {
 
                   {selectedTask.problem_statement_url && (
                     <div style={{ marginTop: '1.25rem', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                      <iframe src={resolvePdfEmbedUrl(selectedTask.problem_statement_url)} width="100%" height="420" style={{ border: 'none', display: 'block' }} title="Problem Statement PDF" />
+                      <iframe src={resolvePdfEmbedUrl(selectedTask.problem_statement_url)} style={{ border: 'none', display: 'block', width: '100%', aspectRatio: '210/297' }} title="Problem Statement PDF" />
                     </div>
                   )}
                 </section>
