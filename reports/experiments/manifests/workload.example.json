@@ -1,0 +1,23 @@
+{
+  "name": "pilot",
+  "base_url": "https://api.bkdnaioj.app",
+  "users": [
+    {
+      "email": "exp_ch5_user_001@example.com",
+      "password": "change-me",
+      "entry_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "jobs": [
+    {
+      "label": "mnist-output-valid",
+      "task_id": "00000000-0000-0000-0000-000000000000",
+      "phase_id": "00000000-0000-0000-0000-000000000000",
+      "file": "statements/sample_submission.csv",
+      "filename": "predictions.csv",
+      "content_type": "text/csv",
+      "repeat": 1,
+      "expected_status": "done"
+    }
+  ]
+}
