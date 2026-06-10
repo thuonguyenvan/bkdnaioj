@@ -82,7 +82,6 @@ def poll_result(client: httpx.Client, base_url: str, token: str, submission_id: 
 def run_one(base_url: str, user: dict, job: dict, timeout_s: int) -> dict:
     started = time.time()
     with httpx.Client(timeout=120) as client:
-        token = user.get("token") or login(client, base_url, user["email"], user["password"])
         row = {
             "label": job.get("label", ""),
             "entry_id": user["entry_id"],
@@ -93,6 +92,7 @@ def run_one(base_url: str, user: dict, job: dict, timeout_s: int) -> dict:
             "started_at": started,
         }
         try:
+            token = user["token"]
             submission_id = submit_file(client, base_url, token, user["entry_id"], job)
             result = poll_result(client, base_url, token, submission_id, timeout_s)
             row.update({
@@ -111,6 +111,22 @@ def run_one(base_url: str, user: dict, job: dict, timeout_s: int) -> dict:
                 "elapsed_seconds": round(time.time() - started, 3),
             })
         return row
+
+
+def authenticate_users(base_url: str, users: list[dict]) -> list[dict]:
+    authenticated = []
+    with httpx.Client(timeout=120) as client:
+        for user in users:
+            resolved = dict(user)
+            if not resolved.get("token"):
+                resolved["token"] = login(
+                    client,
+                    base_url,
+                    resolved["email"],
+                    resolved["password"],
+                )
+            authenticated.append(resolved)
+    return authenticated
 
 
 def expand_jobs(manifest: dict) -> list[tuple[dict, dict]]:
@@ -136,6 +152,7 @@ def main() -> None:
 
     manifest = load_json(args.manifest)
     base_url = (manifest.get("base_url") or "https://api.bkdnaioj.app").rstrip("/")
+    manifest["users"] = authenticate_users(base_url, manifest["users"])
     pairs = expand_jobs(manifest)
 
     rows = []
