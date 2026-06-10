@@ -316,6 +316,22 @@ def clone_contest(
                             "end": end,
                         },
                     ).fetchone()
+                    conn.execute(
+                        """
+                        INSERT INTO contest_entry_members (
+                            contest_entry_id, user_id, role
+                        )
+                        VALUES (
+                            %(entry_id)s,
+                            %(user_id)s,
+                            'leader'::entry_member_role
+                        )
+                        """,
+                        {
+                            "entry_id": entry["id"],
+                            "user_id": user["id"],
+                        },
+                    )
                     manifest["users"].append({
                         "user_id": str(user["id"]),
                         "email": user["email"],
