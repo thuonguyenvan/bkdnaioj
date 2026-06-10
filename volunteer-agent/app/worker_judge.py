@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import zipfile
 
 import structlog
@@ -30,19 +31,47 @@ class VolunteerJudgeWorker:
         os.makedirs(assets_dir,     exist_ok=True)
 
         asset_paths: dict[str, str] = {}
+        timing_profile: dict[str, object] = {
+            "submission_download_seconds": 0.0,
+            "asset_download_seconds": 0.0,
+            "asset_cache_lookup_seconds": 0.0,
+            "asset_cache_hits": 0,
+            "asset_cache_misses": 0,
+            "asset_prepare_seconds": 0.0,
+            "submission_extract_seconds": 0.0,
+            "assets": [],
+        }
 
         for artifact in job.artifacts:
             if artifact.type == "submission":
                 # Submission files: always download fresh, never cache
                 dest = _safe_dest(submission_dir, artifact.original_filename)
+                started = time.perf_counter()
                 store.download_url(artifact.url, dest)
+                timing_profile["submission_download_seconds"] = round(
+                    float(timing_profile["submission_download_seconds"]) + time.perf_counter() - started,
+                    6,
+                )
 
             else:
                 # Static assets (judge.py, inputs, ground_truth): cache on disk
+                prepare_started = time.perf_counter()
                 cache_key = _artifact_cache_key(job, artifact)
                 sha256 = artifact.sha256
 
-                cached = self._cache.get(cache_key, artifact.url, sha256)
+                cached, cache_meta = self._cache.get_with_metadata(cache_key, artifact.url, sha256)
+                timing_profile["asset_download_seconds"] = round(
+                    float(timing_profile["asset_download_seconds"]) + float(cache_meta.get("download_seconds") or 0),
+                    6,
+                )
+                timing_profile["asset_cache_lookup_seconds"] = round(
+                    float(timing_profile["asset_cache_lookup_seconds"]) + float(cache_meta.get("cache_lookup_seconds") or 0),
+                    6,
+                )
+                if cache_meta.get("cache_hit"):
+                    timing_profile["asset_cache_hits"] = int(timing_profile["asset_cache_hits"]) + 1
+                else:
+                    timing_profile["asset_cache_misses"] = int(timing_profile["asset_cache_misses"]) + 1
 
                 # Copy into assets_dir for this run
                 dest = _safe_dest(assets_dir, artifact.original_filename)
@@ -66,6 +95,18 @@ class VolunteerJudgeWorker:
                     asset_paths[artifact.key] = key_dest
 
                 _normalize_asset_key_path(assets_dir, artifact.key, artifact.original_filename)
+                timing_profile["asset_prepare_seconds"] = round(
+                    float(timing_profile["asset_prepare_seconds"]) + time.perf_counter() - prepare_started,
+                    6,
+                )
+                timing_profile["assets"].append({
+                    "type": artifact.type,
+                    "key": artifact.key,
+                    "original_filename": artifact.original_filename,
+                    "cache_hit": bool(cache_meta.get("cache_hit")),
+                    "cache_stale": bool(cache_meta.get("cache_stale")),
+                    "download_seconds": cache_meta.get("download_seconds"),
+                })
                 log.info(
                     "asset_prepared",
                     key=artifact.key,
@@ -80,7 +121,9 @@ class VolunteerJudgeWorker:
             json.dump(job.context, fh)
 
         judge = _resolve_judge(job.judge_key, asset_paths, assets_dir)
+        extract_started = time.perf_counter()
         self._extract_submission_archives(_submission_paths(submission_dir), submission_dir)
+        timing_profile["submission_extract_seconds"] = round(time.perf_counter() - extract_started, 6)
 
         if job.is_final:
             inference = self._resolve_inference(job.context.get("submission_schema", {}), submission_dir)
@@ -104,15 +147,18 @@ class VolunteerJudgeWorker:
             )
             if dry_run_profile is not None:
                 result["dry_run_profile"] = dry_run_profile
+            result["timing_profile"] = timing_profile
             return result
 
-        return self._runner.run_non_final(
+        result = self._runner.run_non_final(
             judge=judge,
             submission_dir=submission_dir,
             assets_dir=assets_dir,
             output_dir=output_dir,
             context_path=context_path,
         )
+        result["timing_profile"] = timing_profile
+        return result
 
     def _resolve_inference(self, schema: dict | str, submission_dir: str) -> str:
         if isinstance(schema, str):
@@ -124,10 +170,13 @@ class VolunteerJudgeWorker:
         configured = None
         if isinstance(final_schema, dict):
             configured = final_schema.get("inference_entrypoint")
+        root = os.path.abspath(submission_dir)
         for name in [configured, "infer.py"]:
             if not name:
                 continue
-            path = os.path.join(submission_dir, name)
+            path = os.path.abspath(os.path.join(submission_dir, name))
+            if os.path.commonpath([root, path]) != root or path == root:
+                raise RuntimeError(f"inference_entrypoint escapes submission directory: {name}")
             if os.path.isfile(path):
                 return path
         raise RuntimeError(f"inference entrypoint not found ({configured or 'infer.py'})")

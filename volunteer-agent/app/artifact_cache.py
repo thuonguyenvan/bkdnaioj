@@ -8,6 +8,9 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import tempfile
+import threading
+import time
 from pathlib import Path
 
 import structlog
@@ -23,23 +26,65 @@ class ArtifactCache:
     def __init__(self, cache_dir: Path | None = None) -> None:
         self._dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
         self._dir.mkdir(parents=True, exist_ok=True)
+        self._locks_guard = threading.Lock()
+        self._locks: dict[str, threading.Lock] = {}
 
     def get(self, cache_key: str, url: str, sha256: str | None) -> str:
         """Return local path for artifact, downloading only if not cached/stale."""
+        path, _ = self.get_with_metadata(cache_key, url, sha256)
+        return path
+
+    def get_with_metadata(self, cache_key: str, url: str, sha256: str | None) -> tuple[str, dict]:
+        """Return local path and cache/download timing metadata."""
         safe_key = cache_key.replace("/", "_").replace(" ", "_")
         dest = self._dir / safe_key
+        started = time.perf_counter()
+        metadata = {
+            "cache_key": cache_key,
+            "cache_hit": False,
+            "cache_stale": False,
+            "download_seconds": 0.0,
+            "cache_lookup_seconds": 0.0,
+        }
 
-        if dest.exists():
-            if sha256 is None or _sha256_file(dest) == sha256:
-                log.debug("cache_hit", key=cache_key)
-                return str(dest)
-            else:
+        with self._lock_for(safe_key):
+            if dest.exists():
+                if sha256 is None or _sha256_file(dest) == sha256:
+                    log.debug("cache_hit", key=cache_key)
+                    metadata["cache_hit"] = True
+                    metadata["cache_lookup_seconds"] = round(time.perf_counter() - started, 6)
+                    return str(dest), metadata
                 log.info("cache_stale", key=cache_key)
+                metadata["cache_stale"] = True
                 dest.unlink()
 
-        log.info("cache_miss_downloading", key=cache_key)
-        store.download_url(url, str(dest))
-        return str(dest)
+            log.info("cache_miss_downloading", key=cache_key)
+            fd, temp_path = tempfile.mkstemp(
+                prefix=f".{safe_key}.",
+                suffix=".download",
+                dir=self._dir,
+            )
+            os.close(fd)
+            try:
+                download_started = time.perf_counter()
+                store.download_url(url, temp_path)
+                metadata["download_seconds"] = round(time.perf_counter() - download_started, 6)
+                if sha256 is not None and _sha256_file(Path(temp_path)) != sha256:
+                    raise RuntimeError(f"downloaded artifact hash mismatch: {cache_key}")
+                os.replace(temp_path, dest)
+            finally:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            metadata["cache_lookup_seconds"] = round(time.perf_counter() - started, 6)
+            return str(dest), metadata
+
+    def _lock_for(self, safe_key: str) -> threading.Lock:
+        with self._locks_guard:
+            lock = self._locks.get(safe_key)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[safe_key] = lock
+            return lock
 
     def symlink_into(self, cached_path: str, dest_path: str) -> None:
         """Create a copy (or symlink) of cached file into work_dir."""

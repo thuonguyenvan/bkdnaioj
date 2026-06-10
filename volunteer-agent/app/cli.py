@@ -1000,6 +1000,10 @@ def start(
                             execution_profile = profiler.stop("done")
                             if result.get("dry_run_profile") is not None:
                                 execution_profile["dry_run_profile"] = result.get("dry_run_profile")
+                            if result.get("timing_profile") is not None:
+                                execution_profile["timing_profile"] = result.get("timing_profile")
+                            if result.get("runner_timing_profile") is not None:
+                                execution_profile["runner_timing_profile"] = result.get("runner_timing_profile")
                         except Exception as exc:
                             execution_profile = profiler.stop("failed")
                             err_msg = str(exc)[:4000]
@@ -1017,13 +1021,19 @@ def start(
                             )
                             continue
 
+                        raw_score = result.get("raw_score")
+                        display_score = result.get("display_score")
+                        if raw_score is None or display_score is None:
+                            raise RuntimeError(
+                                f"judge result missing required fields: {list(result.keys())}"
+                            )
                         submitted = submit_result_with_retry(
                             job.submission_id,
                             {
                                 "attempt_id":        job.attempt_id,
                                 "status":            "done",
-                                "raw_score":         result["raw_score"],
-                                "display_score":     result["display_score"],
+                                "raw_score":         raw_score,
+                                "display_score":     display_score,
                                 "payload":           result.get("payload"),
                                 "execution_profile": execution_profile,
                             },

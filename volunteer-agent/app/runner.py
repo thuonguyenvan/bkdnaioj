@@ -54,7 +54,8 @@ def _create_sandbox_container(client, image_name: str, command: list[str], volum
 class PhaseRunner:
     def run_non_final(self, *, judge: str, submission_dir: str, assets_dir: str, output_dir: str, context_path: str) -> dict:
         use_sandbox = os.getenv("JUDGE_SANDBOX", "0") == "1"
-        return self._run_judge(
+        started = time.perf_counter()
+        result = self._run_judge(
             judge=judge,
             submission_dir=submission_dir,
             assets_dir=assets_dir,
@@ -62,6 +63,11 @@ class PhaseRunner:
             context_path=context_path,
             use_sandbox=use_sandbox,
         )
+        result["runner_timing_profile"] = {
+            "judge_seconds": round(time.perf_counter() - started, 6),
+            "execution_mode": "judge_sandbox" if use_sandbox and _docker_available() else "native_judge",
+        }
+        return result
 
     def run_final(
         self,
@@ -75,12 +81,19 @@ class PhaseRunner:
         context_path: str,
     ) -> dict:
         os.makedirs(generated_dir, exist_ok=True)
+        timing_profile = {
+            "inference_seconds": 0.0,
+            "judge_seconds": 0.0,
+            "execution_mode": "",
+        }
         is_docker_env = os.path.isdir("/app/shared-temp") and os.path.exists("/var/run/docker.sock")
         if is_docker_env:
+            inference_started = time.perf_counter()
             import docker
             client = docker.from_env()
             timeout = int(os.getenv("SANDBOX_TIMEOUT_S", "300"))
             image_name = _sandbox_image(client)
+            timing_profile["execution_mode"] = "docker_sandbox"
 
             volume_name = os.getenv("SHARED_TEMP_VOLUME_NAME", "olpai_shared_temp")
             container = _create_sandbox_container(
@@ -115,6 +128,7 @@ class PhaseRunner:
                     container.remove(force=True)
                 except Exception:
                     pass
+            timing_profile["inference_seconds"] = round(time.perf_counter() - inference_started, 6)
         else:
             native_allowed = os.getenv("OLPAI_ALLOW_NATIVE_FINAL", "0") == "1" or cfg.load().native_final_allowed
             if not native_allowed:
@@ -122,6 +136,8 @@ class PhaseRunner:
                     "final inference requires Docker sandbox. For trusted GPU containers, "
                     "enable trusted native final inference during setup."
                 )
+            inference_started = time.perf_counter()
+            timing_profile["execution_mode"] = "trusted_native"
             self._run_command(
                 [
                     "python",
@@ -134,13 +150,18 @@ class PhaseRunner:
                 timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
                 label="inference",
             )
-        return self._run_judge(
+            timing_profile["inference_seconds"] = round(time.perf_counter() - inference_started, 6)
+        judge_started = time.perf_counter()
+        result = self._run_judge(
             judge=judge,
             submission_dir=generated_dir,
             assets_dir=assets_dir,
             output_dir=output_dir,
             context_path=context_path,
         )
+        timing_profile["judge_seconds"] = round(time.perf_counter() - judge_started, 6)
+        result["runner_timing_profile"] = timing_profile
+        return result
 
     def profile_final(
         self,
@@ -254,7 +275,10 @@ class PhaseRunner:
             label="judge",
         )
         try:
-            out = json.loads(p.stdout.strip())
+            lines = [l for l in (p.stdout or "").splitlines() if l.strip()]
+            if not lines:
+                raise json.JSONDecodeError("no output", "", 0)
+            out = json.loads(lines[-1])
         except json.JSONDecodeError as exc:
             stdout = (p.stdout or "").strip()
             stderr = (p.stderr or "").strip()
