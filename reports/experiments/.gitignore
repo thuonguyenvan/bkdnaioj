@@ -1,0 +1,6 @@
+figures/*
+results/*
+manifests/*.json
+!manifests/workload.example.json
+!figures/.gitkeep
+!results/.gitkeep

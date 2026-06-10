@@ -34,6 +34,19 @@ Python dependencies:
 python -m pip install -r reports/experiments/requirements.txt
 ```
 
+Create an isolated contest with dedicated test accounts:
+
+```bash
+python reports/experiments/scripts/setup_experiment.py \
+  --source-contest bkdnaioj-system-testing-01 \
+  --slug exp_ch5_YYYYMMDD \
+  --test-users 4 \
+  --test-password 'replace-with-a-test-only-password'
+```
+
+The generated manifest contains the test account credentials and must not be
+committed or reused outside the experiment.
+
 ## Scripts
 
 - `setup_experiment.py`: clone contest/tasks/phases/assets into a new

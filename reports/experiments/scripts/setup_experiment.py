@@ -7,7 +7,14 @@ from datetime import datetime, timedelta, timezone
 from common import MANIFESTS_DIR, connect, ensure_dirs
 
 
-def clone_contest(source_contest: str, slug: str, title: str, clone_entries: bool) -> dict:
+def clone_contest(
+    source_contest: str,
+    slug: str,
+    title: str,
+    clone_entries: bool,
+    test_users: int,
+    test_password: str,
+) -> dict:
     start = datetime.now(timezone.utc) - timedelta(minutes=10)
     end = datetime.now(timezone.utc) + timedelta(days=14)
     manifest: dict = {
@@ -251,6 +258,74 @@ def clone_contest(source_contest: str, slug: str, title: str, clone_entries: boo
                     """,
                 )
 
+            if test_users > 0:
+                user_prefix = slug.replace("-", "_")
+                created_users = conn.execute(
+                    """
+                    WITH generated AS (
+                        SELECT generate_series(1, %(count)s) AS n
+                    )
+                    INSERT INTO users (
+                        email, password_hash, full_name, role, username
+                    )
+                    SELECT
+                        %(prefix)s || '_' || lpad(n::text, 3, '0') || '@example.invalid',
+                        crypt(%(password)s, gen_salt('bf', 12)),
+                        'Chapter 5 Experiment User ' || lpad(n::text, 3, '0'),
+                        'contestant'::user_role,
+                        %(prefix)s || '_' || lpad(n::text, 3, '0')
+                    FROM generated
+                    RETURNING id, email, username, full_name
+                    """,
+                    {
+                        "count": test_users,
+                        "prefix": user_prefix,
+                        "password": test_password,
+                    },
+                ).fetchall()
+
+                manifest["users"] = []
+                for user in created_users:
+                    entry = conn.execute(
+                        """
+                        INSERT INTO contest_entries (
+                            contest_id, entry_type, entry_mode, user_id,
+                            display_name, status, registered_by, approved_by,
+                            approved_at, start_at, end_at
+                        )
+                        VALUES (
+                            %(contest_id)s,
+                            'individual'::entry_type,
+                            'official'::entry_mode,
+                            %(user_id)s,
+                            %(display_name)s,
+                            'active'::entry_status,
+                            %(user_id)s,
+                            %(user_id)s,
+                            now(),
+                            %(start)s,
+                            %(end)s
+                        )
+                        RETURNING id
+                        """,
+                        {
+                            "contest_id": new_contest["id"],
+                            "user_id": user["id"],
+                            "display_name": user["full_name"],
+                            "start": start,
+                            "end": end,
+                        },
+                    ).fetchone()
+                    manifest["users"].append({
+                        "user_id": str(user["id"]),
+                        "email": user["email"],
+                        "username": user["username"],
+                        "password": test_password,
+                        "entry_id": str(entry["id"]),
+                    })
+            else:
+                manifest["users"] = []
+
             manifest["tasks"] = conn.execute(
                 """
                 SELECT old.id::text AS old_id, new.id::text AS new_id, new.slug, new.title
@@ -295,9 +370,23 @@ def main() -> None:
     parser.add_argument("--slug", required=True, help="New experiment contest slug, e.g. exp_ch5_20260610")
     parser.add_argument("--title", default="BKDNAIOJ Chapter 5 Experiment")
     parser.add_argument("--clone-entries", action="store_true")
+    parser.add_argument("--test-users", type=int, default=4)
+    parser.add_argument("--test-password", default="ExpCh5-Only-2026")
     args = parser.parse_args()
 
-    manifest = clone_contest(args.source_contest, args.slug, args.title, args.clone_entries)
+    if args.test_users < 0:
+        parser.error("--test-users must be non-negative")
+    if args.test_users > 0 and len(args.test_password) < 8:
+        parser.error("--test-password must contain at least 8 characters")
+
+    manifest = clone_contest(
+        args.source_contest,
+        args.slug,
+        args.title,
+        args.clone_entries,
+        args.test_users,
+        args.test_password,
+    )
     print(json.dumps(manifest, indent=2, default=str))
 
 
