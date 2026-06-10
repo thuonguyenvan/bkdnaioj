@@ -39,7 +39,11 @@ def settings() -> Settings:
 
 
 def connect():
-    return psycopg.connect(settings().database_url, row_factory=dict_row)
+    return psycopg.connect(
+        settings().database_url,
+        row_factory=dict_row,
+        prepare_threshold=None,
+    )
 
 
 def admin_token() -> str:
