@@ -1220,6 +1220,19 @@ type EvaluationSetAsset struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ExperimentEvent struct {
+	ID           uuid.UUID          `json:"id"`
+	EventType    string             `json:"event_type"`
+	SubmissionID pgtype.UUID        `json:"submission_id"`
+	WorkerID     pgtype.UUID        `json:"worker_id"`
+	AttemptID    pgtype.UUID        `json:"attempt_id"`
+	PhaseKey     *string            `json:"phase_key"`
+	IsFinal      *bool              `json:"is_final"`
+	Strategy     *string            `json:"strategy"`
+	Payload      []byte             `json:"payload"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type GlobalPhaseRanking struct {
 	PhaseKey    ContestPhaseKey    `json:"phase_key"`
 	UserID      uuid.UUID          `json:"user_id"`
@@ -1279,6 +1292,22 @@ type Phase struct {
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	EvaluationSetID     uuid.UUID          `json:"evaluation_set_id"`
+}
+
+type SchedulerDecisionLog struct {
+	ID                              uuid.UUID          `json:"id"`
+	WorkerID                        uuid.UUID          `json:"worker_id"`
+	SelectedSubmissionID            pgtype.UUID        `json:"selected_submission_id"`
+	Strategy                        string             `json:"strategy"`
+	CandidatesConsidered            int32              `json:"candidates_considered"`
+	CompatibleCandidates            int32              `json:"compatible_candidates"`
+	RejectedCandidates              int32              `json:"rejected_candidates"`
+	SelectedPredictedRuntimeSeconds *float32           `json:"selected_predicted_runtime_seconds"`
+	SelectedCorrectedRuntimeSeconds *float32           `json:"selected_corrected_runtime_seconds"`
+	SelectedCost                    []byte             `json:"selected_cost"`
+	RejectSummary                   []byte             `json:"reject_summary"`
+	Reason                          *string            `json:"reason"`
+	CreatedAt                       pgtype.Timestamptz `json:"created_at"`
 }
 
 type Submission struct {

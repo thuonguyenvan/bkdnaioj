@@ -206,6 +206,20 @@ func (h *SubmissionHandler) CompleteUpload(c echo.Context) error {
 	if h.producer != nil {
 		_ = h.producer.EnqueueJudge(ctx, queued.ID, nil)
 	}
+	if workerSub, err := h.q.GetSubmissionForWorker(ctx, queued.ID); err == nil {
+		phaseKey := string(workerSub.PhaseKey)
+		isFinal := workerSub.IsFinal
+		_ = h.q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+			EventType:    "submission_queued",
+			SubmissionID: pgUUID(queued.ID),
+			PhaseKey:     &phaseKey,
+			IsFinal:      &isFinal,
+			Column8: jsonText(map[string]any{
+				"file_count":       queued.FileCount,
+				"total_size_bytes": queued.TotalSizeBytes,
+			}),
+		})
+	}
 
 	return c.JSON(http.StatusOK, dto.SubmissionToResponse(queued))
 }

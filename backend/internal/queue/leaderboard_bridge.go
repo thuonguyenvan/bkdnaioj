@@ -45,6 +45,24 @@ func NewLeaderboardBridge(rdb *redis.Client, pool *pgxpool.Pool, log zerolog.Log
 	return &LeaderboardBridge{rdb: rdb, pool: pool, log: log, cache: cache}
 }
 
+func bridgePgUUID(id uuid.UUID) pgtype.UUID {
+	if id == uuid.Nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}
+}
+
+func bridgeJSONText(v any) string {
+	if v == nil {
+		return "{}"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // WithHandlers allows injecting logic for tests.
 func (b *LeaderboardBridge) WithHandlers(
 	getSubmission func(ctx context.Context, submissionID uuid.UUID) (db.Submission, error),
@@ -143,6 +161,7 @@ func (b *LeaderboardBridge) Run(ctx context.Context) error {
 				}
 
 				if err == nil {
+					leaderboardStarted := time.Now()
 					recomputeTask := b.recomputeTaskPhaseFn
 					if recomputeTask == nil {
 						recomputeTask = b.recomputeTaskPhase
@@ -156,14 +175,54 @@ func (b *LeaderboardBridge) Run(ctx context.Context) error {
 						recomputeGlobal = b.recomputeGlobalPhase
 					}
 
+					taskStarted := time.Now()
 					if err := recomputeTask(ctx, sub); err != nil {
 						b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("recompute task-phase failed")
+					} else if q != nil {
+						_ = q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+							EventType:    "leaderboard_updated",
+							SubmissionID: bridgePgUUID(sub.ID),
+							Column8: bridgeJSONText(map[string]any{
+								"scope":            "task_phase",
+								"duration_seconds": time.Since(taskStarted).Seconds(),
+							}),
+						})
 					}
+					contestStarted := time.Now()
 					if err := recomputeContest(ctx, sub); err != nil {
 						b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("recompute contest-phase failed")
+					} else if q != nil {
+						_ = q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+							EventType:    "leaderboard_updated",
+							SubmissionID: bridgePgUUID(sub.ID),
+							Column8: bridgeJSONText(map[string]any{
+								"scope":            "contest_phase",
+								"duration_seconds": time.Since(contestStarted).Seconds(),
+							}),
+						})
 					}
+					globalStarted := time.Now()
 					if err := recomputeGlobal(ctx, sub); err != nil {
 						b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("recompute global phase ranking failed")
+					} else if q != nil {
+						_ = q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+							EventType:    "leaderboard_updated",
+							SubmissionID: bridgePgUUID(sub.ID),
+							Column8: bridgeJSONText(map[string]any{
+								"scope":            "global_phase",
+								"duration_seconds": time.Since(globalStarted).Seconds(),
+							}),
+						})
+					}
+					if q != nil {
+						_ = q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+							EventType:    "leaderboard_all_updated",
+							SubmissionID: bridgePgUUID(sub.ID),
+							Column8: bridgeJSONText(map[string]any{
+								"duration_seconds": time.Since(leaderboardStarted).Seconds(),
+								"result_type":      env.Type,
+							}),
+						})
 					}
 				} else {
 					b.log.Warn().Err(err).Str("submission_id", env.SubmissionID.String()).Msg("fetch submission for leaderboard")

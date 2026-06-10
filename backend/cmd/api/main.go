@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/config"
@@ -24,6 +26,24 @@ import (
 	"github.com/mank1/olpai-backend/pkg/logger"
 	"github.com/rs/zerolog"
 )
+
+func pgUUID(id uuid.UUID) pgtype.UUID {
+	if id == uuid.Nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}
+}
+
+func jsonText(v any) string {
+	if v == nil {
+		return "{}"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
 
 func main() {
 	cfg, err := config.Load()
@@ -164,6 +184,15 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 					log.Error().Err(err).Str("submission", claim.SubmissionID.String()).Msg("re-enqueue stale job")
 					continue
 				}
+				_ = q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+					EventType:    "job_requeued",
+					SubmissionID: pgUUID(claim.SubmissionID),
+					WorkerID:     pgUUID(claim.WorkerID),
+					AttemptID:    pgUUID(claim.AttemptID),
+					Column8: jsonText(map[string]any{
+						"reason": "stale_claim",
+					}),
+				})
 				_, _ = q.IncrementWorkerFailedByID(ctx, claim.WorkerID)
 				metrics.JobTimeoutTotal.WithLabelValues("fifo").Inc()
 				log.Warn().Str("worker", claim.WorkerID.String()).Str("submission", claim.SubmissionID.String()).Msg("reclaimed stale job")
@@ -183,6 +212,13 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 					log.Error().Err(err).Str("submission", sub.ID.String()).Msg("re-enqueue orphan running submission")
 					continue
 				}
+				_ = q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+					EventType:    "job_requeued",
+					SubmissionID: pgUUID(sub.ID),
+					Column8: jsonText(map[string]any{
+						"reason": "orphan_running_submission",
+					}),
+				})
 				log.Warn().Str("submission", sub.ID.String()).Msg("requeued orphan running submission")
 			}
 		}

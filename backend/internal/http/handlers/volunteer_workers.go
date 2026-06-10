@@ -40,6 +40,105 @@ type VolunteerWorkerHandler struct {
 	val      *validator.Validate
 }
 
+func pgUUID(id uuid.UUID) pgtype.UUID {
+	if id == uuid.Nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}
+}
+
+func jsonText(v any) string {
+	if v == nil {
+		return "{}"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+func (h *VolunteerWorkerHandler) recordExperimentEvent(
+	ctx context.Context,
+	eventType string,
+	submissionID uuid.UUID,
+	workerID uuid.UUID,
+	attemptID uuid.UUID,
+	phaseKey *string,
+	isFinal *bool,
+	strategy *string,
+	payload any,
+) {
+	if h == nil || h.q == nil {
+		return
+	}
+	if err := h.q.InsertExperimentEvent(ctx, db.InsertExperimentEventParams{
+		EventType:    eventType,
+		SubmissionID: pgUUID(submissionID),
+		WorkerID:     pgUUID(workerID),
+		AttemptID:    pgUUID(attemptID),
+		PhaseKey:     phaseKey,
+		IsFinal:      isFinal,
+		Strategy:     strategy,
+		Column8:      jsonText(payload),
+	}); err != nil {
+		log.Warn().Err(err).Str("event_type", eventType).Msg("record experiment event failed")
+	}
+}
+
+func (h *VolunteerWorkerHandler) recordSchedulerDecision(
+	ctx context.Context,
+	workerID uuid.UUID,
+	selectedSubmissionID uuid.UUID,
+	candidatesConsidered int32,
+	compatibleCandidates int32,
+	rejectedCandidates int32,
+	predictedRuntime float64,
+	correctedRuntime float64,
+	cost *scheduler.Cost,
+	rejectSummary map[string]int,
+	reason *string,
+) {
+	if h == nil || h.q == nil {
+		return
+	}
+	var predicted *float32
+	if predictedRuntime > 0 {
+		v := float32(predictedRuntime)
+		predicted = &v
+	}
+	var corrected *float32
+	if correctedRuntime > 0 {
+		v := float32(correctedRuntime)
+		corrected = &v
+	}
+	costPayload := map[string]any{}
+	if cost != nil {
+		costPayload = map[string]any{
+			"timeout_violation": cost.TimeoutViolation,
+			"finish_delay":      cost.FinishDelay,
+			"stress":            cost.Stress,
+			"waste":             cost.Waste,
+			"created_at":        cost.CreatedAt,
+		}
+	}
+	if err := h.q.InsertSchedulerDecisionLog(ctx, db.InsertSchedulerDecisionLogParams{
+		WorkerID:                        workerID,
+		SelectedSubmissionID:            pgUUID(selectedSubmissionID),
+		Strategy:                        "measurement_driven",
+		CandidatesConsidered:            candidatesConsidered,
+		CompatibleCandidates:            compatibleCandidates,
+		RejectedCandidates:              rejectedCandidates,
+		SelectedPredictedRuntimeSeconds: predicted,
+		SelectedCorrectedRuntimeSeconds: corrected,
+		Column9:                         jsonText(costPayload),
+		Column10:                        jsonText(rejectSummary),
+		Reason:                          reason,
+	}); err != nil {
+		log.Warn().Err(err).Str("worker_id", workerID.String()).Msg("record scheduler decision failed")
+	}
+}
+
 func NewVolunteerWorkerHandler(q db.Querier, s3 *storage.S3, producer *queue.Producer, rdb *redis.Client) *VolunteerWorkerHandler {
 	return &VolunteerWorkerHandler{q: q, s3: s3, producer: producer, rdb: rdb, val: validator.New()}
 }
@@ -174,6 +273,14 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 
 	_ = h.producer.Ack(ctx, msgID)
 	_, _ = h.q.MarkSubmissionRunning(ctx, sub.ID)
+	phaseKey := string(sub.PhaseKey)
+	isFinal := sub.IsFinal
+	strategy := "fifo"
+	h.recordExperimentEvent(ctx, "job_claimed", sub.ID, worker.ID, claim.AttemptID, &phaseKey, &isFinal, &strategy, map[string]any{
+		"message_id":  msgID,
+		"enqueued_at": envelope.EnqueuedAt,
+	})
+	h.recordExperimentEvent(ctx, "submission_running", sub.ID, worker.ID, claim.AttemptID, &phaseKey, &isFinal, &strategy, nil)
 
 	// Record job claim wait time (enqueue → claim)
 	if !envelope.EnqueuedAt.IsZero() {
@@ -293,25 +400,40 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	var bestEnqueuedAt time.Time
 	var bestCost *scheduler.Cost
 	var bestRuntime float64
+	var bestPredictedRuntime float64
 	var bestMsgID string
+	var bestSubmissionID uuid.UUID
+	var candidatesConsidered int32
+	var compatibleCandidates int32
+	var rejectedCandidates int32
+	rejectSummary := map[string]int{}
 
 	for _, msg := range candidates {
+		candidatesConsidered++
 		payload, ok := msg.Values["payload"].(string)
 		if !ok {
+			rejectedCandidates++
+			rejectSummary["invalid_payload"]++
 			continue
 		}
 		var env queue.JudgeEnvelope
 		if err := json.Unmarshal([]byte(payload), &env); err != nil {
+			rejectedCandidates++
+			rejectSummary["invalid_envelope"]++
 			continue
 		}
 
 		sub, err := h.q.GetSubmissionForWorker(ctx, env.SubmissionID)
 		if err != nil {
+			rejectedCandidates++
+			rejectSummary["submission_unavailable"]++
 			continue
 		}
 
 		// Official-first filter
 		if officialActive && string(sub.EntryMode) != "official" {
+			rejectedCandidates++
+			rejectSummary["non_official_filtered"]++
 			continue
 		}
 		if !scheduler.CanAcceptJob(
@@ -321,6 +443,8 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			sub.IsFinal,
 		) {
 			metrics.SchedulerConstraintReject.WithLabelValues("typed_capacity").Inc()
+			rejectedCandidates++
+			rejectSummary["typed_capacity"]++
 			continue
 		}
 
@@ -335,6 +459,8 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		plan := scheduler.EstimateRuntime(profile, demand)
 		if !plan.HardConstraintsOK {
 			metrics.SchedulerConstraintReject.WithLabelValues(plan.FailReason).Inc()
+			rejectedCandidates++
+			rejectSummary[plan.FailReason]++
 			continue
 		}
 
@@ -351,9 +477,12 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 				profile, requestingAvailableAt, allWorkers, demand, now,
 			) {
 				// Another worker (e.g. GPU) can finish sooner — skip this job
+				rejectedCandidates++
+				rejectSummary["not_global_best"]++
 				continue
 			}
 		}
+		compatibleCandidates++
 
 		tv := 0
 		if correctedRuntime > float64(demand.TimeoutSecs) {
@@ -370,17 +499,25 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			bestCost = cost
 			bestEnqueuedAt = env.EnqueuedAt
 			bestRuntime = correctedRuntime
+			bestPredictedRuntime = plan.RuntimeSeconds
 			bestMsgID = msg.ID
+			bestSubmissionID = sub.ID
 		}
 	}
 	metrics.SchedulerDecisionDuration.Observe(time.Since(start).Seconds())
 
 	if bestCost == nil || bestMsgID == "" {
+		reason := "no_compatible_jobs"
+		h.recordSchedulerDecision(ctx, worker.ID, uuid.Nil, candidatesConsidered, compatibleCandidates, rejectedCandidates, 0, 0, nil, rejectSummary, &reason)
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
 	}
 
+	h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, nil)
+
 	envelope, msgID, err := h.producer.ClaimMessage(ctx, bestMsgID)
 	if err != nil || envelope == nil {
+		reason := "claim_race"
+		h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, &reason)
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
 	}
 
@@ -460,6 +597,15 @@ func (h *VolunteerWorkerHandler) dispatchJob(
 
 	_ = h.producer.Ack(ctx, msgID)
 	_, _ = h.q.MarkSubmissionRunning(ctx, sub.ID)
+	phaseKey := string(sub.PhaseKey)
+	isFinal := sub.IsFinal
+	strategy := "measurement_driven"
+	h.recordExperimentEvent(ctx, "job_claimed", sub.ID, worker.ID, claim.AttemptID, &phaseKey, &isFinal, &strategy, map[string]any{
+		"message_id":                msgID,
+		"enqueued_at":               envelope.EnqueuedAt,
+		"predicted_runtime_seconds": predictedRuntime,
+	})
+	h.recordExperimentEvent(ctx, "submission_running", sub.ID, worker.ID, claim.AttemptID, &phaseKey, &isFinal, &strategy, nil)
 
 	contextJSON, _ := json.Marshal(map[string]any{
 		"submission_id":        sub.ID,
@@ -569,6 +715,22 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 	if claim.AttemptID != req.AttemptID {
 		return mw.ErrForbidden("stale job attempt")
 	}
+	strategy := "fifo"
+	if claim.PredictedFinishAt.Valid {
+		strategy = "measurement_driven"
+	}
+	workerSub, subErr := h.q.GetSubmissionForWorker(ctx, subID)
+	var phaseKey *string
+	var isFinal *bool
+	if subErr == nil {
+		pk := string(workerSub.PhaseKey)
+		phaseKey = &pk
+		final := workerSub.IsFinal
+		isFinal = &final
+	}
+	h.recordExperimentEvent(ctx, "result_received", subID, worker.ID, req.AttemptID, phaseKey, isFinal, &strategy, map[string]any{
+		"status": req.Status,
+	})
 
 	// Capture actual runtime before claim is deleted
 	actualRuntime := 0.0
@@ -607,10 +769,16 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		_, _ = h.q.IncrementWorkerCompleted(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "done")
 		metrics.SubmissionsTotal.WithLabelValues("done").Inc()
-		// V1: strategy label is always "fifo" here because SubmitResult doesn't
-		// know how the job was claimed. To distinguish "cost" strategy, the worker
-		// would need to include strategy in the result payload (future work).
-		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo", req.ExecutionProfile)
+		h.recordExperimentEvent(ctx, "result_committed", subID, worker.ID, req.AttemptID, phaseKey, isFinal, &strategy, map[string]any{
+			"status":        "done",
+			"raw_score":     *req.RawScore,
+			"display_score": *req.DisplayScore,
+		})
+		h.recordExperimentEvent(ctx, "job_finished", subID, worker.ID, req.AttemptID, phaseKey, isFinal, &strategy, map[string]any{
+			"status":                 "done",
+			"actual_runtime_seconds": actualRuntime,
+		})
+		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, strategy, req.ExecutionProfile)
 	} else {
 		errMsg := "judge failed"
 		if req.ErrorMessage != nil {
@@ -630,7 +798,15 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		_, _ = h.q.IncrementWorkerFailed(ctx, &token)
 		_ = h.producer.EnqueueResult(ctx, subID, "failed")
 		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
-		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, "fifo", req.ExecutionProfile)
+		h.recordExperimentEvent(ctx, "result_committed", subID, worker.ID, req.AttemptID, phaseKey, isFinal, &strategy, map[string]any{
+			"status":        "failed",
+			"error_message": errMsg,
+		})
+		h.recordExperimentEvent(ctx, "job_finished", subID, worker.ID, req.AttemptID, phaseKey, isFinal, &strategy, map[string]any{
+			"status":                 "failed",
+			"actual_runtime_seconds": actualRuntime,
+		})
+		h.logExecutionRuntime(ctx, subID, worker, actualRuntime, strategy, req.ExecutionProfile)
 	}
 
 	if err := h.q.DeleteWorkerClaim(ctx, db.DeleteWorkerClaimParams{

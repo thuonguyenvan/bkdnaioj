@@ -26,6 +26,11 @@ type MockQuerier struct {
 	IncrementWorkerCompletedFunc          func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailedFunc             func(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailedByIDFunc         func(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	InsertExperimentEventFunc             func(ctx context.Context, arg InsertExperimentEventParams) error
+	InsertSchedulerDecisionLogFunc        func(ctx context.Context, arg InsertSchedulerDecisionLogParams) error
+	ListExperimentEventsBySubmissionFunc  func(ctx context.Context, submissionID pgtype.UUID) ([]ExperimentEvent, error)
+	ListExperimentEventsWindowFunc        func(ctx context.Context, arg ListExperimentEventsWindowParams) ([]ExperimentEvent, error)
+	ListSchedulerDecisionLogsWindowFunc   func(ctx context.Context, arg ListSchedulerDecisionLogsWindowParams) ([]SchedulerDecisionLog, error)
 	ListStaleWorkerClaims2Func            func(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
 	ListVolunteerWorkersFunc              func(ctx context.Context) ([]VolunteerWorker, error)
 	MarkSubmissionDoneFunc                func(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error)
@@ -906,6 +911,41 @@ func (m *MockQuerier) IncrementWorkerFailedByID(ctx context.Context, id uuid.UUI
 		return m.IncrementWorkerFailedByIDFunc(ctx, id)
 	}
 	return VolunteerWorker{}, nil
+}
+
+func (m *MockQuerier) InsertExperimentEvent(ctx context.Context, arg InsertExperimentEventParams) error {
+	if m.InsertExperimentEventFunc != nil {
+		return m.InsertExperimentEventFunc(ctx, arg)
+	}
+	return nil
+}
+
+func (m *MockQuerier) InsertSchedulerDecisionLog(ctx context.Context, arg InsertSchedulerDecisionLogParams) error {
+	if m.InsertSchedulerDecisionLogFunc != nil {
+		return m.InsertSchedulerDecisionLogFunc(ctx, arg)
+	}
+	return nil
+}
+
+func (m *MockQuerier) ListExperimentEventsBySubmission(ctx context.Context, submissionID pgtype.UUID) ([]ExperimentEvent, error) {
+	if m.ListExperimentEventsBySubmissionFunc != nil {
+		return m.ListExperimentEventsBySubmissionFunc(ctx, submissionID)
+	}
+	return nil, nil
+}
+
+func (m *MockQuerier) ListExperimentEventsWindow(ctx context.Context, arg ListExperimentEventsWindowParams) ([]ExperimentEvent, error) {
+	if m.ListExperimentEventsWindowFunc != nil {
+		return m.ListExperimentEventsWindowFunc(ctx, arg)
+	}
+	return nil, nil
+}
+
+func (m *MockQuerier) ListSchedulerDecisionLogsWindow(ctx context.Context, arg ListSchedulerDecisionLogsWindowParams) ([]SchedulerDecisionLog, error) {
+	if m.ListSchedulerDecisionLogsWindowFunc != nil {
+		return m.ListSchedulerDecisionLogsWindowFunc(ctx, arg)
+	}
+	return nil, nil
 }
 
 func (m *MockQuerier) ListStaleWorkerClaims2(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error) {

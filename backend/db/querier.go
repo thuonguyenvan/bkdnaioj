@@ -111,7 +111,9 @@ type Querier interface {
 	IncrementWorkerCompleted(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailed(ctx context.Context, apiToken *string) (VolunteerWorker, error)
 	IncrementWorkerFailedByID(ctx context.Context, id uuid.UUID) (VolunteerWorker, error)
+	InsertExperimentEvent(ctx context.Context, arg InsertExperimentEventParams) error
 	InsertJobExecutionLog(ctx context.Context, arg InsertJobExecutionLogParams) error
+	InsertSchedulerDecisionLog(ctx context.Context, arg InsertSchedulerDecisionLogParams) error
 	InviteTeamMember(ctx context.Context, arg InviteTeamMemberParams) error
 	ListAnnouncementsByContest(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
@@ -120,10 +122,13 @@ type Querier interface {
 	ListEntryMembers(ctx context.Context, contestEntryID uuid.UUID) ([]ListEntryMembersRow, error)
 	ListEvaluationSetAssets(ctx context.Context, evaluationSetID uuid.UUID) ([]EvaluationSetAsset, error)
 	ListEvaluationSetsByTask(ctx context.Context, taskID uuid.UUID) ([]TaskEvaluationSet, error)
+	ListExperimentEventsBySubmission(ctx context.Context, submissionID pgtype.UUID) ([]ExperimentEvent, error)
+	ListExperimentEventsWindow(ctx context.Context, arg ListExperimentEventsWindowParams) ([]ExperimentEvent, error)
 	ListPendingInvitations(ctx context.Context, userID uuid.UUID) ([]ListPendingInvitationsRow, error)
 	ListPhaseDefsByContest(ctx context.Context, contestID uuid.UUID) ([]ContestPhaseDef, error)
 	ListPhasesByTask(ctx context.Context, taskID uuid.UUID) ([]Phase, error)
 	ListRecentJobExecutionLogs(ctx context.Context, limit int32) ([]ListRecentJobExecutionLogsRow, error)
+	ListSchedulerDecisionLogsWindow(ctx context.Context, arg ListSchedulerDecisionLogsWindowParams) ([]SchedulerDecisionLog, error)
 	ListStaleWorkerClaims2(ctx context.Context, claimedAt pgtype.Timestamptz) ([]ListStaleWorkerClaims2Row, error)
 	ListSubmissionFilesBySubmission(ctx context.Context, submissionID uuid.UUID) ([]SubmissionFile, error)
 	ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error)
