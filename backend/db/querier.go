@@ -21,6 +21,7 @@ type Querier interface {
 	CountActiveEntries(ctx context.Context) (int64, error)
 	CountContests(ctx context.Context) (int64, error)
 	CountSubmissions(ctx context.Context) (int64, error)
+	CountSubmissionsByEntryPhase(ctx context.Context, arg CountSubmissionsByEntryPhaseParams) (int32, error)
 	CountTasks(ctx context.Context) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CountWorkerActiveClaims(ctx context.Context, workerID uuid.UUID) (int64, error)
