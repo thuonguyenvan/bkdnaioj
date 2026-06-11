@@ -30,8 +30,11 @@ import (
 const (
 	workerJobTimeoutMinutes = 10
 	workerLeaseDuration     = 2 * time.Minute
-	maxClaimRaceRetries     = 8
+	schedulerLockTTL        = 30 * time.Second
+	schedulerLockWait       = 10 * time.Second
 )
+
+const schedulerClaimLockKey = "scheduler:claim-next:lock"
 
 type VolunteerWorkerHandler struct {
 	q        db.Querier
@@ -150,6 +153,39 @@ func (h *VolunteerWorkerHandler) shouldRecordIdleDecision(ctx context.Context, w
 		return true
 	}
 	return record
+}
+
+func (h *VolunteerWorkerHandler) acquireSchedulerLock(ctx context.Context) (func(), bool) {
+	if h == nil || h.rdb == nil {
+		return func() {}, true
+	}
+	token := uuid.NewString()
+	deadline := time.Now().Add(schedulerLockWait)
+	for {
+		acquired, err := h.rdb.SetNX(ctx, schedulerClaimLockKey, token, schedulerLockTTL).Result()
+		if err != nil {
+			return func() {}, true
+		}
+		if acquired {
+			return func() {
+				const releaseScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`
+				_, _ = h.rdb.Eval(context.Background(), releaseScript, []string{schedulerClaimLockKey}, token).Result()
+			}, true
+		}
+		if time.Now().After(deadline) {
+			return nil, false
+		}
+		select {
+		case <-ctx.Done():
+			return nil, false
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
 }
 
 func NewVolunteerWorkerHandler(q db.Querier, s3 *storage.S3, producer *queue.Producer, rdb *redis.Client) *VolunteerWorkerHandler {
@@ -361,6 +397,21 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "at_capacity"})
 	}
 
+	releaseScheduler, acquired := h.acquireSchedulerLock(ctx)
+	if !acquired {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "scheduler_busy"})
+	}
+	defer releaseScheduler()
+
+	// Capacity may have changed while waiting for the scheduler lock.
+	activeClaims, err = h.q.CountWorkerActiveClaims(ctx, worker.ID)
+	if err != nil {
+		return mw.ErrInternal("count claims failed")
+	}
+	if activeClaims >= int64(worker.MaxWorkers) {
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "at_capacity"})
+	}
+
 	// Parse worker capability profile
 	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
 	if err != nil {
@@ -385,7 +436,18 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	// Peek pending jobs (XRANGE — does not consume)
 	start := time.Now()
 	candidates, _ := h.producer.PeekPendingJobs(ctx, 100)
+	type phaseJobKind struct {
+		phaseKey string
+		isFinal  bool
+	}
+	type observedResources struct {
+		ramBytes  int64
+		vramBytes int64
+	}
 	demandsBySubmission := make(map[uuid.UUID]*scheduler.JobDemand, len(candidates))
+	submissionsByID := make(map[uuid.UUID]db.GetSubmissionForWorkerRow, len(candidates))
+	resourcesByKind := make(map[phaseJobKind]observedResources)
+	resourcesLoaded := make(map[phaseJobKind]bool)
 	queueDemands := make([]*scheduler.JobDemand, 0, len(candidates))
 	for _, msg := range candidates {
 		payload, ok := msg.Values["payload"].(string)
@@ -400,11 +462,36 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		if err != nil {
 			continue
 		}
+		submissionsByID[sub.ID] = sub
 		demand := scheduler.EstimateJobDemand(
 			sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
 			sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
 		)
-		h.applyObservedResourceProfile(ctx, demand, string(sub.PhaseKey), sub.IsFinal)
+		kind := phaseJobKind{phaseKey: string(sub.PhaseKey), isFinal: sub.IsFinal}
+		resources, loaded := resourcesByKind[kind]
+		if !resourcesLoaded[kind] {
+			row, profileErr := h.q.GetObservedResourceProfile(ctx, db.GetObservedResourceProfileParams{
+				PhaseKey: kind.phaseKey,
+				IsFinal:  kind.isFinal,
+			})
+			if profileErr == nil && row.SampleCount >= 3 {
+				resources = observedResources{
+					ramBytes:  row.P95PeakRamBytes,
+					vramBytes: row.P95PeakVramBytes,
+				}
+				resourcesByKind[kind] = resources
+				loaded = true
+			}
+			resourcesLoaded[kind] = true
+		}
+		if loaded {
+			if resources.ramBytes > 0 {
+				demand.RAMBytes = resources.ramBytes
+			}
+			if kind.isFinal && resources.vramBytes > 0 {
+				demand.VRAMBytes = resources.vramBytes
+			}
+		}
 		demandsBySubmission[sub.ID] = demand
 		queueDemands = append(queueDemands, demand)
 	}
@@ -428,6 +515,8 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	var compatibleCandidates int32
 	var rejectedCandidates int32
 	rejectSummary := map[string]int{}
+	corrector := scheduler.NewCorrector(h.q)
+	correctionByKind := make(map[phaseJobKind]float64)
 
 	for _, msg := range candidates {
 		candidatesConsidered++
@@ -444,8 +533,8 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			continue
 		}
 
-		sub, err := h.q.GetSubmissionForWorker(ctx, env.SubmissionID)
-		if err != nil {
+		sub, ok := submissionsByID[env.SubmissionID]
+		if !ok {
 			rejectedCandidates++
 			rejectSummary["submission_unavailable"]++
 			continue
@@ -486,8 +575,13 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		}
 
 		// Apply EMA correction factor (Two-Layer Estimator — Section 7A)
-		corrector := scheduler.NewCorrector(h.q)
-		correctedRuntime, _ := corrector.CorrectedRuntime(ctx, profile, demand, string(sub.PhaseKey))
+		kind := phaseJobKind{phaseKey: string(sub.PhaseKey), isFinal: sub.IsFinal}
+		factor, loaded := correctionByKind[kind]
+		if !loaded {
+			factor = corrector.CorrectionFactor(ctx, kind.phaseKey, kind.isFinal)
+			correctionByKind[kind] = factor
+		}
+		correctedRuntime := plan.RuntimeSeconds * factor
 
 		// Global best finish time check (Section 8-9 design doc):
 		// Only assign if requesting worker will finish this job at least as fast
@@ -540,11 +634,6 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	if err != nil || envelope == nil {
 		reason := "claim_race"
 		h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, &reason)
-		retries, _ := c.Get("claim_race_retries").(int)
-		if retries < maxClaimRaceRetries {
-			c.Set("claim_race_retries", retries+1)
-			return h.ClaimNext(c)
-		}
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
 	}
 	h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, nil)

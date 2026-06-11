@@ -38,20 +38,25 @@ func (c *Corrector) CorrectedRuntime(
 		return 0, 1.0
 	}
 	t0 := plan.RuntimeSeconds
+	factor := c.CorrectionFactor(ctx, phaseKey, d.IsFinal)
+	return t0 * factor, factor
+}
 
+// CorrectionFactor returns the learned multiplier for one phase/job kind.
+func (c *Corrector) CorrectionFactor(ctx context.Context, phaseKey string, isFinal bool) float64 {
 	row, err := c.q.GetCorrectionFactor(ctx, db.GetCorrectionFactorParams{
 		PhaseKey: phaseKey,
-		IsFinal:  d.IsFinal,
+		IsFinal:  isFinal,
 	})
 	if err != nil || row.SampleCount < 3 {
-		return t0, 1.0 // cold start: use raw T0
+		return 1.0
 	}
 
 	factor := row.CorrectionFactor
 	if factor <= 0 {
 		factor = 1.0
 	}
-	return t0 * factor, factor
+	return factor
 }
 
 // ChooseAlpha computes EMA alpha = 2/(N+1) for a window of N recent jobs.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import queue
 import tempfile
 import threading
 import time
@@ -931,7 +932,34 @@ def start(
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
 
-    def poll_loop(worker_idx: int) -> None:
+    job_queue: queue.Queue = queue.Queue(maxsize=n_workers)
+    claim_slots = threading.BoundedSemaphore(n_workers)
+
+    def dispatcher_loop() -> None:
+        log.info("job_dispatcher_started", capacity=n_workers)
+        while not stop_event.is_set():
+            if not claim_slots.acquire(timeout=1):
+                continue
+            try:
+                job = client.next_job()
+                if job is None:
+                    claim_slots.release()
+                    stop_event.wait(min(s.poll_interval_s, 1))
+                    continue
+                job_queue.put(job)
+                log.info(
+                    "job_dispatched",
+                    submission_id=job.submission_id,
+                    is_final=job.is_final,
+                    attempt_id=job.attempt_id,
+                    buffered_jobs=job_queue.qsize(),
+                )
+            except Exception as exc:
+                claim_slots.release()
+                log.error("dispatcher_poll_error", error=str(exc))
+                stop_event.wait(min(s.poll_interval_s, 1))
+
+    def execution_loop(worker_idx: int) -> None:
         judge_worker = VolunteerJudgeWorker(PhaseRunner(), cache)
         log.info("worker_thread_started", idx=worker_idx)
 
@@ -965,103 +993,108 @@ def start(
 
         while not stop_event.is_set():
             try:
-                job = client.next_job()
-                if job is None:
-                    stop_event.wait(s.poll_interval_s)
+                try:
+                    job = job_queue.get(timeout=1)
+                except queue.Empty:
                     continue
 
-                log.info("job_received", worker=worker_idx, submission_id=job.submission_id,
-                         is_final=job.is_final, attempt_id=job.attempt_id)
-                with tempfile.TemporaryDirectory(
-                    prefix=f"olpai-vol-{job.submission_id[:8]}-",
-                    dir=td_root,
-                ) as td:
-                    job_stop_event = threading.Event()
+                try:
+                    log.info("job_received", worker=worker_idx, submission_id=job.submission_id,
+                             is_final=job.is_final, attempt_id=job.attempt_id)
+                    with tempfile.TemporaryDirectory(
+                        prefix=f"olpai-vol-{job.submission_id[:8]}-",
+                        dir=td_root,
+                    ) as td:
+                        job_stop_event = threading.Event()
 
-                    def job_heartbeat_loop() -> None:
-                        while not job_stop_event.wait(30):
-                            try:
-                                client.job_heartbeat(job.submission_id, job.attempt_id)
-                            except Exception as hb_exc:
-                                log.warning(
-                                    "job_heartbeat_failed",
-                                    worker=worker_idx,
-                                    submission_id=job.submission_id,
-                                    error=str(hb_exc),
-                                )
+                        def job_heartbeat_loop() -> None:
+                            while not job_stop_event.wait(30):
+                                try:
+                                    client.job_heartbeat(job.submission_id, job.attempt_id)
+                                except Exception as hb_exc:
+                                    log.warning(
+                                        "job_heartbeat_failed",
+                                        worker=worker_idx,
+                                        submission_id=job.submission_id,
+                                        error=str(hb_exc),
+                                    )
 
-                    hb_thread = threading.Thread(target=job_heartbeat_loop, daemon=True)
-                    hb_thread.start()
-                    profiler = ExecutionProfiler()
-                    profiler.start()
-                    try:
+                        hb_thread = threading.Thread(target=job_heartbeat_loop, daemon=True)
+                        hb_thread.start()
+                        profiler = ExecutionProfiler()
+                        profiler.start()
                         try:
-                            result = judge_worker.run(job, td)
-                            execution_profile = profiler.stop("done")
-                            if result.get("dry_run_profile") is not None:
-                                execution_profile["dry_run_profile"] = result.get("dry_run_profile")
-                            if result.get("timing_profile") is not None:
-                                execution_profile["timing_profile"] = result.get("timing_profile")
-                            if result.get("runner_timing_profile") is not None:
-                                execution_profile["runner_timing_profile"] = result.get("runner_timing_profile")
-                        except Exception as exc:
-                            execution_profile = profiler.stop("failed")
-                            err_msg = str(exc)[:4000]
-                            log.error("job_failed", worker=worker_idx, submission_id=job.submission_id,
-                                      error=err_msg)
-                            submit_result_with_retry(
+                            try:
+                                result = judge_worker.run(job, td)
+                                execution_profile = profiler.stop("done")
+                                if result.get("dry_run_profile") is not None:
+                                    execution_profile["dry_run_profile"] = result.get("dry_run_profile")
+                                if result.get("timing_profile") is not None:
+                                    execution_profile["timing_profile"] = result.get("timing_profile")
+                                if result.get("runner_timing_profile") is not None:
+                                    execution_profile["runner_timing_profile"] = result.get("runner_timing_profile")
+                            except Exception as exc:
+                                execution_profile = profiler.stop("failed")
+                                err_msg = str(exc)[:4000]
+                                log.error("job_failed", worker=worker_idx, submission_id=job.submission_id,
+                                          error=err_msg)
+                                submit_result_with_retry(
+                                    job.submission_id,
+                                    {
+                                        "attempt_id": job.attempt_id,
+                                        "status": "failed",
+                                        "error_message": err_msg,
+                                        "execution_profile": execution_profile,
+                                    },
+                                    "job_failed_result_submit_failed",
+                                )
+                                continue
+
+                            raw_score = result.get("raw_score")
+                            display_score = result.get("display_score")
+                            if raw_score is None or display_score is None:
+                                raise RuntimeError(
+                                    f"judge result missing required fields: {list(result.keys())}"
+                                )
+                            submitted = submit_result_with_retry(
                                 job.submission_id,
                                 {
                                     "attempt_id": job.attempt_id,
-                                    "status": "failed",
-                                    "error_message": err_msg,
+                                    "status":            "done",
+                                    "raw_score":         raw_score,
+                                    "display_score":     display_score,
+                                    "payload":           result.get("payload"),
                                     "execution_profile": execution_profile,
                                 },
-                                "job_failed_result_submit_failed",
+                                "job_done_result_submit_failed",
                             )
-                            continue
-
-                        raw_score = result.get("raw_score")
-                        display_score = result.get("display_score")
-                        if raw_score is None or display_score is None:
-                            raise RuntimeError(
-                                f"judge result missing required fields: {list(result.keys())}"
-                            )
-                        submitted = submit_result_with_retry(
-                            job.submission_id,
-                            {
-                                "attempt_id":        job.attempt_id,
-                                "status":            "done",
-                                "raw_score":         raw_score,
-                                "display_score":     display_score,
-                                "payload":           result.get("payload"),
-                                "execution_profile": execution_profile,
-                            },
-                            "job_done_result_submit_failed",
-                        )
-                        if submitted:
-                            log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
-                                     score=result["raw_score"])
-                    finally:
-                        job_stop_event.set()
+                            if submitted:
+                                log.info("job_done", worker=worker_idx, submission_id=job.submission_id,
+                                         score=result["raw_score"])
+                        finally:
+                            job_stop_event.set()
+                finally:
+                    job_queue.task_done()
+                    claim_slots.release()
             except Exception as exc:
-                log.error("poll_error", worker=worker_idx, error=str(exc))
-                stop_event.wait(s.poll_interval_s)
+                log.error("worker_execution_error", worker=worker_idx, error=str(exc))
 
-    # Spawn N worker threads
+    dispatcher = threading.Thread(target=dispatcher_loop, daemon=True)
     threads = [
-        threading.Thread(target=poll_loop, args=(i,), daemon=True)
+        threading.Thread(target=execution_loop, args=(i,), daemon=True)
         for i in range(n_workers)
     ]
+    dispatcher.start()
     for t in threads:
         t.start()
 
     try:
-        for t in threads:
-            t.join()
+        dispatcher.join()
     except KeyboardInterrupt:
         log.info("shutting_down")
         stop_event.set()
+        for t in threads:
+            t.join(timeout=5)
 
 
 # ── cache ─────────────────────────────────────────────────────────────────────
