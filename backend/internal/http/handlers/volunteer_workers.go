@@ -32,6 +32,7 @@ const (
 	workerLeaseDuration     = 2 * time.Minute
 	schedulerLockTTL        = 30 * time.Second
 	schedulerLockWait       = 10 * time.Second
+	schedulerCandidateLimit = 24
 )
 
 const schedulerClaimLockKey = "scheduler:claim-next:lock"
@@ -435,7 +436,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 
 	// Peek pending jobs (XRANGE — does not consume)
 	start := time.Now()
-	candidates, _ := h.producer.PeekPendingJobs(ctx, 100)
+	candidates, _ := h.producer.PeekPendingJobs(ctx, schedulerCandidateLimit)
 	type phaseJobKind struct {
 		phaseKey string
 		isFinal  bool

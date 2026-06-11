@@ -13,14 +13,21 @@ from common import RESULTS_DIR, ensure_dirs, load_json, write_csv
 
 
 def login(client: httpx.Client, base_url: str, email: str, password: str) -> str:
-    response = client.post(f"{base_url}/api/v1/auth/login", json={"email": email, "password": password})
-    response.raise_for_status()
-    body = response.json()
-    token = body.get("token") or body
-    access = token.get("access_token")
-    if not access:
-        raise RuntimeError(f"missing access_token for {email}: {body}")
-    return access
+    for attempt in range(8):
+        response = client.post(f"{base_url}/api/v1/auth/login", json={"email": email, "password": password})
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            delay = float(retry_after) if retry_after else min(15 + attempt * 5, 45)
+            time.sleep(delay)
+            continue
+        response.raise_for_status()
+        body = response.json()
+        token = body.get("token") or body
+        access = token.get("access_token")
+        if not access:
+            raise RuntimeError(f"missing access_token for {email}: {body}")
+        return access
+    raise RuntimeError(f"login rate-limited for {email}")
 
 
 def submit_file(client: httpx.Client, base_url: str, token: str, entry_id: str, job: dict) -> str:
