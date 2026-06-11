@@ -115,6 +115,18 @@ func (h *VolunteerWorkerHandler) recordFIFOSchedulerDecision(
 	}
 }
 
+func (h *VolunteerWorkerHandler) shouldRecordIdleDecision(ctx context.Context, workerID uuid.UUID) bool {
+	if h == nil || h.rdb == nil {
+		return true
+	}
+	key := "experiment:scheduler-idle:" + workerID.String()
+	record, err := h.rdb.SetNX(ctx, key, "1", time.Minute).Result()
+	if err != nil {
+		return true
+	}
+	return record
+}
+
 func NewVolunteerWorkerHandler(q db.Querier, s3 *storage.S3, producer *queue.Producer, rdb *redis.Client) *VolunteerWorkerHandler {
 	return &VolunteerWorkerHandler{q: q, s3: s3, producer: producer, rdb: rdb, val: validator.New()}
 }
@@ -378,7 +390,9 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	if candidatesConsidered == 0 {
 		reason = "empty_queue"
 	}
-	h.recordFIFOSchedulerDecision(ctx, worker.ID, uuid.Nil, candidatesConsidered, compatibleCandidates, rejectedCandidates, rejectSummary, &reason)
+	if h.shouldRecordIdleDecision(ctx, worker.ID) {
+		h.recordFIFOSchedulerDecision(ctx, worker.ID, uuid.Nil, candidatesConsidered, compatibleCandidates, rejectedCandidates, rejectSummary, &reason)
+	}
 	return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
 }
 
