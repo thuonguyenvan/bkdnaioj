@@ -85,12 +85,35 @@ def runtime_chart(path: Path) -> None:
     fig.savefig(out, dpi=200)
     print(f"wrote {out}")
 
+def worker_utilization_chart(path: Path) -> None:
+    rows = read_csv(path)
+    labels = [row["worker_name"] for row in rows]
+    peak = [as_float(row.get("peak_active")) or 0 for row in rows]
+    average = [as_float(row.get("average_active")) or 0 for row in rows]
+    capacity = [as_float(row.get("max_workers")) or 0 for row in rows]
+
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    x = range(len(labels))
+    ax.bar([i - 0.22 for i in x], average, width=0.22, label="Average active")
+    ax.bar(list(x), peak, width=0.22, label="Peak active")
+    ax.bar([i + 0.22 for i in x], capacity, width=0.22, label="Configured capacity")
+    ax.set_xticks(list(x), labels, rotation=20, ha="right")
+    ax.set_ylabel("Concurrent jobs")
+    ax.set_title("Worker slot utilization under capability-aware FIFO")
+    ax.legend()
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    out = FIGURES_DIR / "fifo_worker_utilization.png"
+    fig.savefig(out, dpi=200)
+    print(f"wrote {out}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Chapter 5 figures")
     parser.add_argument("--scheduler-csv", default="")
     parser.add_argument("--lifecycle-summary-csv", default="")
     parser.add_argument("--runtime-summary-csv", default="")
+    parser.add_argument("--fifo-workers-csv", default="")
     args = parser.parse_args()
 
     ensure_dirs()
@@ -100,6 +123,8 @@ def main() -> None:
         lifecycle_chart(Path(args.lifecycle_summary_csv))
     if args.runtime_summary_csv:
         runtime_chart(Path(args.runtime_summary_csv))
+    if args.fifo_workers_csv:
+        worker_utilization_chart(Path(args.fifo_workers_csv))
 
 
 if __name__ == "__main__":

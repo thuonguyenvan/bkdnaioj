@@ -7,7 +7,7 @@ Chapter 5. The intended workflow is:
 2. Run a pilot workload and verify observability data.
 3. Run the main workload with multiple volunteer workers.
 4. Collect database and Prometheus metrics.
-5. Simulate scheduler baselines from measured runtime data.
+5. Analyze capability-aware FIFO utilization and capacity.
 6. Generate tables and figures for the thesis.
 
 All experiment data should use the `exp_ch5_` prefix so it can be filtered and
@@ -55,9 +55,11 @@ committed or reused outside the experiment.
   the public API.
 - `collect_metrics.py`: export raw CSV and Markdown tables from PostgreSQL and
   Prometheus.
-- `simulate_scheduler.py`: replay FIFO, Random, Capability-filtering and
-  Measurement-driven strategies from measured runtime data.
+- `analyze_fifo.py`: calculate pool concurrency, per-worker slot utilization,
+  successful throughput and FIFO queue latency from lifecycle data.
 - `make_figures.py`: generate PNG charts for Chapter 5.
+- `estimate_capacity.py`: estimate supported concurrent teams from successful
+  throughput under explicit queue-wait and success-rate thresholds.
 
 ## Safety Rules
 

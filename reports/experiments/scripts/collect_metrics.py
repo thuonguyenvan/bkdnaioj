@@ -58,11 +58,28 @@ def collect_db(start: str | None, end: str | None, contest_slug: str | None) -> 
                      count(*) FILTER (WHERE event_type = 'job_requeued') AS requeue_count
               FROM e
               GROUP BY submission_id
+            ),
+            claims AS (
+              SELECT DISTINCT ON (submission_id)
+                     submission_id,
+                     worker_id
+              FROM experiment_events
+              WHERE event_type = 'job_claimed'
+                AND created_at >= %(start)s::timestamptz
+                AND created_at <= %(end)s::timestamptz
+              ORDER BY submission_id, created_at DESC
             )
             SELECT p.submission_id::text,
                    s.status::text,
                    phase.is_final,
                    s.total_size_bytes,
+                   claims.worker_id::text,
+                   worker.display_name AS worker_name,
+                   queued_at,
+                   claimed_at,
+                   result_received_at,
+                   result_committed_at,
+                   leaderboard_updated_at,
                    EXTRACT(EPOCH FROM (claimed_at - queued_at))::float AS queue_wait_seconds,
                    EXTRACT(EPOCH FROM (result_received_at - claimed_at))::float AS worker_runtime_seconds,
                    EXTRACT(EPOCH FROM (result_committed_at - result_received_at))::float AS result_commit_seconds,
@@ -73,6 +90,8 @@ def collect_db(start: str | None, end: str | None, contest_slug: str | None) -> 
             JOIN submissions s ON s.id = p.submission_id
             JOIN phases phase ON phase.id = s.phase_id
             JOIN contests contest ON contest.id = s.contest_id
+            LEFT JOIN claims ON claims.submission_id = p.submission_id
+            LEFT JOIN volunteer_workers worker ON worker.id = claims.worker_id
             WHERE (%(contest_slug)s::text IS NULL OR contest.slug = %(contest_slug)s)
             ORDER BY queued_at
             """,
@@ -193,6 +212,37 @@ def summarize_runtime(rows: list[dict]) -> list[dict]:
     return out
 
 
+def summarize_workers(lifecycle: list[dict], workers: list[dict]) -> list[dict]:
+    profiles = {row["id"]: row for row in workers}
+    grouped: dict[str, list[dict]] = {}
+    for row in lifecycle:
+        worker_id = row.get("worker_id")
+        if worker_id:
+            grouped.setdefault(worker_id, []).append(row)
+
+    out = []
+    for worker_id, items in sorted(grouped.items(), key=lambda item: item[0]):
+        profile = profiles.get(worker_id, {})
+        runtimes = [
+            float(row["worker_runtime_seconds"])
+            for row in items
+            if row.get("worker_runtime_seconds") is not None
+        ]
+        out.append({
+            "worker_id": worker_id,
+            "worker_name": items[0].get("worker_name") or profile.get("display_name"),
+            "max_workers": profile.get("max_workers"),
+            "jobs": len(items),
+            "done": sum(row.get("status") == "done" for row in items),
+            "failed": sum(row.get("status") == "failed" for row in items),
+            "output_jobs": sum(not row.get("is_final") for row in items),
+            "final_jobs": sum(bool(row.get("is_final")) for row in items),
+            "runtime_median": percentile(runtimes, 0.5),
+            "runtime_p95": percentile(runtimes, 0.95),
+        })
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect Chapter 5 experiment metrics")
     parser.add_argument("--start", help="ISO timestamp lower bound")
@@ -207,10 +257,13 @@ def main() -> None:
 
     lifecycle_summary = summarize_lifecycle(data["lifecycle"])
     runtime_summary = summarize_runtime(data["runtime"])
+    worker_summary = summarize_workers(data["lifecycle"], data["workers"])
     write_csv(RESULTS_DIR / f"{args.prefix}_lifecycle_summary.csv", lifecycle_summary)
     write_csv(RESULTS_DIR / f"{args.prefix}_runtime_summary.csv", runtime_summary)
+    write_csv(RESULTS_DIR / f"{args.prefix}_worker_summary.csv", worker_summary)
     write_markdown_table(RESULTS_DIR / f"{args.prefix}_lifecycle_summary.md", lifecycle_summary, "Lifecycle Latency Summary")
-    write_markdown_table(RESULTS_DIR / f"{args.prefix}_runtime_summary.md", runtime_summary, "Runtime And Prediction Summary")
+    write_markdown_table(RESULTS_DIR / f"{args.prefix}_runtime_summary.md", runtime_summary, "Runtime Summary")
+    write_markdown_table(RESULTS_DIR / f"{args.prefix}_worker_summary.md", worker_summary, "Worker Distribution Summary")
     print(f"wrote metrics to {RESULTS_DIR}")
 
 
