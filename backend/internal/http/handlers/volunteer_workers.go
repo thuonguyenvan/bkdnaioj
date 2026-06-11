@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
@@ -31,13 +30,8 @@ import (
 const (
 	workerJobTimeoutMinutes = 10
 	workerLeaseDuration     = 2 * time.Minute
-	schedulerLockTTL        = 30 * time.Second
-	schedulerLockWait       = 10 * time.Second
 	schedulerCandidateLimit = 24
-	schedulerClaimFallbacks = 8
 )
-
-const schedulerClaimLockKey = "scheduler:claim-next:lock"
 
 type VolunteerWorkerHandler struct {
 	q        db.Querier
@@ -93,101 +87,31 @@ func (h *VolunteerWorkerHandler) recordExperimentEvent(
 	}
 }
 
-func (h *VolunteerWorkerHandler) recordSchedulerDecision(
+func (h *VolunteerWorkerHandler) recordFIFOSchedulerDecision(
 	ctx context.Context,
 	workerID uuid.UUID,
 	selectedSubmissionID uuid.UUID,
 	candidatesConsidered int32,
 	compatibleCandidates int32,
 	rejectedCandidates int32,
-	predictedRuntime float64,
-	correctedRuntime float64,
-	cost *scheduler.Cost,
 	rejectSummary map[string]int,
 	reason *string,
 ) {
 	if h == nil || h.q == nil {
 		return
 	}
-	var predicted *float32
-	if predictedRuntime > 0 {
-		v := float32(predictedRuntime)
-		predicted = &v
-	}
-	var corrected *float32
-	if correctedRuntime > 0 {
-		v := float32(correctedRuntime)
-		corrected = &v
-	}
-	costPayload := map[string]any{}
-	if cost != nil {
-		costPayload = map[string]any{
-			"timeout_violation": cost.TimeoutViolation,
-			"finish_delay":      cost.FinishDelay,
-			"stress":            cost.Stress,
-			"waste":             cost.Waste,
-			"created_at":        cost.CreatedAt,
-		}
-	}
 	if err := h.q.InsertSchedulerDecisionLog(ctx, db.InsertSchedulerDecisionLogParams{
-		WorkerID:                        workerID,
-		SelectedSubmissionID:            pgUUID(selectedSubmissionID),
-		Strategy:                        "measurement_driven",
-		CandidatesConsidered:            candidatesConsidered,
-		CompatibleCandidates:            compatibleCandidates,
-		RejectedCandidates:              rejectedCandidates,
-		SelectedPredictedRuntimeSeconds: predicted,
-		SelectedCorrectedRuntimeSeconds: corrected,
-		Column9:                         jsonText(costPayload),
-		Column10:                        jsonText(rejectSummary),
-		Reason:                          reason,
+		WorkerID:             workerID,
+		SelectedSubmissionID: pgUUID(selectedSubmissionID),
+		Strategy:             "fifo",
+		CandidatesConsidered: candidatesConsidered,
+		CompatibleCandidates: compatibleCandidates,
+		RejectedCandidates:   rejectedCandidates,
+		Column9:              jsonText(map[string]any{}),
+		Column10:             jsonText(rejectSummary),
+		Reason:               reason,
 	}); err != nil {
-		log.Warn().Err(err).Str("worker_id", workerID.String()).Msg("record scheduler decision failed")
-	}
-}
-
-func (h *VolunteerWorkerHandler) shouldRecordIdleDecision(ctx context.Context, workerID uuid.UUID) bool {
-	if h == nil || h.rdb == nil {
-		return true
-	}
-	key := "experiment:scheduler-idle:" + workerID.String()
-	record, err := h.rdb.SetNX(ctx, key, "1", time.Minute).Result()
-	if err != nil {
-		return true
-	}
-	return record
-}
-
-func (h *VolunteerWorkerHandler) acquireSchedulerLock(ctx context.Context) (func(), bool) {
-	if h == nil || h.rdb == nil {
-		return func() {}, true
-	}
-	token := uuid.NewString()
-	deadline := time.Now().Add(schedulerLockWait)
-	for {
-		acquired, err := h.rdb.SetNX(ctx, schedulerClaimLockKey, token, schedulerLockTTL).Result()
-		if err != nil {
-			return func() {}, true
-		}
-		if acquired {
-			return func() {
-				const releaseScript = `
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`
-				_, _ = h.rdb.Eval(context.Background(), releaseScript, []string{schedulerClaimLockKey}, token).Result()
-			}, true
-		}
-		if time.Now().After(deadline) {
-			return nil, false
-		}
-		select {
-		case <-ctx.Done():
-			return nil, false
-		case <-time.After(25 * time.Millisecond):
-		}
+		log.Warn().Err(err).Str("worker_id", workerID.String()).Msg("record fifo scheduler decision failed")
 	}
 }
 
@@ -371,9 +295,9 @@ func (h *VolunteerWorkerHandler) NextJob(c echo.Context) error {
 	})
 }
 
-// POST /api/v1/worker/jobs/claim-next — Capability-Aware Scheduling
-// Server selects the best job for this worker using cost function T(i,j).
-// Falls back to best-effort FIFO if cost-selected job was already taken (race condition).
+// POST /api/v1/worker/jobs/claim-next — FIFO scheduling.
+// Scans the queue in order and claims the first job this worker can run.
+// A non-final-capable worker skips final jobs; any other compatible job is claimed immediately.
 func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	if h.s3 == nil {
 		return mw.ErrInternal("storage unavailable")
@@ -390,7 +314,6 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return mw.ErrInternal("fetch worker failed")
 	}
 
-	// Capacity check
 	activeClaims, err := h.q.CountWorkerActiveClaims(ctx, worker.ID)
 	if err != nil {
 		return mw.ErrInternal("count claims failed")
@@ -400,7 +323,6 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "at_capacity"})
 	}
 
-	// Parse worker capability profile
 	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
 	if err != nil {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "invalid_capabilities"})
@@ -410,105 +332,12 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return mw.ErrInternal("count typed claims failed")
 	}
 
-	// Official-first policy: if any official contest active, only serve official submissions
-	officialActive, _ := h.isOfficialContestActive(ctx)
-
-	now := time.Now()
-
-	// Query ALL active workers for global best finish time check (Section 8-9 design doc).
-	// Fallback gracefully if query fails — scheduler still works, just without global check.
-	workerRows, _ := h.q.GetAllActiveWorkersWithEarliestAvailable(ctx)
-	allWorkers := scheduler.BuildWorkerAvailability(workerRows)
-	requestingAvailableAt := now // requesting worker has a free slot (capacity check passed above)
-
-	// Peek pending jobs (XRANGE — does not consume)
-	start := time.Now()
+	// Peek jobs in arrival order without consuming them (XRANGE).
 	candidates, _ := h.producer.PeekPendingJobs(ctx, schedulerCandidateLimit)
-	type phaseJobKind struct {
-		phaseKey string
-		isFinal  bool
-	}
-	type observedResources struct {
-		ramBytes  int64
-		vramBytes int64
-	}
-	demandsBySubmission := make(map[uuid.UUID]*scheduler.JobDemand, len(candidates))
-	submissionsByID := make(map[uuid.UUID]db.GetSubmissionForWorkerRow, len(candidates))
-	resourcesByKind := make(map[phaseJobKind]observedResources)
-	resourcesLoaded := make(map[phaseJobKind]bool)
-	queueDemands := make([]*scheduler.JobDemand, 0, len(candidates))
-	for _, msg := range candidates {
-		payload, ok := msg.Values["payload"].(string)
-		if !ok {
-			continue
-		}
-		var env queue.JudgeEnvelope
-		if err := json.Unmarshal([]byte(payload), &env); err != nil {
-			continue
-		}
-		sub, err := h.q.GetSubmissionForWorker(ctx, env.SubmissionID)
-		if err != nil {
-			continue
-		}
-		submissionsByID[sub.ID] = sub
-		demand := scheduler.EstimateJobDemand(
-			sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
-			sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
-		)
-		kind := phaseJobKind{phaseKey: string(sub.PhaseKey), isFinal: sub.IsFinal}
-		resources, loaded := resourcesByKind[kind]
-		if !resourcesLoaded[kind] {
-			row, profileErr := h.q.GetObservedResourceProfile(ctx, db.GetObservedResourceProfileParams{
-				PhaseKey: kind.phaseKey,
-				IsFinal:  kind.isFinal,
-			})
-			if profileErr == nil && row.SampleCount >= 3 {
-				resources = observedResources{
-					ramBytes:  row.P95PeakRamBytes,
-					vramBytes: row.P95PeakVramBytes,
-				}
-				resourcesByKind[kind] = resources
-				loaded = true
-			}
-			resourcesLoaded[kind] = true
-		}
-		if loaded {
-			if resources.ramBytes > 0 {
-				demand.RAMBytes = resources.ramBytes
-			}
-			if kind.isFinal && resources.vramBytes > 0 {
-				demand.VRAMBytes = resources.vramBytes
-			}
-		}
-		demandsBySubmission[sub.ID] = demand
-		queueDemands = append(queueDemands, demand)
-	}
-	gpuScarcity := scheduler.ComputeGPUScarcity(allWorkers, queueDemands)
-	pendingByKind := map[bool]int{false: 0, true: 0}
-	for _, demand := range queueDemands {
-		pendingByKind[demand.IsFinal]++
-	}
-	immediateSlotsByKind := map[bool]int{
-		false: scheduler.ImmediateFreeSlots(allWorkers, false),
-		true:  scheduler.ImmediateFreeSlots(allWorkers, true),
-	}
-
-	type rankedClaimCandidate struct {
-		msgID            string
-		submissionID     uuid.UUID
-		enqueuedAt       time.Time
-		cost             scheduler.Cost
-		runtime          float64
-		predictedRuntime float64
-	}
-	rankedCandidates := make([]rankedClaimCandidate, 0, len(candidates))
 	var candidatesConsidered int32
 	var compatibleCandidates int32
 	var rejectedCandidates int32
 	rejectSummary := map[string]int{}
-	corrector := scheduler.NewCorrector(h.q)
-	correctionByKind := make(map[phaseJobKind]float64)
-
 	for _, msg := range candidates {
 		candidatesConsidered++
 		payload, ok := msg.Values["payload"].(string)
@@ -523,155 +352,34 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			rejectSummary["invalid_envelope"]++
 			continue
 		}
-
-		sub, ok := submissionsByID[env.SubmissionID]
-		if !ok {
+		sub, err := h.q.GetSubmissionForWorker(ctx, env.SubmissionID)
+		if err != nil {
 			rejectedCandidates++
 			rejectSummary["submission_unavailable"]++
 			continue
 		}
-
-		// Official-first filter
-		if officialActive && string(sub.EntryMode) != "official" {
-			rejectedCandidates++
-			rejectSummary["non_official_filtered"]++
-			continue
-		}
-		if !scheduler.CanAcceptJob(
-			profile,
-			int64(activeByKind.OutputClaims),
-			int64(activeByKind.InferenceClaims),
-			sub.IsFinal,
-		) {
-			metrics.SchedulerConstraintReject.WithLabelValues("typed_capacity").Inc()
+		if !scheduler.CanAcceptJob(profile, int64(activeByKind.OutputClaims), int64(activeByKind.InferenceClaims), sub.IsFinal) {
 			rejectedCandidates++
 			rejectSummary["typed_capacity"]++
 			continue
 		}
-
-		demand := demandsBySubmission[sub.ID]
-		if demand == nil {
-			demand = scheduler.EstimateJobDemand(
-				sub.ID, sub.IsFinal, workerJobTimeoutMinutes*60,
-				sub.SubmittedAt.Time, string(sub.EntryMode), sub.TotalSizeBytes,
-			)
-			h.applyObservedResourceProfile(ctx, demand, string(sub.PhaseKey), sub.IsFinal)
-		}
-		plan := scheduler.EstimateRuntime(profile, demand)
-		if !plan.HardConstraintsOK {
-			metrics.SchedulerConstraintReject.WithLabelValues(plan.FailReason).Inc()
-			rejectedCandidates++
-			rejectSummary[plan.FailReason]++
-			continue
-		}
-
-		// Apply EMA correction factor (Two-Layer Estimator — Section 7A)
-		kind := phaseJobKind{phaseKey: string(sub.PhaseKey), isFinal: sub.IsFinal}
-		factor, loaded := correctionByKind[kind]
-		if !loaded {
-			factor = corrector.CorrectionFactor(ctx, kind.phaseKey, kind.isFinal)
-			correctionByKind[kind] = factor
-		}
-		correctedRuntime := plan.RuntimeSeconds * factor
-
-		// Global best finish time check (Section 8-9 design doc):
-		// Only assign if requesting worker will finish this job at least as fast
-		// as any other worker (including busy ones about to become free).
-		// Fallback: if allWorkers is empty (query failed), skip this check.
-		shouldReserveForBestWorker := pendingByKind[sub.IsFinal] <= immediateSlotsByKind[sub.IsFinal]
-		if len(allWorkers) > 0 && shouldReserveForBestWorker {
-			if !scheduler.IsGloballyBestWorker(
-				profile, requestingAvailableAt, allWorkers, demand, now,
-			) {
-				// Another worker (e.g. GPU) can finish sooner — skip this job
-				rejectedCandidates++
-				rejectSummary["not_global_best"]++
-				continue
-			}
-		}
 		compatibleCandidates++
-
-		tv := 0
-		if correctedRuntime > float64(demand.TimeoutSecs) {
-			tv = 1
-		}
-		cost := scheduler.Cost{
-			TimeoutViolation: tv,
-			FinishDelay:      correctedRuntime,
-			Stress:           scheduler.ComputeStress(profile, demand, plan),
-			Waste:            scheduler.ComputeGPUWaste(profile, demand, plan, gpuScarcity),
-			CreatedAt:        env.EnqueuedAt,
-		}
-		rankedCandidates = append(rankedCandidates, rankedClaimCandidate{
-			msgID:            msg.ID,
-			submissionID:     sub.ID,
-			enqueuedAt:       env.EnqueuedAt,
-			cost:             cost,
-			runtime:          correctedRuntime,
-			predictedRuntime: plan.RuntimeSeconds,
-		})
-	}
-	metrics.SchedulerDecisionDuration.Observe(time.Since(start).Seconds())
-
-	if len(rankedCandidates) == 0 {
-		reason := "no_compatible_jobs"
-		if candidatesConsidered > 0 && h.shouldRecordIdleDecision(ctx, worker.ID) {
-			h.recordSchedulerDecision(ctx, worker.ID, uuid.Nil, candidatesConsidered, compatibleCandidates, rejectedCandidates, 0, 0, nil, rejectSummary, &reason)
-		}
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
-	}
-
-	sort.SliceStable(rankedCandidates, func(i, j int) bool {
-		return rankedCandidates[i].cost.LessThan(rankedCandidates[j].cost)
-	})
-
-	maxAttempts := schedulerClaimFallbacks
-	if len(rankedCandidates) < maxAttempts {
-		maxAttempts = len(rankedCandidates)
-	}
-	var envelope *queue.JudgeEnvelope
-	var msgID string
-	var chosen rankedClaimCandidate
-	for i := 0; i < maxAttempts; i++ {
-		candidate := rankedCandidates[i]
-		claimedEnvelope, claimedMsgID, err := h.producer.ClaimMessage(ctx, candidate.msgID)
+		claimedEnvelope, claimedMsgID, err := h.producer.ClaimMessage(ctx, msg.ID)
 		if err != nil || claimedEnvelope == nil {
-			continue
+			rejectedCandidates++
+			rejectSummary["claim_race"]++
+			continue // another worker claimed it first
 		}
-		envelope = claimedEnvelope
-		msgID = claimedMsgID
-		chosen = candidate
-		break
-	}
-	if envelope == nil {
-		reason := "claim_race"
-		best := rankedCandidates[0]
-		h.recordSchedulerDecision(ctx, worker.ID, best.submissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, best.predictedRuntime, best.runtime, &best.cost, rejectSummary, &reason)
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "claim_race"})
-	}
-	h.recordSchedulerDecision(ctx, worker.ID, chosen.submissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, chosen.predictedRuntime, chosen.runtime, &chosen.cost, rejectSummary, nil)
-
-	// Record claim duration
-	enqAt := envelope.EnqueuedAt
-	if !chosen.enqueuedAt.IsZero() {
-		enqAt = chosen.enqueuedAt
-	}
-	if !enqAt.IsZero() {
-		isFinal := "false"
-		sub0, _ := h.q.GetSubmissionForWorker(ctx, envelope.SubmissionID)
-		if sub0.IsFinal {
-			isFinal = "true"
-		}
-		entryMode := string(sub0.EntryMode)
-		if entryMode == "" {
-			entryMode = "unknown"
-		}
-		metrics.JobClaimDuration.
-			WithLabelValues("cost", entryMode, isFinal).
-			Observe(time.Since(enqAt).Seconds())
+		h.recordFIFOSchedulerDecision(ctx, worker.ID, sub.ID, candidatesConsidered, compatibleCandidates, rejectedCandidates, rejectSummary, nil)
+		return h.dispatchJob(c, ctx, worker, claimedEnvelope, claimedMsgID, 0)
 	}
 
-	return h.dispatchJob(c, ctx, worker, envelope, msgID, chosen.runtime)
+	reason := "no_compatible_jobs"
+	if candidatesConsidered == 0 {
+		reason = "empty_queue"
+	}
+	h.recordFIFOSchedulerDecision(ctx, worker.ID, uuid.Nil, candidatesConsidered, compatibleCandidates, rejectedCandidates, rejectSummary, &reason)
+	return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
 }
 
 // isOfficialContestActive returns true if any contest is currently running in official mode.
@@ -729,7 +437,7 @@ func (h *VolunteerWorkerHandler) dispatchJob(
 	_, _ = h.q.MarkSubmissionRunning(ctx, sub.ID)
 	phaseKey := string(sub.PhaseKey)
 	isFinal := sub.IsFinal
-	strategy := "measurement_driven"
+	strategy := "fifo"
 	h.recordExperimentEvent(ctx, "job_claimed", sub.ID, worker.ID, claim.AttemptID, &phaseKey, &isFinal, &strategy, map[string]any{
 		"message_id":                msgID,
 		"enqueued_at":               envelope.EnqueuedAt,
