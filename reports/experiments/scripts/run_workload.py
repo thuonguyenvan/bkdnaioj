@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import itertools
+import random
 import time
 from pathlib import Path
 
@@ -135,6 +136,8 @@ def expand_jobs(manifest: dict) -> list[tuple[dict, dict]]:
     for job in manifest["jobs"]:
         for _ in range(int(job.get("repeat", 1))):
             expanded_jobs.append(job)
+    if manifest.get("shuffle_seed") is not None:
+        random.Random(manifest["shuffle_seed"]).shuffle(expanded_jobs)
     pairs = []
     user_cycle = itertools.cycle(users)
     for job in expanded_jobs:
