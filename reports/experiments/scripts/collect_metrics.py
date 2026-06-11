@@ -92,7 +92,8 @@ def collect_db(start: str | None, end: str | None, contest_slug: str | None) -> 
             JOIN contests contest ON contest.id = s.contest_id
             LEFT JOIN claims ON claims.submission_id = p.submission_id
             LEFT JOIN volunteer_workers worker ON worker.id = claims.worker_id
-            WHERE (%(contest_slug)s::text IS NULL OR contest.slug = %(contest_slug)s)
+            WHERE queued_at IS NOT NULL
+              AND (%(contest_slug)s::text IS NULL OR contest.slug = %(contest_slug)s)
             ORDER BY queued_at
             """,
             params,
