@@ -30,10 +30,11 @@ def fetch_prometheus() -> list[dict]:
     return rows
 
 
-def collect_db(start: str | None, end: str | None) -> dict[str, list[dict]]:
+def collect_db(start: str | None, end: str | None, contest_slug: str | None) -> dict[str, list[dict]]:
     params = {
         "start": start or "1970-01-01T00:00:00Z",
         "end": end or datetime.now(timezone.utc).isoformat(),
+        "contest_slug": contest_slug,
     }
     with connect() as conn:
         lifecycle = conn.execute(
@@ -60,7 +61,7 @@ def collect_db(start: str | None, end: str | None) -> dict[str, list[dict]]:
             )
             SELECT p.submission_id::text,
                    s.status::text,
-                   s.is_final,
+                   phase.is_final,
                    s.total_size_bytes,
                    EXTRACT(EPOCH FROM (claimed_at - queued_at))::float AS queue_wait_seconds,
                    EXTRACT(EPOCH FROM (result_received_at - claimed_at))::float AS worker_runtime_seconds,
@@ -70,6 +71,9 @@ def collect_db(start: str | None, end: str | None) -> dict[str, list[dict]]:
                    requeue_count
             FROM pivot p
             JOIN submissions s ON s.id = p.submission_id
+            JOIN phases phase ON phase.id = s.phase_id
+            JOIN contests contest ON contest.id = s.contest_id
+            WHERE (%(contest_slug)s::text IS NULL OR contest.slug = %(contest_slug)s)
             ORDER BY queued_at
             """,
             params,
@@ -91,9 +95,12 @@ def collect_db(start: str | None, end: str | None) -> dict[str, list[dict]]:
                    jel.execution_path,
                    jel.profile_payload
             FROM job_execution_logs jel
+            JOIN submissions s ON s.id = jel.submission_id
+            JOIN contests contest ON contest.id = s.contest_id
             LEFT JOIN volunteer_workers vw ON vw.id = jel.worker_id
             WHERE jel.created_at >= %(start)s::timestamptz
               AND jel.created_at <= %(end)s::timestamptz
+              AND (%(contest_slug)s::text IS NULL OR contest.slug = %(contest_slug)s)
             ORDER BY jel.created_at
             """,
             params,
@@ -101,22 +108,29 @@ def collect_db(start: str | None, end: str | None) -> dict[str, list[dict]]:
 
         decisions = conn.execute(
             """
-            SELECT created_at,
-                   worker_id::text,
-                   selected_submission_id::text,
-                   strategy,
-                   candidates_considered,
-                   compatible_candidates,
-                   rejected_candidates,
-                   selected_predicted_runtime_seconds,
-                   selected_corrected_runtime_seconds,
-                   selected_cost,
-                   reject_summary,
-                   reason
+            SELECT scheduler_decision_logs.created_at,
+                   scheduler_decision_logs.worker_id::text,
+                   scheduler_decision_logs.selected_submission_id::text,
+                   scheduler_decision_logs.strategy,
+                   scheduler_decision_logs.candidates_considered,
+                   scheduler_decision_logs.compatible_candidates,
+                   scheduler_decision_logs.rejected_candidates,
+                   scheduler_decision_logs.selected_predicted_runtime_seconds,
+                   scheduler_decision_logs.selected_corrected_runtime_seconds,
+                   scheduler_decision_logs.selected_cost,
+                   scheduler_decision_logs.reject_summary,
+                   scheduler_decision_logs.reason
             FROM scheduler_decision_logs
-            WHERE created_at >= %(start)s::timestamptz
-              AND created_at <= %(end)s::timestamptz
-            ORDER BY created_at
+            LEFT JOIN submissions s ON s.id = selected_submission_id
+            LEFT JOIN contests contest ON contest.id = s.contest_id
+            WHERE scheduler_decision_logs.created_at >= %(start)s::timestamptz
+              AND scheduler_decision_logs.created_at <= %(end)s::timestamptz
+              AND (
+                %(contest_slug)s::text IS NULL
+                OR contest.slug = %(contest_slug)s
+                OR selected_submission_id IS NULL
+              )
+            ORDER BY scheduler_decision_logs.created_at
             """,
             params,
         ).fetchall()
@@ -184,9 +198,10 @@ def main() -> None:
     parser.add_argument("--start", help="ISO timestamp lower bound")
     parser.add_argument("--end", help="ISO timestamp upper bound")
     parser.add_argument("--prefix", default="chapter5")
+    parser.add_argument("--contest-slug", help="Only collect submissions from this contest")
     args = parser.parse_args()
 
-    data = collect_db(args.start, args.end)
+    data = collect_db(args.start, args.end, args.contest_slug)
     for name, rows in data.items():
         write_csv(RESULTS_DIR / f"{args.prefix}_{name}.csv", rows)
 

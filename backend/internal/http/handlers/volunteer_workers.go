@@ -526,14 +526,13 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
 	}
 
-	h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, nil)
-
 	envelope, msgID, err := h.producer.ClaimMessage(ctx, bestMsgID)
 	if err != nil || envelope == nil {
 		reason := "claim_race"
 		h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, &reason)
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
 	}
+	h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, nil)
 
 	// Record claim duration
 	enqAt := envelope.EnqueuedAt
