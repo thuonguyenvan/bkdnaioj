@@ -30,6 +30,7 @@ import (
 const (
 	workerJobTimeoutMinutes = 10
 	workerLeaseDuration     = 2 * time.Minute
+	maxClaimRaceRetries     = 8
 )
 
 type VolunteerWorkerHandler struct {
@@ -408,6 +409,14 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		queueDemands = append(queueDemands, demand)
 	}
 	gpuScarcity := scheduler.ComputeGPUScarcity(allWorkers, queueDemands)
+	pendingByKind := map[bool]int{false: 0, true: 0}
+	for _, demand := range queueDemands {
+		pendingByKind[demand.IsFinal]++
+	}
+	immediateSlotsByKind := map[bool]int{
+		false: scheduler.ImmediateFreeSlots(allWorkers, false),
+		true:  scheduler.ImmediateFreeSlots(allWorkers, true),
+	}
 
 	var bestEnqueuedAt time.Time
 	var bestCost *scheduler.Cost
@@ -484,7 +493,8 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		// Only assign if requesting worker will finish this job at least as fast
 		// as any other worker (including busy ones about to become free).
 		// Fallback: if allWorkers is empty (query failed), skip this check.
-		if len(allWorkers) > 0 {
+		shouldReserveForBestWorker := pendingByKind[sub.IsFinal] <= immediateSlotsByKind[sub.IsFinal]
+		if len(allWorkers) > 0 && shouldReserveForBestWorker {
 			if !scheduler.IsGloballyBestWorker(
 				profile, requestingAvailableAt, allWorkers, demand, now,
 			) {
@@ -530,6 +540,11 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 	if err != nil || envelope == nil {
 		reason := "claim_race"
 		h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, &reason)
+		retries, _ := c.Get("claim_race_retries").(int)
+		if retries < maxClaimRaceRetries {
+			c.Set("claim_race_retries", retries+1)
+			return h.ClaimNext(c)
+		}
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
 	}
 	h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, nil)

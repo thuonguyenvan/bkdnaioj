@@ -52,10 +52,11 @@ func (q *Queries) ApproveVolunteerWorker(ctx context.Context, arg ApproveVolunte
 
 const countWorkerActiveClaimsByKind = `-- name: CountWorkerActiveClaimsByKind :one
 SELECT
-    COUNT(*) FILTER (WHERE s.is_final = false)::int AS output_claims,
-    COUNT(*) FILTER (WHERE s.is_final = true)::int AS inference_claims
+    COUNT(*) FILTER (WHERE p.is_final = false)::int AS output_claims,
+    COUNT(*) FILTER (WHERE p.is_final = true)::int AS inference_claims
 FROM volunteer_worker_claims c
 JOIN submissions s ON s.id = c.submission_id
+JOIN phases p ON p.id = s.phase_id
 WHERE c.worker_id = $1
 `
 
@@ -182,12 +183,13 @@ func (q *Queries) DeactivateVolunteerWorker(ctx context.Context, id uuid.UUID) (
 
 const deleteStaleWorkerClaims = `-- name: DeleteStaleWorkerClaims :many
 DELETE FROM volunteer_worker_claims
-USING submissions s
+USING submissions s, phases p
 WHERE volunteer_worker_claims.submission_id = s.id
+  AND p.id = s.phase_id
   AND (
     volunteer_worker_claims.lease_expires_at < now()
-    OR (s.is_final = false AND volunteer_worker_claims.claimed_at < $1)
-    OR (s.is_final = true  AND volunteer_worker_claims.claimed_at < $2)
+    OR (p.is_final = false AND volunteer_worker_claims.claimed_at < $1)
+    OR (p.is_final = true  AND volunteer_worker_claims.claimed_at < $2)
   )
 RETURNING volunteer_worker_claims.worker_id, volunteer_worker_claims.submission_id, volunteer_worker_claims.attempt_id
 `
@@ -239,18 +241,16 @@ SELECT
     w.id,
     w.capabilities,
     w.max_workers,
-    COUNT(*) FILTER (WHERE s.is_final = false)::int AS output_claims,
-    COUNT(*) FILTER (WHERE s.is_final = true)::int AS inference_claims,
+    COUNT(*) FILTER (WHERE p.is_final = false)::int AS output_claims,
+    COUNT(*) FILTER (WHERE p.is_final = true)::int AS inference_claims,
     CASE
-        WHEN COALESCE((w.capabilities->>'exclusive_inference')::boolean, false) = true
-             AND COUNT(c.id) > 0
-        THEN MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
         WHEN COUNT(c.id) < w.max_workers THEN now()
         ELSE MIN(COALESCE(c.predicted_finish_at, now() + interval '20 minutes'))
     END AS earliest_available_at
 FROM volunteer_workers w
 LEFT JOIN volunteer_worker_claims c ON c.worker_id = w.id
 LEFT JOIN submissions s ON s.id = c.submission_id
+LEFT JOIN phases p ON p.id = s.phase_id
 WHERE w.status = 'active'
 GROUP BY w.id, w.capabilities, w.max_workers
 `

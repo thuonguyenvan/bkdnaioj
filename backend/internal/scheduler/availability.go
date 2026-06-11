@@ -17,6 +17,36 @@ type WorkerAvailability struct {
 	InferenceClaims     int64
 }
 
+// ImmediateFreeSlots returns the number of jobs of one kind that the current
+// worker pool can start without waiting for an active claim to finish.
+func ImmediateFreeSlots(workers []WorkerAvailability, isFinal bool) int {
+	total := 0
+	for _, worker := range workers {
+		if !CanAcceptJob(worker.Profile, worker.OutputClaims, worker.InferenceClaims, isFinal) {
+			continue
+		}
+		active := worker.OutputClaims + worker.InferenceClaims
+		sharedFree := int64(worker.Profile.MaxParallelJobs) - active
+		if sharedFree <= 0 {
+			continue
+		}
+
+		var typedFree int64
+		if isFinal {
+			typedFree = int64(worker.Profile.MaxInferenceSlots) - worker.InferenceClaims
+		} else {
+			typedFree = int64(worker.Profile.MaxOutputSlots) - worker.OutputClaims
+		}
+		if typedFree > sharedFree {
+			typedFree = sharedFree
+		}
+		if typedFree > 0 {
+			total += int(typedFree)
+		}
+	}
+	return total
+}
+
 // GlobalBestThreshold: requesting worker's finish time must match the global best.
 // Runtime uncertainty is handled by correction factors, not a fixed tolerance.
 const GlobalBestThreshold = 1.0
