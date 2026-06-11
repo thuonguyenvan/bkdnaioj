@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -33,6 +34,7 @@ const (
 	schedulerLockTTL        = 30 * time.Second
 	schedulerLockWait       = 10 * time.Second
 	schedulerCandidateLimit = 24
+	schedulerClaimFallbacks = 8
 )
 
 const schedulerClaimLockKey = "scheduler:claim-next:lock"
@@ -491,12 +493,15 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		true:  scheduler.ImmediateFreeSlots(allWorkers, true),
 	}
 
-	var bestEnqueuedAt time.Time
-	var bestCost *scheduler.Cost
-	var bestRuntime float64
-	var bestPredictedRuntime float64
-	var bestMsgID string
-	var bestSubmissionID uuid.UUID
+	type rankedClaimCandidate struct {
+		msgID            string
+		submissionID     uuid.UUID
+		enqueuedAt       time.Time
+		cost             scheduler.Cost
+		runtime          float64
+		predictedRuntime float64
+	}
+	rankedCandidates := make([]rankedClaimCandidate, 0, len(candidates))
 	var candidatesConsidered int32
 	var compatibleCandidates int32
 	var rejectedCandidates int32
@@ -590,25 +595,25 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		if correctedRuntime > float64(demand.TimeoutSecs) {
 			tv = 1
 		}
-		cost := &scheduler.Cost{
+		cost := scheduler.Cost{
 			TimeoutViolation: tv,
 			FinishDelay:      correctedRuntime,
 			Stress:           scheduler.ComputeStress(profile, demand, plan),
 			Waste:            scheduler.ComputeGPUWaste(profile, demand, plan, gpuScarcity),
 			CreatedAt:        env.EnqueuedAt,
 		}
-		if bestCost == nil || cost.LessThan(*bestCost) {
-			bestCost = cost
-			bestEnqueuedAt = env.EnqueuedAt
-			bestRuntime = correctedRuntime
-			bestPredictedRuntime = plan.RuntimeSeconds
-			bestMsgID = msg.ID
-			bestSubmissionID = sub.ID
-		}
+		rankedCandidates = append(rankedCandidates, rankedClaimCandidate{
+			msgID:            msg.ID,
+			submissionID:     sub.ID,
+			enqueuedAt:       env.EnqueuedAt,
+			cost:             cost,
+			runtime:          correctedRuntime,
+			predictedRuntime: plan.RuntimeSeconds,
+		})
 	}
 	metrics.SchedulerDecisionDuration.Observe(time.Since(start).Seconds())
 
-	if bestCost == nil || bestMsgID == "" {
+	if len(rankedCandidates) == 0 {
 		reason := "no_compatible_jobs"
 		if candidatesConsidered > 0 && h.shouldRecordIdleDecision(ctx, worker.ID) {
 			h.recordSchedulerDecision(ctx, worker.ID, uuid.Nil, candidatesConsidered, compatibleCandidates, rejectedCandidates, 0, 0, nil, rejectSummary, &reason)
@@ -616,18 +621,40 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "no_compatible_jobs"})
 	}
 
-	envelope, msgID, err := h.producer.ClaimMessage(ctx, bestMsgID)
-	if err != nil || envelope == nil {
-		reason := "claim_race"
-		h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, &reason)
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil})
+	sort.SliceStable(rankedCandidates, func(i, j int) bool {
+		return rankedCandidates[i].cost.LessThan(rankedCandidates[j].cost)
+	})
+
+	maxAttempts := schedulerClaimFallbacks
+	if len(rankedCandidates) < maxAttempts {
+		maxAttempts = len(rankedCandidates)
 	}
-	h.recordSchedulerDecision(ctx, worker.ID, bestSubmissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, bestPredictedRuntime, bestRuntime, bestCost, rejectSummary, nil)
+	var envelope *queue.JudgeEnvelope
+	var msgID string
+	var chosen rankedClaimCandidate
+	for i := 0; i < maxAttempts; i++ {
+		candidate := rankedCandidates[i]
+		claimedEnvelope, claimedMsgID, err := h.producer.ClaimMessage(ctx, candidate.msgID)
+		if err != nil || claimedEnvelope == nil {
+			continue
+		}
+		envelope = claimedEnvelope
+		msgID = claimedMsgID
+		chosen = candidate
+		break
+	}
+	if envelope == nil {
+		reason := "claim_race"
+		best := rankedCandidates[0]
+		h.recordSchedulerDecision(ctx, worker.ID, best.submissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, best.predictedRuntime, best.runtime, &best.cost, rejectSummary, &reason)
+		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "claim_race"})
+	}
+	h.recordSchedulerDecision(ctx, worker.ID, chosen.submissionID, candidatesConsidered, compatibleCandidates, rejectedCandidates, chosen.predictedRuntime, chosen.runtime, &chosen.cost, rejectSummary, nil)
 
 	// Record claim duration
 	enqAt := envelope.EnqueuedAt
-	if !bestEnqueuedAt.IsZero() {
-		enqAt = bestEnqueuedAt
+	if !chosen.enqueuedAt.IsZero() {
+		enqAt = chosen.enqueuedAt
 	}
 	if !enqAt.IsZero() {
 		isFinal := "false"
@@ -644,7 +671,7 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 			Observe(time.Since(enqAt).Seconds())
 	}
 
-	return h.dispatchJob(c, ctx, worker, envelope, msgID, bestRuntime)
+	return h.dispatchJob(c, ctx, worker, envelope, msgID, chosen.runtime)
 }
 
 // isOfficialContestActive returns true if any contest is currently running in official mode.
