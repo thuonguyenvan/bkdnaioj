@@ -398,21 +398,6 @@ func (h *VolunteerWorkerHandler) ClaimNext(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "at_capacity"})
 	}
 
-	releaseScheduler, acquired := h.acquireSchedulerLock(ctx)
-	if !acquired {
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "scheduler_busy"})
-	}
-	defer releaseScheduler()
-
-	// Capacity may have changed while waiting for the scheduler lock.
-	activeClaims, err = h.q.CountWorkerActiveClaims(ctx, worker.ID)
-	if err != nil {
-		return mw.ErrInternal("count claims failed")
-	}
-	if activeClaims >= int64(worker.MaxWorkers) {
-		return c.JSON(http.StatusOK, map[string]any{"submission_id": nil, "reason": "at_capacity"})
-	}
-
 	// Parse worker capability profile
 	profile, err := scheduler.ParseWorkerProfile(worker.ID, worker.Capabilities, int(worker.MaxWorkers))
 	if err != nil {
