@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import json
 from collections import defaultdict
@@ -49,7 +50,10 @@ def capability_slots(worker: dict) -> tuple[int, int, int]:
     try:
         capabilities = json.loads(raw) if isinstance(raw, str) else raw
     except json.JSONDecodeError:
-        capabilities = {}
+        try:
+            capabilities = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            capabilities = {}
     output_slots = int(capabilities.get("max_output_slots") or max_workers)
     inference_slots = int(capabilities.get("max_inference_slots") or 0)
     return max_workers, output_slots, inference_slots
