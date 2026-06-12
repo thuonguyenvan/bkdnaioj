@@ -107,16 +107,25 @@ func TestTeamHandler_AddMember_Success(t *testing.T) {
 	ownerID := uuid.New()
 	teamID := uuid.New()
 	memberID := uuid.New()
+	memberUsername := "memberuser"
 	mock := &db.MockQuerier{
 		GetTeamByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Team, error) {
 			return db.Team{ID: teamID, OwnerID: ownerID}, nil
 		},
-		AddTeamMemberFunc: func(ctx context.Context, arg db.AddTeamMemberParams) error {
+		GetUserByUsernameFunc: func(ctx context.Context, username *string) (db.User, error) {
+			assert.NotNil(t, username)
+			assert.Equal(t, memberUsername, *username)
+			return db.User{ID: memberID, Username: username}, nil
+		},
+		InviteTeamMemberFunc: func(ctx context.Context, arg db.InviteTeamMemberParams) error {
+			assert.Equal(t, teamID, arg.TeamID)
+			assert.Equal(t, memberID, arg.UserID)
+			assert.Equal(t, db.TeamRoleMember, arg.Role)
 			return nil
 		},
 	}
 	h := NewTeamHandler(mock)
-	body := `{"user_id":"` + memberID.String() + `","role":"member"}`
+	body := `{"username":"` + memberUsername + `","role":"member"}`
 	c, rec := newTestContext("POST", "/api/v1/teams/"+teamID.String()+"/members", body)
 	c.SetParamNames("id")
 	c.SetParamValues(teamID.String())
@@ -132,14 +141,13 @@ func TestTeamHandler_AddMember_Forbidden(t *testing.T) {
 	ownerID := uuid.New()
 	callerID := uuid.New()
 	teamID := uuid.New()
-	memberID := uuid.New()
 	mock := &db.MockQuerier{
 		GetTeamByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Team, error) {
 			return db.Team{ID: teamID, OwnerID: ownerID}, nil
 		},
 	}
 	h := NewTeamHandler(mock)
-	body := `{"user_id":"` + memberID.String() + `","role":"member"}`
+	body := `{"username":"memberuser","role":"member"}`
 	c, _ := newTestContext("POST", "/api/v1/teams/"+teamID.String()+"/members", body)
 	c.SetParamNames("id")
 	c.SetParamValues(teamID.String())

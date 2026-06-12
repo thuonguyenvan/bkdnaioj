@@ -107,6 +107,81 @@ def worker_utilization_chart(path: Path) -> None:
     fig.savefig(out, dpi=200)
     print(f"wrote {out}")
 
+def burst_chart(path: Path) -> None:
+    rows = read_csv(path)
+    labels = [row["batch"] for row in rows]
+    median = [as_float(row.get("queue_wait_median")) or 0 for row in rows]
+    p95 = [as_float(row.get("queue_wait_p95")) or 0 for row in rows]
+    throughput = [as_float(row.get("successful_submissions_per_min")) or 0 for row in rows]
+
+    fig, left = plt.subplots(figsize=(9, 4.8))
+    x = range(len(labels))
+    left.bar([i - 0.18 for i in x], median, width=0.36, label="Median queue wait")
+    left.bar([i + 0.18 for i in x], p95, width=0.36, label="P95 queue wait")
+    left.set_ylabel("Queue wait (seconds)")
+    left.set_xticks(list(x), labels)
+    left.set_xlabel("Burst size (submissions)")
+    left.grid(axis="y", alpha=0.25)
+
+    right = left.twinx()
+    right.plot(list(x), throughput, color="black", marker="o", label="Successful throughput")
+    right.set_ylabel("Successful submissions/min")
+    handles, names = left.get_legend_handles_labels()
+    handles2, names2 = right.get_legend_handles_labels()
+    left.legend(handles + handles2, names + names2, loc="upper left")
+    left.set_title("Capability-aware FIFO under burst workloads")
+    fig.tight_layout()
+    out = FIGURES_DIR / "fifo_burst_scaling.png"
+    fig.savefig(out, dpi=200)
+    print(f"wrote {out}")
+
+
+def runtime_by_worker_chart(path: Path) -> None:
+    rows = read_csv(path)
+    labels = [row.get("worker_name") or row.get("display_name") or row.get("worker_id", "")[:8] for row in rows]
+    med = [as_float(row.get("runtime_median") or row.get("actual_median")) or 0 for row in rows]
+    p95 = [as_float(row.get("runtime_p95") or row.get("actual_p95")) or 0 for row in rows]
+
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    x = range(len(labels))
+    ax.bar([i - 0.18 for i in x], med, width=0.36, label="Median runtime")
+    ax.bar([i + 0.18 for i in x], p95, width=0.36, label="P95 runtime")
+    ax.set_xticks(list(x), labels, rotation=20, ha="right")
+    ax.set_ylabel("Seconds")
+    ax.set_title("Runtime by worker")
+    ax.legend()
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    out = FIGURES_DIR / "runtime_by_worker.png"
+    fig.savefig(out, dpi=200)
+    print(f"wrote {out}")
+
+
+def simulation_chart(path: Path) -> None:
+    rows = read_csv(path)
+    selected = [row for row in rows if row.get("submissions") == "500"]
+    if not selected:
+        selected = rows
+    groups: dict[str, list[dict]] = {}
+    for row in selected:
+        groups.setdefault(row["worker_count"], []).append(row)
+
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    for worker_count, items in sorted(groups.items(), key=lambda pair: int(pair[0])):
+        items = sorted(items, key=lambda row: as_float(row.get("final_runtime_multiplier")) or 0)
+        x = [as_float(row.get("final_runtime_multiplier")) or 0 for row in items]
+        y = [as_float(row.get("queue_wait_p95")) or 0 for row in items]
+        ax.plot(x, y, marker="o", label=f"{worker_count} workers")
+    ax.set_xlabel("Final runtime multiplier")
+    ax.set_ylabel("P95 queue wait (seconds)")
+    ax.set_title("Simulated queue wait under heavier final workloads")
+    ax.grid(axis="y", alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    out = FIGURES_DIR / "simulated_capacity.png"
+    fig.savefig(out, dpi=200)
+    print(f"wrote {out}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Chapter 5 figures")
@@ -114,6 +189,9 @@ def main() -> None:
     parser.add_argument("--lifecycle-summary-csv", default="")
     parser.add_argument("--runtime-summary-csv", default="")
     parser.add_argument("--fifo-workers-csv", default="")
+    parser.add_argument("--burst-csv", default="")
+    parser.add_argument("--runtime-by-worker-csv", default="")
+    parser.add_argument("--simulation-csv", default="")
     args = parser.parse_args()
 
     ensure_dirs()
@@ -125,6 +203,12 @@ def main() -> None:
         runtime_chart(Path(args.runtime_summary_csv))
     if args.fifo_workers_csv:
         worker_utilization_chart(Path(args.fifo_workers_csv))
+    if args.burst_csv:
+        burst_chart(Path(args.burst_csv))
+    if args.runtime_by_worker_csv:
+        runtime_by_worker_chart(Path(args.runtime_by_worker_csv))
+    if args.simulation_csv:
+        simulation_chart(Path(args.simulation_csv))
 
 
 if __name__ == "__main__":

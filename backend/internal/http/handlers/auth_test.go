@@ -32,7 +32,7 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 		},
 	}
 	h := NewAuthHandler(mock, newJWT())
-	body := `{"email":"test@example.com","password":"test1234","full_name":"Test User"}`
+	body := `{"email":"test@example.com","password":"test1234","full_name":"Test User","username":"testuser"}`
 	c, rec := newTestContext("POST", "/api/v1/auth/register", body)
 
 	err := h.Register(c)
@@ -51,7 +51,7 @@ func TestAuthHandler_Register_DuplicateEmail(t *testing.T) {
 		},
 	}
 	h := NewAuthHandler(mock, newJWT())
-	body := `{"email":"dup@example.com","password":"test1234","full_name":"Dup User"}`
+	body := `{"email":"dup@example.com","password":"test1234","full_name":"Dup User","username":"dupuser"}`
 	c, _ := newTestContext("POST", "/api/v1/auth/register", body)
 
 	err := h.Register(c)

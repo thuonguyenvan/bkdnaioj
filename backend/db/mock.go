@@ -88,6 +88,8 @@ type MockQuerier struct {
 	GetTeamBySlugFunc                     func(ctx context.Context, slug string) (Team, error)
 	GetUserByEmailFunc                    func(ctx context.Context, email string) (User, error)
 	GetUserByIDFunc                       func(ctx context.Context, id uuid.UUID) (User, error)
+	GetUserByUsernameFunc                 func(ctx context.Context, username *string) (User, error)
+	InviteTeamMemberFunc                 func(ctx context.Context, arg InviteTeamMemberParams) error
 	ListAnnouncementsByContestFunc        func(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListSystemAnnouncementsFunc           func(ctx context.Context) ([]Announcement, error)
 	ListClarificationsByContestFunc       func(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
@@ -155,6 +157,9 @@ func (m *MockQuerier) DeclineTeamInvitation(ctx context.Context, arg DeclineTeam
 }
 func (m *MockQuerier) DeleteTeam(ctx context.Context, arg DeleteTeamParams) error { return nil }
 func (m *MockQuerier) InviteTeamMember(ctx context.Context, arg InviteTeamMemberParams) error {
+	if m.InviteTeamMemberFunc != nil {
+		return m.InviteTeamMemberFunc(ctx, arg)
+	}
 	return nil
 }
 func (m *MockQuerier) ListPendingInvitations(ctx context.Context, userID uuid.UUID) ([]ListPendingInvitationsRow, error) {
@@ -1094,6 +1099,9 @@ func (m *MockQuerier) MarkPasswordResetTokenUsed(ctx context.Context, token stri
 	return nil
 }
 func (m *MockQuerier) GetUserByUsername(ctx context.Context, username *string) (User, error) {
+	if m.GetUserByUsernameFunc != nil {
+		return m.GetUserByUsernameFunc(ctx, username)
+	}
 	return User{}, nil
 }
 func (m *MockQuerier) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {

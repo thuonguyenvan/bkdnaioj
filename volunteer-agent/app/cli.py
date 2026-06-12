@@ -435,9 +435,11 @@ def setup() -> None:
     has_docker_runtime = has_docker and caps.get("docker_runtime_available", False)
     can_run_final = has_docker_runtime or native_final_allowed
 
-    # Use same heuristic values as EstimateJobDemand in Go scheduler
-    RAM_PER_OUTPUT_JOB = 256 * 1024 * 1024    # 256 MB (from scheduler/profile.go)
-    RAM_PER_FINAL_JOB  = 2 * 1024 * 1024 * 1024  # 2 GB (from scheduler/profile.go)
+    RAM_PER_OUTPUT_JOB = 2 * 1024 * 1024 * 1024   # 2 GB per output-only job
+    RAM_PER_FINAL_JOB  = 12 * 1024 * 1024 * 1024  # 12 GB per inference job
+    VRAM_PER_FINAL_JOB = 6 * 1024 * 1024 * 1024   # conservative default until per-task profiling exists
+    GPU_FINAL_SLOT_CAP = 2
+    CPU_FINAL_SLOT_CAP = 2
 
     recommended_output = max(1, min(
         ram_bytes // RAM_PER_OUTPUT_JOB if ram_bytes else cpu_cores,
@@ -445,11 +447,20 @@ def setup() -> None:
         16,
     ))
 
+    gpu_list = caps.get("gpu", []) or []
+    largest_vram_bytes = max(
+        (int(float(g.get("vram_gb", 0)) * 1024 * 1024 * 1024) for g in gpu_list),
+        default=0,
+    )
+    has_gpu = largest_vram_bytes > 0
     if can_run_final:
-        recommended_final = max(1, min(
-            ram_bytes // RAM_PER_FINAL_JOB if ram_bytes else 1,
-            4,
-        ))
+        base_final = max(1, ram_bytes // RAM_PER_FINAL_JOB if ram_bytes else 1)
+        if has_gpu:
+            vram_bound = max(1, largest_vram_bytes // VRAM_PER_FINAL_JOB)
+            recommended_final = min(base_final, vram_bound, GPU_FINAL_SLOT_CAP)
+        else:
+            # CPU inference: also bounded by core count
+            recommended_final = min(base_final, cpu_cores, CPU_FINAL_SLOT_CAP)
         final_mode = "Docker" if has_docker_runtime else "trusted native GPU"
         recommended_exclusive = True
         _echo("Recommended worker slots:")
