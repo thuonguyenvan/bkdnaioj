@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 from common import RESULTS_DIR, auth_headers, connect, load_json, write_csv, write_markdown_table
-from run_workload import submit_file
+from run_workload import authenticate_users, submit_file
 
 
 def now_iso() -> str:
@@ -33,8 +33,8 @@ def claim_for_submission(submission_id: str) -> dict | None:
                    w.display_name AS worker_name,
                    w.last_seen_at,
                    c.claimed_at AS db_claimed_at,
-                   c.heartbeat_at,
-                   c.expires_at
+                   c.last_heartbeat_at,
+                   c.lease_expires_at
             FROM experiment_events e
             LEFT JOIN volunteer_workers w ON w.id = e.worker_id
             LEFT JOIN volunteer_worker_claims c ON c.submission_id = e.submission_id
@@ -74,6 +74,7 @@ def main() -> None:
     parser.add_argument("--ssh", required=True, help="SSH command prefix, e.g. 'ssh -p 57215 root@host'")
     parser.add_argument("--kill-cmd", default="pkill -f 'olpai-volunteer'")
     parser.add_argument("--restart-cmd", default="")
+    parser.add_argument("--expected-worker-name", default="")
     parser.add_argument("--claim-timeout-s", type=int, default=180)
     parser.add_argument("--result-timeout-s", type=int, default=1800)
     parser.add_argument("--confirm-kill", action="store_true")
@@ -86,6 +87,7 @@ def main() -> None:
     manifest = load_json(args.manifest)
     if len(manifest["jobs"]) != 1:
         raise RuntimeError("fault recovery manifest must contain exactly one job")
+    manifest["users"] = authenticate_users(manifest.get("base_url", "https://api.bkdnaioj.app").rstrip("/"), manifest["users"])
     user = manifest["users"][0]
     job = manifest["jobs"][0]
     base_url = manifest.get("base_url", "https://api.bkdnaioj.app").rstrip("/")
@@ -107,6 +109,20 @@ def main() -> None:
         if not claim:
             raise RuntimeError(f"submission was not claimed within {args.claim_timeout_s}s: {submission_id}")
         rows.append({"event": "claimed", "at": now_iso(), "submission_id": submission_id, **claim})
+        if args.expected_worker_name and claim.get("worker_name") != args.expected_worker_name:
+            rows.append({
+                "event": "kill_skipped",
+                "at": now_iso(),
+                "submission_id": submission_id,
+                "reason": f"claimed by {claim.get('worker_name')}, expected {args.expected_worker_name}",
+            })
+            RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+            out_csv = RESULTS_DIR / f"{args.out_prefix}.csv"
+            out_md = RESULTS_DIR / f"{args.out_prefix}.md"
+            write_csv(out_csv, rows)
+            write_markdown_table(out_md, rows, "Fault Recovery Probe")
+            print(json.dumps({"submission_id": submission_id, "csv": str(out_csv), "skipped": True}, default=str, indent=2))
+            return
 
         killed_at = now_iso()
         code, output = run_ssh(args.ssh, args.kill_cmd)

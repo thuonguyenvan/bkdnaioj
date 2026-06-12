@@ -125,18 +125,34 @@ class PhaseRunner:
             timeout=int(os.getenv("SANDBOX_TIMEOUT_S", "300")),
             label="judge",
         )
-        out = json.loads(p.stdout.strip())
+        try:
+            lines = [line for line in (p.stdout or "").splitlines() if line.strip()]
+            if not lines:
+                raise json.JSONDecodeError("no output", "", 0)
+            out = json.loads(lines[-1])
+        except json.JSONDecodeError as exc:
+            stdout = (p.stdout or "").strip()
+            stderr = (p.stderr or "").strip()
+            detail = stdout or stderr or "no output"
+            raise RuntimeError(f"judge returned invalid JSON: {detail}") from exc
         if out.get("status") != "success":
             raise RuntimeError(out.get("message") or "judge failed")
         return out
 
     def _run_command(self, command: list[str], *, timeout: int, label: str) -> subprocess.CompletedProcess[str]:
-        p = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        try:
+            p = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            detail = stderr or stdout
+            suffix = f": {detail}" if detail else ""
+            raise RuntimeError(f"{label} command timed out after {timeout}s{suffix}") from None
         if p.returncode != 0:
             stderr = (p.stderr or "").strip()
             stdout = (p.stdout or "").strip()

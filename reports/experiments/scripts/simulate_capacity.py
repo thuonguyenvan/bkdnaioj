@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import heapq
 import json
@@ -27,7 +28,11 @@ def parse_capabilities(raw: str) -> dict:
     try:
         return json.loads(raw) if raw else {}
     except json.JSONDecodeError:
-        return {}
+        try:
+            parsed = ast.literal_eval(raw)
+        except (SyntaxError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
 
 
 def worker_profiles(workers_csv: Path, limit: int) -> list[dict]:
@@ -94,6 +99,7 @@ def simulate(
     final_waits = []
     finish_times = []
     worker_busy: dict[str, float] = {worker["worker_name"]: 0.0 for worker in workers}
+    total_slots = len(output_slots) + len(inference_slots)
 
     for idx, is_final in enumerate(jobs):
         arrival = 0.0
@@ -125,8 +131,8 @@ def simulate(
         "queue_wait_median": percentile(waits, 0.5),
         "queue_wait_p95": percentile(waits, 0.95),
         "final_queue_wait_p95": percentile(final_waits, 0.95),
-        "avg_worker_utilization": (
-            sum(worker_busy.values()) / (makespan * len(workers)) if makespan and workers else None
+        "avg_slot_utilization": (
+            sum(worker_busy.values()) / (makespan * total_slots) if makespan and total_slots else None
         ),
     }
 

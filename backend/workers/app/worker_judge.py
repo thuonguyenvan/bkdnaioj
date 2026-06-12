@@ -161,10 +161,13 @@ class JudgeWorker:
         if isinstance(final_schema, dict):
             configured = final_schema.get("inference_entrypoint")
         candidates = [configured, "infer.py"]
+        root = os.path.abspath(submission_dir)
         for name in candidates:
             if not name:
                 continue
-            path = os.path.join(submission_dir, name)
+            path = os.path.abspath(os.path.join(submission_dir, name))
+            if path != root and not path.startswith(root + os.sep):
+                raise RuntimeError(f"inference_entrypoint escapes submission directory: {name}")
             if os.path.isfile(path):
                 return path
         raise RuntimeError(f"inference entrypoint not found ({configured or 'infer.py'})")

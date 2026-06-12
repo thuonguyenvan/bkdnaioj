@@ -111,6 +111,7 @@ CLASSES = {
     "final-gpu-light": {"work_units": 2, "matrix_size": 1024, "force_fail": False},
     "final-gpu-medium": {"work_units": 8, "matrix_size": 1536, "force_fail": False},
     "final-gpu-heavy": {"work_units": 16, "matrix_size": 2048, "force_fail": False},
+    "final-gpu-long": {"work_units": 96, "matrix_size": 2048, "force_fail": False},
     "final-fail": {"work_units": 1, "matrix_size": 512, "force_fail": True},
 }
 

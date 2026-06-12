@@ -238,6 +238,54 @@ class ContractRunnerTest(unittest.TestCase):
 
             self.assertEqual(result["display_score"], 100)
 
+    def test_judge_result_uses_last_non_empty_stdout_line(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            artifact = os.path.join(td, "submission.txt")
+            with open(artifact, "w", encoding="utf-8") as fh:
+                fh.write("answer\n")
+            judge = os.path.join(td, "judge.py")
+            self._write_script(
+                judge,
+                """
+                import argparse, json
+                p = argparse.ArgumentParser()
+                p.add_argument("--submission-dir")
+                p.add_argument("--assets-dir")
+                p.add_argument("--output-dir")
+                p.add_argument("--context")
+                p.parse_args()
+                print("judge log before result")
+                print(json.dumps({"status":"success","raw_score":0.5,"display_score":50}))
+                """,
+            )
+            worker = JudgeWorker(db=None, streams=None, stream_results="unused", store=FakeStore())
+
+            result = worker._run_with_artifacts(
+                td,
+                SubmissionRef(is_final=False),
+                [FileRef("submission.txt", artifact)],
+                [],
+                [AssetRef("judge.py", "judge.py", judge)],
+            )
+
+            self.assertEqual(result["display_score"], 50)
+
+    def test_resolve_inference_entrypoint_rejects_path_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            worker = JudgeWorker(db=None, streams=None, stream_results="unused", store=FakeStore())
+            schema = {"final": {"inference_entrypoint": "../../etc/passwd"}}
+
+            with self.assertRaisesRegex(RuntimeError, "escapes submission directory"):
+                worker._resolve_inference_entrypoint(schema, td)
+
+    def test_resolve_inference_entrypoint_rejects_absolute_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            worker = JudgeWorker(db=None, streams=None, stream_results="unused", store=FakeStore())
+            schema = {"final": {"inference_entrypoint": "/etc/passwd"}}
+
+            with self.assertRaisesRegex(RuntimeError, "escapes submission directory"):
+                worker._resolve_inference_entrypoint(schema, td)
+
     def test_normalizes_legacy_file_asset_key_to_directory(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             inputs = os.path.join(td, "inputs")
