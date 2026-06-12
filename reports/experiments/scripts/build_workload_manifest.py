@@ -29,7 +29,7 @@ COMPUTE_CLASSES = {
 
 
 def task_aliases(tasks: list[dict]) -> dict[str, dict]:
-    ordered = sorted(tasks, key=lambda row: row.get("slug", ""))
+    ordered = list(tasks)
     aliases: dict[str, dict] = {}
     if ordered:
         aliases["task1"] = ordered[0]
@@ -52,11 +52,13 @@ def phase_map(phases: list[dict]) -> dict[tuple[str, str], dict]:
     return out
 
 
-def real_jobs(exp: dict, fixture_root: Path) -> list[dict]:
+def real_jobs(exp: dict, fixture_root: Path, task_set: str) -> list[dict]:
     aliases = task_aliases(exp["tasks"])
     phases = phase_map(exp["phases"])
     jobs = []
     for (task_alias, phase_key), rel_path in REAL_FIXTURES.items():
+        if task_set != "all" and task_alias != task_set:
+            continue
         task = aliases.get(task_alias)
         if not task:
             continue
@@ -145,6 +147,7 @@ def main() -> None:
     parser.add_argument("--count", type=int, required=True)
     parser.add_argument("--fixture-root", default="/root/ch5-fixtures")
     parser.add_argument("--compute-root", default=str(Path("reports/experiments/fixtures/compute").resolve()))
+    parser.add_argument("--real-task-set", choices=["all", "task1", "task2"], default="all")
     parser.add_argument("--out", default="")
     parser.add_argument("--seed", type=int, default=260612)
     parser.add_argument("--include-fail", action="store_true")
@@ -152,7 +155,7 @@ def main() -> None:
 
     exp = load_json(args.experiment_manifest)
     if args.kind.startswith("real"):
-        base_jobs = real_jobs(exp, Path(args.fixture_root))
+        base_jobs = real_jobs(exp, Path(args.fixture_root), args.real_task_set)
         final_ratio = 0.8 if args.kind == "real-final-heavy" else 0.5
     else:
         base_jobs = compute_jobs(exp, Path(args.compute_root), args.include_fail)
