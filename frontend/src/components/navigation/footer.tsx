@@ -77,7 +77,7 @@ export const Footer: React.FC = () => {
         gap: '0.25rem',
         lineHeight: '1.4'
       }}>
-        <div>bkdnaioj v2.0 - open.Beta - 2026</div>
+        <div>BKDNAIOJ · AI Competition Platform</div>
         <div>© 2026 BKDN AI Challenge. All rights reserved.</div>
       </div>
     </footer>
