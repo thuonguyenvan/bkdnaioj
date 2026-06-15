@@ -20,6 +20,7 @@ SELECT * FROM contests WHERE slug = $1;
 -- name: ListContests :many
 SELECT * FROM contests
 WHERE (sqlc.narg('status')::contest_status IS NULL OR status = sqlc.narg('status'))
+  AND (sqlc.narg('visibility')::contest_visibility IS NULL OR visibility = sqlc.narg('visibility'))
 ORDER BY start_time DESC
 LIMIT $1 OFFSET $2;
 

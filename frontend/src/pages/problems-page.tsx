@@ -17,13 +17,18 @@ export const ProblemsPage: React.FC = () => {
     queryFn: api.getContests,
   });
 
+  const publicContests = useMemo(
+    () => contests.filter(contest => contest.visibility === 'public'),
+    [contests]
+  );
+
   // Query tasks for all contests in parallel
   const { data: tasks = [], isLoading: loadingTasks, error } = useQuery<RichTask[]>({
-    queryKey: ['global-tasks', contests.map(c => c.id).join(',')],
+    queryKey: ['global-tasks', publicContests.map(c => c.id).join(',')],
     queryFn: async () => {
-      if (contests.length === 0) return [];
+      if (publicContests.length === 0) return [];
       const results = await Promise.all(
-        contests.map(async (contest) => {
+        publicContests.map(async (contest) => {
           try {
             const list = await api.getTasks(contest.id);
             return list.map(item => ({
@@ -38,10 +43,10 @@ export const ProblemsPage: React.FC = () => {
       );
       return results.flat();
     },
-    enabled: contests.length > 0,
+    enabled: !loadingContests,
   });
 
-  const isLoading = loadingContests || (contests.length > 0 && loadingTasks);
+  const isLoading = loadingContests || loadingTasks;
 
   const { data: taskStats = [] } = useQuery<TaskStats[]>({
     queryKey: ['task-stats'],

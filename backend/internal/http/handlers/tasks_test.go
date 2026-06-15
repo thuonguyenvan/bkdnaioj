@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
+	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -179,6 +181,63 @@ func TestTaskHandler_ListByContest_DraftContest(t *testing.T) {
 	err := h.ListByContest(c)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "contest not open yet")
+}
+
+func TestTaskHandler_ListByContest_PrivateContestRequiresAccess(t *testing.T) {
+	contestID := uuid.New()
+	mock := &db.MockQuerier{
+		GetContestByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Contest, error) {
+			return db.Contest{
+				ID:         contestID,
+				Visibility: db.ContestVisibilityPrivate,
+			}, nil
+		},
+	}
+	h := NewTaskHandler(mock, security.NewJWTManager("test-secret", time.Hour), nil)
+	c, _ := newTestContext("GET", "/api/v1/contests/"+contestID.String()+"/tasks", "")
+	c.SetParamNames("id")
+	c.SetParamValues(contestID.String())
+
+	err := h.ListByContest(c)
+
+	assert.Error(t, err)
+	appErr, ok := err.(*mw.AppError)
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusForbidden, appErr.Status)
+}
+
+func TestTaskHandler_ListByContest_PrivateContestAllowsRegisteredUser(t *testing.T) {
+	contestID := uuid.New()
+	userID := uuid.New()
+	mock := &db.MockQuerier{
+		GetContestByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Contest, error) {
+			return db.Contest{
+				ID:         contestID,
+				Status:     db.ContestStatusRunning,
+				Visibility: db.ContestVisibilityPrivate,
+				StartTime:  pgtype.Timestamptz{Time: time.Now().Add(-time.Hour), Valid: true},
+			}, nil
+		},
+		UserHasContestAccessFunc: func(ctx context.Context, arg db.UserHasContestAccessParams) (bool, error) {
+			return true, nil
+		},
+		ListTasksByContestFunc: func(ctx context.Context, id uuid.UUID) ([]db.Task, error) {
+			return []db.Task{{ID: uuid.New(), ContestID: contestID, Title: "Task"}}, nil
+		},
+	}
+	jwtMgr := security.NewJWTManager("test-secret", time.Hour)
+	token, err := jwtMgr.Issue(userID, "contestant")
+	assert.NoError(t, err)
+	h := NewTaskHandler(mock, jwtMgr, nil)
+	c, rec := newTestContext("GET", "/api/v1/contests/"+contestID.String()+"/tasks", "")
+	c.SetParamNames("id")
+	c.SetParamValues(contestID.String())
+	c.Request().Header.Set("Authorization", "Bearer "+token)
+
+	err = h.ListByContest(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestTaskHandler_Get_ForbiddenUnstartedContest(t *testing.T) {

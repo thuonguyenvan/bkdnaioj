@@ -16,11 +16,13 @@ import (
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/http/dto"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/security"
 )
 
 type ContestHandler struct {
-	q   db.Querier
-	val *validator.Validate
+	q      db.Querier
+	val    *validator.Validate
+	jwtMgr *security.JWTManager
 }
 
 type publishReadinessSchema struct {
@@ -32,8 +34,32 @@ type publishReadinessSchema struct {
 	} `json:"evaluation"`
 }
 
-func NewContestHandler(q db.Querier) *ContestHandler {
-	return &ContestHandler{q: q, val: validator.New()}
+func NewContestHandler(q db.Querier, jwtManagers ...*security.JWTManager) *ContestHandler {
+	var jwtMgr *security.JWTManager
+	if len(jwtManagers) > 0 {
+		jwtMgr = jwtManagers[0]
+	}
+	return &ContestHandler{q: q, val: validator.New(), jwtMgr: jwtMgr}
+}
+
+func (h *ContestHandler) optionalIdentity(c echo.Context) (uuid.UUID, string, bool) {
+	if h.jwtMgr == nil {
+		return uuid.Nil, "", false
+	}
+	header := c.Request().Header.Get("Authorization")
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+		return uuid.Nil, "", false
+	}
+	claims, err := h.jwtMgr.Verify(parts[1])
+	if err != nil {
+		return uuid.Nil, "", false
+	}
+	userID, err := security.UserIDFromClaims(claims)
+	if err != nil {
+		return uuid.Nil, "", false
+	}
+	return userID, claims.Role, true
 }
 
 // POST /api/v1/contests
@@ -101,10 +127,18 @@ func (h *ContestHandler) List(c echo.Context) error {
 		dbStatus = &s
 	}
 
+	var visibility *db.ContestVisibility
+	_, role, authenticated := h.optionalIdentity(c)
+	if !authenticated || role != "admin" {
+		public := db.ContestVisibilityPublic
+		visibility = &public
+	}
+
 	contests, err := h.q.ListContests(c.Request().Context(), db.ListContestsParams{
-		Limit:  int32(limit),
-		Offset: int32(offset),
-		Status: dbStatus,
+		Limit:      int32(limit),
+		Offset:     int32(offset),
+		Status:     dbStatus,
+		Visibility: visibility,
 	})
 	if err != nil {
 		return mw.ErrInternal("list contests failed")
@@ -128,6 +162,24 @@ func (h *ContestHandler) Get(c echo.Context) error {
 			return mw.ErrNotFound("contest not found")
 		}
 		return mw.ErrInternal("fetch contest failed")
+	}
+	if contest.Visibility == db.ContestVisibilityPrivate {
+		userID, role, authenticated := h.optionalIdentity(c)
+		if !authenticated {
+			return mw.ErrForbidden("private contest")
+		}
+		if role != "admin" {
+			allowed, err := h.q.UserHasContestAccess(c.Request().Context(), db.UserHasContestAccessParams{
+				ContestID: contest.ID,
+				UserID:    dto.ToPgUUID(userID),
+			})
+			if err != nil {
+				return mw.ErrInternal("check contest access failed")
+			}
+			if !allowed {
+				return mw.ErrForbidden("private contest")
+			}
+		}
 	}
 	return c.JSON(http.StatusOK, dto.ContestToResponse(contest))
 }

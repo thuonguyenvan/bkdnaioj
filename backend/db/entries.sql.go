@@ -332,3 +332,26 @@ func (q *Queries) UpdateContestEntryStatus(ctx context.Context, arg UpdateContes
 	)
 	return i, err
 }
+
+const userHasContestAccess = `-- name: UserHasContestAccess :one
+SELECT EXISTS (
+  SELECT 1
+  FROM contest_entries ce
+  LEFT JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
+  WHERE ce.contest_id = $1
+    AND ce.status <> 'disqualified'
+    AND (ce.user_id = $2 OR cem.user_id = $2)
+)
+`
+
+type UserHasContestAccessParams struct {
+	ContestID uuid.UUID   `json:"contest_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) UserHasContestAccess(ctx context.Context, arg UserHasContestAccessParams) (bool, error) {
+	row := q.db.QueryRow(ctx, userHasContestAccess, arg.ContestID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}

@@ -24,12 +24,15 @@ func (q *Queries) CountTasks(ctx context.Context) (int64, error) {
 
 const getTaskSubmissionStats = `-- name: GetTaskSubmissionStats :many
 SELECT
-  task_id,
+  s.task_id,
   count(*)::bigint AS total_submissions,
-  count(*) FILTER (WHERE status = 'done')::bigint AS done_submissions,
-  count(DISTINCT contest_entry_id) FILTER (WHERE status = 'done')::bigint AS solved_entries
-FROM submissions
-GROUP BY task_id
+  count(*) FILTER (WHERE s.status = 'done')::bigint AS done_submissions,
+  count(DISTINCT s.contest_entry_id) FILTER (WHERE s.status = 'done')::bigint AS solved_entries
+FROM submissions s
+JOIN tasks t ON t.id = s.task_id
+JOIN contests c ON c.id = t.contest_id
+WHERE c.visibility = 'public'
+GROUP BY s.task_id
 `
 
 type GetTaskSubmissionStatsRow struct {

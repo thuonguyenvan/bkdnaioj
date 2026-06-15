@@ -8,6 +8,16 @@ RETURNING *;
 -- name: GetContestEntryByID :one
 SELECT * FROM contest_entries WHERE id = $1;
 
+-- name: UserHasContestAccess :one
+SELECT EXISTS (
+  SELECT 1
+  FROM contest_entries ce
+  LEFT JOIN contest_entry_members cem ON cem.contest_entry_id = ce.id
+  WHERE ce.contest_id = $1
+    AND ce.status <> 'disqualified'
+    AND (ce.user_id = $2 OR cem.user_id = $2)
+);
+
 -- name: ListContestEntries :many
 SELECT * FROM contest_entries
 WHERE contest_id = $1

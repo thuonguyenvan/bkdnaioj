@@ -74,6 +74,7 @@ type MockQuerier struct {
 	GetContestByIDFunc                    func(ctx context.Context, id uuid.UUID) (Contest, error)
 	GetContestBySlugFunc                  func(ctx context.Context, slug string) (Contest, error)
 	GetContestEntryByIDFunc               func(ctx context.Context, id uuid.UUID) (ContestEntry, error)
+	UserHasContestAccessFunc              func(ctx context.Context, arg UserHasContestAccessParams) (bool, error)
 	GetContestPhaseLeaderboardFunc        func(ctx context.Context, arg GetContestPhaseLeaderboardParams) ([]GetContestPhaseLeaderboardRow, error)
 	GetGlobalPhaseRankingFunc             func(ctx context.Context, arg GetGlobalPhaseRankingParams) ([]GetGlobalPhaseRankingRow, error)
 	GetObservedResourceProfileFunc        func(ctx context.Context, arg GetObservedResourceProfileParams) (GetObservedResourceProfileRow, error)
@@ -89,7 +90,7 @@ type MockQuerier struct {
 	GetUserByEmailFunc                    func(ctx context.Context, email string) (User, error)
 	GetUserByIDFunc                       func(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByUsernameFunc                 func(ctx context.Context, username *string) (User, error)
-	InviteTeamMemberFunc                 func(ctx context.Context, arg InviteTeamMemberParams) error
+	InviteTeamMemberFunc                  func(ctx context.Context, arg InviteTeamMemberParams) error
 	ListAnnouncementsByContestFunc        func(ctx context.Context, contestID pgtype.UUID) ([]Announcement, error)
 	ListSystemAnnouncementsFunc           func(ctx context.Context) ([]Announcement, error)
 	ListClarificationsByContestFunc       func(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error)
@@ -538,6 +539,13 @@ func (m *MockQuerier) ListContests(ctx context.Context, arg ListContestsParams) 
 		return m.ListContestsFunc(ctx, arg)
 	}
 	return nil, nil
+}
+
+func (m *MockQuerier) UserHasContestAccess(ctx context.Context, arg UserHasContestAccessParams) (bool, error) {
+	if m.UserHasContestAccessFunc != nil {
+		return m.UserHasContestAccessFunc(ctx, arg)
+	}
+	return false, nil
 }
 
 func (m *MockQuerier) ListEntryMembers(ctx context.Context, contestEntryID uuid.UUID) ([]ListEntryMembersRow, error) {

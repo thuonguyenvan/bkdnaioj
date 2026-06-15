@@ -193,6 +193,7 @@ type Querier interface {
 	UpsertEvaluationSetAsset(ctx context.Context, arg UpsertEvaluationSetAssetParams) (EvaluationSetAsset, error)
 	UpsertTaskAsset(ctx context.Context, arg UpsertTaskAssetParams) (TaskAsset, error)
 	UpsertTaskPhaseLeaderboard(ctx context.Context, arg UpsertTaskPhaseLeaderboardParams) (TaskPhaseLeaderboardEntry, error)
+	UserHasContestAccess(ctx context.Context, arg UserHasContestAccessParams) (bool, error)
 	// Bounded check: stops scanning after max_workers rows found.
 	// Returns true when worker already has max_workers active claims.
 	WorkerIsAtCapacity(ctx context.Context, arg WorkerIsAtCapacityParams) (bool, error)

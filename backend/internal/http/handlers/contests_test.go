@@ -4,12 +4,14 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mank1/olpai-backend/db"
 	mw "github.com/mank1/olpai-backend/internal/http/middleware"
+	"github.com/mank1/olpai-backend/internal/security"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -79,6 +81,8 @@ func TestContestHandler_Create_DuplicateSlug(t *testing.T) {
 func TestContestHandler_List_Success(t *testing.T) {
 	mock := &db.MockQuerier{
 		ListContestsFunc: func(ctx context.Context, arg db.ListContestsParams) ([]db.Contest, error) {
+			assert.NotNil(t, arg.Visibility)
+			assert.Equal(t, db.ContestVisibilityPublic, *arg.Visibility)
 			return []db.Contest{
 				{ID: uuid.New(), Slug: "c1", Title: "C1", Status: db.ContestStatusDraft,
 					EntryPolicy: db.ContestEntryPolicyIndividual, Visibility: db.ContestVisibilityPublic},
@@ -89,6 +93,63 @@ func TestContestHandler_List_Success(t *testing.T) {
 	c, rec := newTestContext("GET", "/api/v1/contests", "")
 
 	err := h.List(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestContestHandler_Get_PrivateContestRequiresAccess(t *testing.T) {
+	contestID := uuid.New()
+	mock := &db.MockQuerier{
+		GetContestByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Contest, error) {
+			return db.Contest{
+				ID:         contestID,
+				Visibility: db.ContestVisibilityPrivate,
+			}, nil
+		},
+	}
+	h := NewContestHandler(mock, security.NewJWTManager("test-secret", time.Hour))
+	c, _ := newTestContext("GET", "/api/v1/contests/"+contestID.String(), "")
+	c.SetParamNames("id")
+	c.SetParamValues(contestID.String())
+
+	err := h.Get(c)
+
+	assert.Error(t, err)
+	appErr, ok := err.(*mw.AppError)
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusForbidden, appErr.Status)
+}
+
+func TestContestHandler_Get_PrivateContestAllowsRegisteredUser(t *testing.T) {
+	contestID := uuid.New()
+	userID := uuid.New()
+	mock := &db.MockQuerier{
+		GetContestByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Contest, error) {
+			return db.Contest{
+				ID:          contestID,
+				Slug:        "private-contest",
+				Title:       "Private Contest",
+				EntryPolicy: db.ContestEntryPolicyIndividual,
+				Visibility:  db.ContestVisibilityPrivate,
+			}, nil
+		},
+		UserHasContestAccessFunc: func(ctx context.Context, arg db.UserHasContestAccessParams) (bool, error) {
+			assert.Equal(t, contestID, arg.ContestID)
+			assert.Equal(t, userID, uuid.UUID(arg.UserID.Bytes))
+			return true, nil
+		},
+	}
+	jwtMgr := security.NewJWTManager("test-secret", time.Hour)
+	token, err := jwtMgr.Issue(userID, "contestant")
+	assert.NoError(t, err)
+	h := NewContestHandler(mock, jwtMgr)
+	c, rec := newTestContext("GET", "/api/v1/contests/"+contestID.String(), "")
+	c.SetParamNames("id")
+	c.SetParamValues(contestID.String())
+	c.Request().Header.Set("Authorization", "Bearer "+token)
+
+	err = h.Get(c)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)

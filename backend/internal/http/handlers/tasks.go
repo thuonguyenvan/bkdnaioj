@@ -55,27 +55,31 @@ func NewTaskHandler(q db.Querier, jwtMgr *security.JWTManager, s3 *storage.S3) *
 	return &TaskHandler{q: q, val: validator.New(), jwtMgr: jwtMgr, s3: s3}
 }
 
-func (h *TaskHandler) getUserRole(c echo.Context) string {
+func (h *TaskHandler) getOptionalIdentity(c echo.Context) (uuid.UUID, string, bool) {
 	if h.jwtMgr == nil {
-		return ""
+		return uuid.Nil, "", false
 	}
 	header := c.Request().Header.Get("Authorization")
 	if header == "" {
-		return ""
+		return uuid.Nil, "", false
 	}
 	parts := strings.SplitN(header, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return ""
+		return uuid.Nil, "", false
 	}
 	claims, err := h.jwtMgr.Verify(parts[1])
 	if err != nil {
-		return ""
+		return uuid.Nil, "", false
 	}
-	return claims.Role
+	userID, err := security.UserIDFromClaims(claims)
+	if err != nil {
+		return uuid.Nil, "", false
+	}
+	return userID, claims.Role, true
 }
 
 func (h *TaskHandler) checkContestAccess(c echo.Context, contestID uuid.UUID) error {
-	role := h.getUserRole(c)
+	userID, role, authenticated := h.getOptionalIdentity(c)
 	if role == "admin" {
 		return nil
 	}
@@ -86,6 +90,22 @@ func (h *TaskHandler) checkContestAccess(c echo.Context, contestID uuid.UUID) er
 			return mw.ErrNotFound("contest not found")
 		}
 		return mw.ErrInternal("fetch contest failed")
+	}
+
+	if contest.Visibility == db.ContestVisibilityPrivate {
+		if !authenticated {
+			return mw.ErrForbidden("private contest")
+		}
+		allowed, err := h.q.UserHasContestAccess(c.Request().Context(), db.UserHasContestAccessParams{
+			ContestID: contestID,
+			UserID:    dto.ToPgUUID(userID),
+		})
+		if err != nil {
+			return mw.ErrInternal("check contest access failed")
+		}
+		if !allowed {
+			return mw.ErrForbidden("private contest")
+		}
 	}
 
 	if contest.Status == db.ContestStatusDraft {

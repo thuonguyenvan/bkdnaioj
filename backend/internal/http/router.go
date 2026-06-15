@@ -112,7 +112,7 @@ func registerTeams(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) 
 }
 
 func registerContests(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {
-	h := handlers.NewContestHandler(q)
+	h := handlers.NewContestHandler(q, jwtMgr)
 	contests := api.Group("/contests")
 	contests.GET("", h.List)
 	contests.GET("/:id", h.Get)

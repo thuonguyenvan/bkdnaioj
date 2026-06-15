@@ -161,18 +161,25 @@ func (q *Queries) GetContestBySlug(ctx context.Context, slug string) (Contest, e
 const listContests = `-- name: ListContests :many
 SELECT id, slug, title, description, banner_url, status, entry_policy, registration_start, registration_end, start_time, end_time, visibility, rules_json, created_by, max_team_size, require_approval, created_at, updated_at, scale_scores FROM contests
 WHERE ($3::contest_status IS NULL OR status = $3)
+  AND ($4::contest_visibility IS NULL OR visibility = $4)
 ORDER BY start_time DESC
 LIMIT $1 OFFSET $2
 `
 
 type ListContestsParams struct {
-	Limit  int32          `json:"limit"`
-	Offset int32          `json:"offset"`
-	Status *ContestStatus `json:"status"`
+	Limit      int32              `json:"limit"`
+	Offset     int32              `json:"offset"`
+	Status     *ContestStatus     `json:"status"`
+	Visibility *ContestVisibility `json:"visibility"`
 }
 
 func (q *Queries) ListContests(ctx context.Context, arg ListContestsParams) ([]Contest, error) {
-	rows, err := q.db.Query(ctx, listContests, arg.Limit, arg.Offset, arg.Status)
+	rows, err := q.db.Query(ctx, listContests,
+		arg.Limit,
+		arg.Offset,
+		arg.Status,
+		arg.Visibility,
+	)
 	if err != nil {
 		return nil, err
 	}
