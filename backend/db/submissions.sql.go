@@ -252,7 +252,7 @@ func (q *Queries) ListSubmissionsByEntry(ctx context.Context, arg ListSubmission
 }
 
 const markSubmissionDone = `-- name: MarkSubmissionDone :one
-UPDATE submissions
+UPDATE submissions s
 SET status        = 'done',
     raw_score     = $2,
     display_score = $3,
@@ -260,7 +260,15 @@ SET status        = 'done',
     evaluated_at  = now(),
     updated_at    = now(),
     error_message = NULL
-WHERE id = $1
+WHERE s.id = $1
+  AND s.status = 'running'
+  AND EXISTS (
+    SELECT 1
+    FROM volunteer_worker_claims c
+    WHERE c.submission_id = s.id
+      AND c.worker_id = $5
+      AND c.attempt_id = $6
+  )
 RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
 `
 
@@ -269,6 +277,8 @@ type MarkSubmissionDoneParams struct {
 	RawScore     pgtype.Numeric `json:"raw_score"`
 	DisplayScore pgtype.Numeric `json:"display_score"`
 	Column4      string         `json:"column_4"`
+	WorkerID     uuid.UUID      `json:"worker_id"`
+	AttemptID    uuid.UUID      `json:"attempt_id"`
 }
 
 func (q *Queries) MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDoneParams) (Submission, error) {
@@ -277,6 +287,8 @@ func (q *Queries) MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDone
 		arg.RawScore,
 		arg.DisplayScore,
 		arg.Column4,
+		arg.WorkerID,
+		arg.AttemptID,
 	)
 	var i Submission
 	err := row.Scan(
@@ -308,21 +320,36 @@ func (q *Queries) MarkSubmissionDone(ctx context.Context, arg MarkSubmissionDone
 }
 
 const markSubmissionFailed = `-- name: MarkSubmissionFailed :one
-UPDATE submissions
+UPDATE submissions s
 SET status        = 'failed',
     error_message = $2,
     updated_at    = now()
-WHERE id = $1
+WHERE s.id = $1
+  AND s.status = 'running'
+  AND EXISTS (
+    SELECT 1
+    FROM volunteer_worker_claims c
+    WHERE c.submission_id = s.id
+      AND c.worker_id = $3
+      AND c.attempt_id = $4
+  )
 RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
 `
 
 type MarkSubmissionFailedParams struct {
 	ID           uuid.UUID `json:"id"`
 	ErrorMessage *string   `json:"error_message"`
+	WorkerID     uuid.UUID `json:"worker_id"`
+	AttemptID    uuid.UUID `json:"attempt_id"`
 }
 
 func (q *Queries) MarkSubmissionFailed(ctx context.Context, arg MarkSubmissionFailedParams) (Submission, error) {
-	row := q.db.QueryRow(ctx, markSubmissionFailed, arg.ID, arg.ErrorMessage)
+	row := q.db.QueryRow(ctx, markSubmissionFailed,
+		arg.ID,
+		arg.ErrorMessage,
+		arg.WorkerID,
+		arg.AttemptID,
+	)
 	var i Submission
 	err := row.Scan(
 		&i.ID,
@@ -435,6 +462,7 @@ const markSubmissionRequeued = `-- name: MarkSubmissionRequeued :one
 UPDATE submissions
 SET status='queued', updated_at=now(), error_message=NULL
 WHERE id=$1
+  AND status='running'
 RETURNING id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at
 `
 

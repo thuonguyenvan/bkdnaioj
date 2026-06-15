@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mank1/olpai-backend/db"
 	"github.com/mank1/olpai-backend/internal/config"
@@ -179,7 +180,17 @@ func runWorkerTimeoutWatcher(ctx context.Context, q *db.Queries, producer *queue
 			}
 			// Re-enqueue in a pipeline for efficiency
 			for _, claim := range stale {
-				_, _ = q.MarkSubmissionRequeued(ctx, claim.SubmissionID)
+				if _, err := q.MarkSubmissionRequeued(ctx, claim.SubmissionID); err != nil {
+					if errors.Is(err, pgx.ErrNoRows) {
+						log.Info().
+							Str("worker", claim.WorkerID.String()).
+							Str("submission", claim.SubmissionID.String()).
+							Msg("discarded stale claim for terminal submission")
+						continue
+					}
+					log.Error().Err(err).Str("submission", claim.SubmissionID.String()).Msg("mark stale submission requeued")
+					continue
+				}
 				if err := producer.EnqueueJudge(ctx, claim.SubmissionID, nil); err != nil {
 					log.Error().Err(err).Str("submission", claim.SubmissionID.String()).Msg("re-enqueue stale job")
 					continue

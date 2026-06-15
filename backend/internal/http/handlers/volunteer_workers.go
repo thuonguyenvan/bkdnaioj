@@ -614,7 +614,12 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 			RawScore:     rawScore,
 			DisplayScore: dispScore,
 			Column4:      payloadText,
+			WorkerID:     worker.ID,
+			AttemptID:    req.AttemptID,
 		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return mw.ErrForbidden("stale or completed job attempt")
+			}
 			log.Error().Err(err).Str("submission_id", subID.String()).Msg("mark submission done failed")
 			return mw.ErrInternal("mark done failed")
 		}
@@ -643,7 +648,12 @@ func (h *VolunteerWorkerHandler) SubmitResult(c echo.Context) error {
 		if _, err := h.q.MarkSubmissionFailed(ctx, db.MarkSubmissionFailedParams{
 			ID:           subID,
 			ErrorMessage: &errMsg,
+			WorkerID:     worker.ID,
+			AttemptID:    req.AttemptID,
 		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return mw.ErrForbidden("stale or completed job attempt")
+			}
 			log.Error().Err(err).Str("submission_id", subID.String()).Msg("mark submission failed failed")
 			return mw.ErrInternal("mark failed failed")
 		}

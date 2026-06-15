@@ -16,6 +16,7 @@ RETURNING *;
 UPDATE submissions
 SET status='queued', updated_at=now(), error_message=NULL
 WHERE id=$1
+  AND status='running'
 RETURNING *;
 
 -- name: RequeueOrphanRunningSubmissions :many
@@ -68,7 +69,7 @@ WHERE id = $1
 RETURNING *;
 
 -- name: MarkSubmissionDone :one
-UPDATE submissions
+UPDATE submissions s
 SET status        = 'done',
     raw_score     = $2,
     display_score = $3,
@@ -76,15 +77,31 @@ SET status        = 'done',
     evaluated_at  = now(),
     updated_at    = now(),
     error_message = NULL
-WHERE id = $1
+WHERE s.id = $1
+  AND s.status = 'running'
+  AND EXISTS (
+    SELECT 1
+    FROM volunteer_worker_claims c
+    WHERE c.submission_id = s.id
+      AND c.worker_id = $5
+      AND c.attempt_id = $6
+  )
 RETURNING *;
 
 -- name: MarkSubmissionFailed :one
-UPDATE submissions
+UPDATE submissions s
 SET status        = 'failed',
     error_message = $2,
     updated_at    = now()
-WHERE id = $1
+WHERE s.id = $1
+  AND s.status = 'running'
+  AND EXISTS (
+    SELECT 1
+    FROM volunteer_worker_claims c
+    WHERE c.submission_id = s.id
+      AND c.worker_id = $3
+      AND c.attempt_id = $4
+  )
 RETURNING *;
 
 -- name: GetSubmissionForWorker :one
