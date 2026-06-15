@@ -185,20 +185,26 @@ func (q *Queries) GetSubmissionForWorker(ctx context.Context, id uuid.UUID) (Get
 }
 
 const listSubmissionsByEntry = `-- name: ListSubmissionsByEntry :many
-SELECT id, contest_id, contest_entry_id, task_id, phase_id, submitted_by, status, submitted_at, file_count, total_size_bytes, manifest_hash, validation_result, error_message, raw_score, display_score, score_payload, evaluated_at, is_final, rejudge_count, client_ip, user_agent, created_at, updated_at FROM submissions
-WHERE contest_entry_id = $1
-  AND ($4::uuid IS NULL OR task_id = $4)
-  AND ($5::uuid IS NULL OR phase_id = $5)
-ORDER BY submitted_at DESC
+SELECT s.id, s.contest_id, s.contest_entry_id, s.task_id, s.phase_id, s.submitted_by, s.status, s.submitted_at, s.file_count, s.total_size_bytes, s.manifest_hash, s.validation_result, s.error_message, s.raw_score, s.display_score, s.score_payload, s.evaluated_at, s.is_final, s.rejudge_count, s.client_ip, s.user_agent, s.created_at, s.updated_at FROM submissions s
+JOIN phases p ON p.id = s.phase_id
+WHERE s.contest_entry_id = $1
+  AND ($4::uuid IS NULL OR s.task_id = $4)
+  AND ($5::uuid IS NULL OR s.phase_id = $5)
+  AND (
+    $6::uuid IS NULL
+    OR p.contest_phase_def_id = $6
+  )
+ORDER BY s.submitted_at DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListSubmissionsByEntryParams struct {
-	ContestEntryID uuid.UUID   `json:"contest_entry_id"`
-	Limit          int32       `json:"limit"`
-	Offset         int32       `json:"offset"`
-	TaskID         pgtype.UUID `json:"task_id"`
-	PhaseID        pgtype.UUID `json:"phase_id"`
+	ContestEntryID    uuid.UUID   `json:"contest_entry_id"`
+	Limit             int32       `json:"limit"`
+	Offset            int32       `json:"offset"`
+	TaskID            pgtype.UUID `json:"task_id"`
+	PhaseID           pgtype.UUID `json:"phase_id"`
+	ContestPhaseDefID pgtype.UUID `json:"contest_phase_def_id"`
 }
 
 func (q *Queries) ListSubmissionsByEntry(ctx context.Context, arg ListSubmissionsByEntryParams) ([]Submission, error) {
@@ -208,6 +214,7 @@ func (q *Queries) ListSubmissionsByEntry(ctx context.Context, arg ListSubmission
 		arg.Offset,
 		arg.TaskID,
 		arg.PhaseID,
+		arg.ContestPhaseDefID,
 	)
 	if err != nil {
 		return nil, err

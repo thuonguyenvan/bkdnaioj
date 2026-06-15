@@ -58,13 +58,17 @@ func TestSubmissionHandler_Get_NotFound(t *testing.T) {
 
 func TestSubmissionHandler_ListByEntry_Success(t *testing.T) {
 	entryID := uuid.New()
+	phaseDefID := uuid.New()
 	mock := &db.MockQuerier{
 		ListSubmissionsByEntryFunc: func(ctx context.Context, arg db.ListSubmissionsByEntryParams) ([]db.Submission, error) {
+			assert.Equal(t, entryID, arg.ContestEntryID)
+			assert.True(t, arg.ContestPhaseDefID.Valid)
+			assert.Equal(t, phaseDefID, uuid.UUID(arg.ContestPhaseDefID.Bytes))
 			return []db.Submission{{ID: uuid.New()}}, nil
 		},
 	}
 	h := NewSubmissionHandler(mock, nil, nil)
-	c, rec := newTestContext("GET", "/api/v1/entries/"+entryID.String()+"/submissions", "")
+	c, rec := newTestContext("GET", "/api/v1/entries/"+entryID.String()+"/submissions?contest_phase_def_id="+phaseDefID.String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(entryID.String())
 

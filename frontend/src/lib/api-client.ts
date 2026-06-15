@@ -548,8 +548,19 @@ export const api = {
     const res = await apiClient.get(`/submissions/${id}`);
     return res.data as Submission;
   },
-  async getSubmissionsByEntry(entryId: string) {
-    const res = await apiClient.get(`/entries/${entryId}/submissions`);
+  async getSubmissionsByEntry(entryId: string, filters?: {
+    taskId?: string;
+    phaseId?: string;
+    contestPhaseDefId?: string;
+    limit?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.taskId) params.set('task_id', filters.taskId);
+    if (filters?.phaseId) params.set('phase_id', filters.phaseId);
+    if (filters?.contestPhaseDefId) params.set('contest_phase_def_id', filters.contestPhaseDefId);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const query = params.toString();
+    const res = await apiClient.get(`/entries/${entryId}/submissions${query ? `?${query}` : ''}`);
     return res.data as Submission[];
   },
   async markFinalSubmission(id: string) {

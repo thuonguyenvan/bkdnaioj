@@ -47,11 +47,16 @@ WHERE contest_entry_id = $1 AND task_id = $2 AND phase_id = $3;
 SELECT * FROM submissions WHERE id = $1;
 
 -- name: ListSubmissionsByEntry :many
-SELECT * FROM submissions
-WHERE contest_entry_id = $1
-  AND (sqlc.narg('task_id')::uuid IS NULL OR task_id = sqlc.narg('task_id'))
-  AND (sqlc.narg('phase_id')::uuid IS NULL OR phase_id = sqlc.narg('phase_id'))
-ORDER BY submitted_at DESC
+SELECT s.* FROM submissions s
+JOIN phases p ON p.id = s.phase_id
+WHERE s.contest_entry_id = $1
+  AND (sqlc.narg('task_id')::uuid IS NULL OR s.task_id = sqlc.narg('task_id'))
+  AND (sqlc.narg('phase_id')::uuid IS NULL OR s.phase_id = sqlc.narg('phase_id'))
+  AND (
+    sqlc.narg('contest_phase_def_id')::uuid IS NULL
+    OR p.contest_phase_def_id = sqlc.narg('contest_phase_def_id')
+  )
+ORDER BY s.submitted_at DESC
 LIMIT $2 OFFSET $3;
 
 -- name: MarkSubmissionFinal :one

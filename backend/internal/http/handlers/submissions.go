@@ -256,20 +256,31 @@ func (h *SubmissionHandler) ListByEntry(c echo.Context) error {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	var taskFilter, phaseFilter pgtype.UUID
+	var taskFilter, phaseFilter, phaseDefFilter pgtype.UUID
 	if t := c.QueryParam("task_id"); t != "" {
-		if v, e := uuid.Parse(t); e == nil {
-			taskFilter = pgtype.UUID{Bytes: v, Valid: true}
+		v, err := uuid.Parse(t)
+		if err != nil {
+			return mw.ErrBadRequest("invalid task_id")
 		}
+		taskFilter = pgtype.UUID{Bytes: v, Valid: true}
 	}
 	if p := c.QueryParam("phase_id"); p != "" {
-		if v, e := uuid.Parse(p); e == nil {
-			phaseFilter = pgtype.UUID{Bytes: v, Valid: true}
+		v, err := uuid.Parse(p)
+		if err != nil {
+			return mw.ErrBadRequest("invalid phase_id")
 		}
+		phaseFilter = pgtype.UUID{Bytes: v, Valid: true}
+	}
+	if d := c.QueryParam("contest_phase_def_id"); d != "" {
+		v, err := uuid.Parse(d)
+		if err != nil {
+			return mw.ErrBadRequest("invalid contest_phase_def_id")
+		}
+		phaseDefFilter = pgtype.UUID{Bytes: v, Valid: true}
 	}
 	subs, err := h.q.ListSubmissionsByEntry(c.Request().Context(), db.ListSubmissionsByEntryParams{
 		ContestEntryID: entryID, Limit: int32(limit), Offset: int32(offset),
-		TaskID: taskFilter, PhaseID: phaseFilter,
+		TaskID: taskFilter, PhaseID: phaseFilter, ContestPhaseDefID: phaseDefFilter,
 	})
 	if err != nil {
 		return mw.ErrInternal("list submissions failed")

@@ -193,9 +193,12 @@ export const PhaseHubPage: React.FC = () => {
 
   // Query submissions for the user entry
   const { data: submissions = [] } = useQuery<Submission[]>({
-    queryKey: ['submissions', userEntry?.id],
-    queryFn: () => api.getSubmissionsByEntry(userEntry!.id),
-    enabled: !!userEntry,
+    queryKey: ['submissions', userEntry?.id, currentDef?.id],
+    queryFn: () => api.getSubmissionsByEntry(userEntry!.id, {
+      contestPhaseDefId: currentDef!.id,
+      limit: 100,
+    }),
+    enabled: !!userEntry && !!currentDef,
     refetchInterval: (query) => {
       const data = query.state.data as Submission[] | undefined;
       const hasRunning = data?.some(s => ['uploaded', 'validating', 'queued', 'running'].includes(s.status));
