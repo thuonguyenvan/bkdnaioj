@@ -14,7 +14,12 @@ import (
 
 const answerClarification = `-- name: AnswerClarification :one
 UPDATE clarifications SET
-  answer = $2, status = 'answered', answered_by = $3, answered_at = now(), updated_at = now()
+  answer = $2,
+  is_public = $3,
+  status = 'answered',
+  answered_by = $4,
+  answered_at = now(),
+  updated_at = now()
 WHERE id = $1
 RETURNING id, contest_id, task_id, phase_id, contest_entry_id, question, answer, is_public, status, asked_by, answered_by, answered_at, created_at, updated_at
 `
@@ -22,11 +27,17 @@ RETURNING id, contest_id, task_id, phase_id, contest_entry_id, question, answer,
 type AnswerClarificationParams struct {
 	ID         uuid.UUID   `json:"id"`
 	Answer     *string     `json:"answer"`
+	IsPublic   bool        `json:"is_public"`
 	AnsweredBy pgtype.UUID `json:"answered_by"`
 }
 
 func (q *Queries) AnswerClarification(ctx context.Context, arg AnswerClarificationParams) (Clarification, error) {
-	row := q.db.QueryRow(ctx, answerClarification, arg.ID, arg.Answer, arg.AnsweredBy)
+	row := q.db.QueryRow(ctx, answerClarification,
+		arg.ID,
+		arg.Answer,
+		arg.IsPublic,
+		arg.AnsweredBy,
+	)
 	var i Clarification
 	err := row.Scan(
 		&i.ID,
@@ -256,16 +267,28 @@ const listClarificationsByContest = `-- name: ListClarificationsByContest :many
 SELECT id, contest_id, task_id, phase_id, contest_entry_id, question, answer, is_public, status, asked_by, answered_by, answered_at, created_at, updated_at FROM clarifications
 WHERE contest_id = $1
   AND ($2::clarification_status IS NULL OR status = $2)
+  AND (
+    $3::boolean
+    OR asked_by = $4::uuid
+    OR is_public = true
+  )
 ORDER BY created_at DESC
 `
 
 type ListClarificationsByContestParams struct {
-	ContestID uuid.UUID            `json:"contest_id"`
-	Status    *ClarificationStatus `json:"status"`
+	ContestID  uuid.UUID            `json:"contest_id"`
+	Status     *ClarificationStatus `json:"status"`
+	IncludeAll bool                 `json:"include_all"`
+	ViewerID   uuid.UUID            `json:"viewer_id"`
 }
 
 func (q *Queries) ListClarificationsByContest(ctx context.Context, arg ListClarificationsByContestParams) ([]Clarification, error) {
-	rows, err := q.db.Query(ctx, listClarificationsByContest, arg.ContestID, arg.Status)
+	rows, err := q.db.Query(ctx, listClarificationsByContest,
+		arg.ContestID,
+		arg.Status,
+		arg.IncludeAll,
+		arg.ViewerID,
+	)
 	if err != nil {
 		return nil, err
 	}

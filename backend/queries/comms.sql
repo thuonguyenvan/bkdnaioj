@@ -35,6 +35,11 @@ RETURNING *;
 SELECT * FROM clarifications
 WHERE contest_id = $1
   AND (sqlc.narg('status')::clarification_status IS NULL OR status = sqlc.narg('status'))
+  AND (
+    sqlc.arg('include_all')::boolean
+    OR asked_by = sqlc.arg('viewer_id')::uuid
+    OR is_public = true
+  )
 ORDER BY created_at DESC;
 
 -- name: GetClarificationByID :one
@@ -42,7 +47,12 @@ SELECT * FROM clarifications WHERE id = $1;
 
 -- name: AnswerClarification :one
 UPDATE clarifications SET
-  answer = $2, status = 'answered', answered_by = $3, answered_at = now(), updated_at = now()
+  answer = $2,
+  is_public = $3,
+  status = 'answered',
+  answered_by = $4,
+  answered_at = now(),
+  updated_at = now()
 WHERE id = $1
 RETURNING *;
 

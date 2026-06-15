@@ -55,7 +55,8 @@ type CreateClarificationRequest struct {
 }
 
 type AnswerClarificationRequest struct {
-	Answer string `json:"answer" validate:"required"`
+	Answer   string `json:"answer" validate:"required"`
+	IsPublic bool   `json:"is_public"`
 }
 
 type ClarificationResponse struct {

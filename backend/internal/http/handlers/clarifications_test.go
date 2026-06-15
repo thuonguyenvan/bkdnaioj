@@ -53,8 +53,11 @@ func TestClarificationHandler_Create_MissingEntryID(t *testing.T) {
 
 func TestClarificationHandler_List_Success(t *testing.T) {
 	contestID := uuid.New()
+	userID := uuid.New()
 	mock := &db.MockQuerier{
 		ListClarificationsByContestFunc: func(ctx context.Context, arg db.ListClarificationsByContestParams) ([]db.Clarification, error) {
+			assert.Equal(t, userID, arg.ViewerID)
+			assert.False(t, arg.IncludeAll)
 			return []db.Clarification{{ID: uuid.New(), ContestID: contestID}}, nil
 		},
 	}
@@ -62,6 +65,7 @@ func TestClarificationHandler_List_Success(t *testing.T) {
 	c, rec := newTestContext("GET", "/api/v1/contests/"+contestID.String()+"/clarifications", "")
 	c.SetParamNames("id")
 	c.SetParamValues(contestID.String())
+	setAuthContext(c, userID, "contestant")
 
 	err := h.List(c)
 	assert.NoError(t, err)
@@ -70,15 +74,53 @@ func TestClarificationHandler_List_Success(t *testing.T) {
 
 func TestClarificationHandler_Get_Success(t *testing.T) {
 	clID := uuid.New()
+	userID := uuid.New()
 	mock := &db.MockQuerier{
 		GetClarificationByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Clarification, error) {
-			return db.Clarification{ID: clID, Question: "Why?"}, nil
+			return db.Clarification{ID: clID, Question: "Why?", AskedBy: userID}, nil
 		},
 	}
 	h := NewClarificationHandler(mock)
 	c, rec := newTestContext("GET", "/api/v1/clarifications/"+clID.String(), "")
 	c.SetParamNames("id")
 	c.SetParamValues(clID.String())
+	setAuthContext(c, userID, "contestant")
+
+	err := h.Get(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestClarificationHandler_Get_PrivateOtherUser_NotFound(t *testing.T) {
+	clID := uuid.New()
+	mock := &db.MockQuerier{
+		GetClarificationByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Clarification, error) {
+			return db.Clarification{ID: clID, Question: "Private", AskedBy: uuid.New()}, nil
+		},
+	}
+	h := NewClarificationHandler(mock)
+	c, _ := newTestContext("GET", "/api/v1/clarifications/"+clID.String(), "")
+	c.SetParamNames("id")
+	c.SetParamValues(clID.String())
+	setAuthContext(c, uuid.New(), "contestant")
+
+	err := h.Get(c)
+	assert.Error(t, err)
+	assert.Equal(t, http.StatusNotFound, err.(*mw.AppError).Status)
+}
+
+func TestClarificationHandler_Get_PublicOtherUser_Success(t *testing.T) {
+	clID := uuid.New()
+	mock := &db.MockQuerier{
+		GetClarificationByIDFunc: func(ctx context.Context, id uuid.UUID) (db.Clarification, error) {
+			return db.Clarification{ID: clID, Question: "Public", AskedBy: uuid.New(), IsPublic: true}, nil
+		},
+	}
+	h := NewClarificationHandler(mock)
+	c, rec := newTestContext("GET", "/api/v1/clarifications/"+clID.String(), "")
+	c.SetParamNames("id")
+	c.SetParamValues(clID.String())
+	setAuthContext(c, uuid.New(), "contestant")
 
 	err := h.Get(c)
 	assert.NoError(t, err)
@@ -106,12 +148,13 @@ func TestClarificationHandler_Answer_Success(t *testing.T) {
 	userID := uuid.New()
 	mock := &db.MockQuerier{
 		AnswerClarificationFunc: func(ctx context.Context, arg db.AnswerClarificationParams) (db.Clarification, error) {
+			assert.True(t, arg.IsPublic)
 			ans := "Because"
-			return db.Clarification{ID: clID, Answer: &ans}, nil
+			return db.Clarification{ID: clID, Answer: &ans, IsPublic: arg.IsPublic}, nil
 		},
 	}
 	h := NewClarificationHandler(mock)
-	body := `{"answer":"Because"}`
+	body := `{"answer":"Because","is_public":true}`
 	c, rec := newTestContext("POST", "/api/v1/clarifications/"+clID.String()+"/answer", body)
 	c.SetParamNames("id")
 	c.SetParamValues(clID.String())

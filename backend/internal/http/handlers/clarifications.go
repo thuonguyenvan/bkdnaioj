@@ -66,8 +66,13 @@ func (h *ClarificationHandler) List(c echo.Context) error {
 		v := db.ClarificationStatus(s)
 		status = &v
 	}
+	uid := mw.GetUserID(c)
+	role, _ := c.Get(mw.CtxRole).(string)
 	items, err := h.q.ListClarificationsByContest(c.Request().Context(), db.ListClarificationsByContestParams{
-		ContestID: contestID, Status: status,
+		ContestID:  contestID,
+		Status:     status,
+		IncludeAll: role == "admin",
+		ViewerID:   uid,
 	})
 	if err != nil {
 		return mw.ErrInternal("list clarifications failed")
@@ -92,6 +97,10 @@ func (h *ClarificationHandler) Get(c echo.Context) error {
 		}
 		return mw.ErrInternal("fetch failed")
 	}
+	role, _ := c.Get(mw.CtxRole).(string)
+	if role != "admin" && cl.AskedBy != mw.GetUserID(c) && !cl.IsPublic {
+		return mw.ErrNotFound("clarification not found")
+	}
 	return c.JSON(http.StatusOK, dto.ClarificationToResponse(cl))
 }
 
@@ -110,7 +119,7 @@ func (h *ClarificationHandler) Answer(c echo.Context) error {
 	}
 	uid := mw.GetUserID(c)
 	cl, err := h.q.AnswerClarification(c.Request().Context(), db.AnswerClarificationParams{
-		ID: id, Answer: &req.Answer, AnsweredBy: dto.ToPgUUID(uid),
+		ID: id, Answer: &req.Answer, IsPublic: req.IsPublic, AnsweredBy: dto.ToPgUUID(uid),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
