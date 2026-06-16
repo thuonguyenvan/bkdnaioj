@@ -432,8 +432,8 @@ export const PhaseHubPage: React.FC = () => {
     : submissions;
   const submissionLimit = activePhase?.submission_limit ?? null;
   const submissionsRemaining = submissionLimit !== null ? Math.max(0, submissionLimit - taskPhaseSubmissions.length) : null;
-  const doneSubmissions = submissions.filter(sub => sub.status === 'done');
-  const runningSubmissions = submissions.filter(sub => ['uploaded', 'validating', 'queued', 'running'].includes(sub.status));
+  const doneSubmissions = taskPhaseSubmissions.filter(sub => sub.status === 'done');
+  const runningSubmissions = taskPhaseSubmissions.filter(sub => ['uploaded', 'validating', 'queued', 'running'].includes(sub.status));
   const bestSubmission = doneSubmissions.reduce<typeof submissions[0] | null>((best, s) => {
     if (!best) return s;
     const bScore = Number(best.raw_score ?? -Infinity);
@@ -743,6 +743,13 @@ export const PhaseHubPage: React.FC = () => {
                         {examples.length > 0 && <div className="font-mono" style={{ marginTop: '0.25rem' }}>Examples: {examples.join(', ')}</div>}
                       </div>
 
+                      {submissionLimit !== null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: submissionsRemaining === 0 ? '#dc2626' : 'hsl(var(--text-muted))' }}>
+                          <span>Submissions remaining</span>
+                          <span className="font-mono" style={{ fontWeight: 700 }}>{submissionsRemaining} / {submissionLimit}</span>
+                        </div>
+                      )}
+
                       {uploadError && <div className="alert alert-danger" style={{ fontSize: '0.8rem', padding: '0.55rem' }}>{uploadError}</div>}
 
                       <div className="dropzone" onClick={() => fileInputRef.current?.click()} style={{ padding: '1.8rem 1rem', border: '2px dashed hsl(var(--border-dark))', backgroundColor: '#fff' }}>
@@ -813,20 +820,6 @@ export const PhaseHubPage: React.FC = () => {
                 <div className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>Best Score</div>
                 <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800 }}>{bestSubmission ? formatRawScore(bestSubmission.raw_score) : '-'}</div>
               </div>
-              {submissionLimit !== null && (
-                <div style={{
-                  border: `1px solid ${submissionsRemaining === 0 ? '#fca5a5' : 'hsl(var(--border))'}`,
-                  borderRadius: 'var(--radius)', padding: '0.75rem',
-                  backgroundColor: submissionsRemaining === 0 ? '#fef2f2' : 'hsl(var(--background))',
-                }}>
-                  <div className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Submissions Left
-                  </div>
-                  <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800, color: submissionsRemaining === 0 ? '#dc2626' : undefined }}>
-                    {submissionsRemaining} / {submissionLimit}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
