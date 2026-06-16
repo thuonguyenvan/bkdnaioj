@@ -668,7 +668,7 @@ export const AdminSetupPage: React.FC = () => {
       const initRes = await api.initiateAssets(setId, {
         assets: [{
           asset_key: filename,
-          filename: filename,
+          filename: file.name,
           content_type: file.type || 'text/plain',
           size_bytes: file.size,
         }]
@@ -690,7 +690,7 @@ export const AdminSetupPage: React.FC = () => {
       await api.completeAssets(setId, {
         assets: [{
           asset_key: filename,
-          filename: filename,
+          filename: file.name,
           object_key: uploadInfo.object_key,
           size_bytes: file.size,
           content_type: file.type || 'text/plain',
