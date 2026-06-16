@@ -42,10 +42,7 @@ export const TopNavbar: React.FC = () => {
           {/* Logo brand */}
           <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', gap: '0.5rem' }}>
             <img src={logoImage} alt="BKDNAIOJ" width="38" height="38" style={{ flexShrink: 0, borderRadius: '6px', objectFit: 'contain' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.05rem', letterSpacing: '0.02em', fontFamily: 'sans-serif' }}>BKDN AI</span>
-              <span style={{ color: '#94a3b8', fontWeight: 650, fontSize: '0.7rem', letterSpacing: '0.08em', fontFamily: 'sans-serif' }}>ONLINE JUDGE</span>
-            </div>
+            <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '1.05rem', letterSpacing: '0.02em', fontFamily: 'sans-serif' }}>BKDNAIOJ</span>
           </Link>
 
           {/* Navigation Links */}

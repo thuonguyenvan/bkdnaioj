@@ -13,10 +13,7 @@ export const Footer: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <img src={logoImage} alt="BKDNAIOJ" width="48" height="48" style={{ flexShrink: 0, borderRadius: '6px', objectFit: 'contain' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span className="footer-brand-title" style={{ fontSize: '1.1rem' }}>BKDN AI</span>
-              <span className="footer-brand-subtitle" style={{ fontSize: '0.75rem' }}>ONLINE JUDGE</span>
-            </div>
+            <span className="footer-brand-title" style={{ fontSize: '1.1rem' }}>BKDNAIOJ</span>
           </div>
         </div>
 
