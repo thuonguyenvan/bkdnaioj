@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import logoImage from '../../assets/image.png';
 
 export const Footer: React.FC = () => {
   return (
@@ -11,12 +12,7 @@ export const Footer: React.FC = () => {
         {/* Brand/Logo Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <svg viewBox="0 0 100 100" width="48" height="48" style={{ flexShrink: 0 }}>
-              <circle cx="50" cy="50" r="46" fill="#ffffff" />
-              <circle cx="50" cy="50" r="40" fill="none" stroke="#2563eb" strokeWidth="3.5" />
-              <text x="50" y="43" textAnchor="middle" fill="#0b1329" fontSize="16" fontWeight="900" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">BKDN</text>
-              <text x="50" y="68" textAnchor="middle" fill="#2563eb" fontSize="22" fontWeight="800" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">AI</text>
-            </svg>
+            <img src={logoImage} alt="BKDNAIOJ" width="48" height="48" style={{ flexShrink: 0, borderRadius: '6px', objectFit: 'contain' }} />
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
               <span className="footer-brand-title" style={{ fontSize: '1.1rem' }}>BKDN AI</span>
               <span className="footer-brand-subtitle" style={{ fontSize: '0.75rem' }}>ONLINE JUDGE</span>
