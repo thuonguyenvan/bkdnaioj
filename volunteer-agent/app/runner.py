@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -100,7 +101,7 @@ class PhaseRunner:
                 client,
                 image_name,
                 command=[
-                    "python",
+                    sys.executable,
                     inference_entrypoint,
                     "--submission-dir", submission_dir,
                     "--assets-dir", assets_dir,
@@ -140,7 +141,7 @@ class PhaseRunner:
             timing_profile["execution_mode"] = "trusted_native"
             self._run_command(
                 [
-                    "python",
+                    sys.executable,
                     inference_entrypoint,
                     "--submission-dir", submission_dir,
                     "--assets-dir", assets_dir,
@@ -190,7 +191,7 @@ class PhaseRunner:
             extra_args = ["--profile"]
 
         command = [
-            "python",
+            sys.executable,
             inference_entrypoint,
             "--submission-dir",
             submission_dir,
@@ -265,7 +266,7 @@ class PhaseRunner:
 
         p = self._run_command(
             [
-                "python", judge,
+                sys.executable, judge,
                 "--submission-dir", submission_dir,
                 "--assets-dir", assets_dir,
                 "--output-dir", output_dir,
@@ -341,7 +342,7 @@ class PhaseRunner:
                 client,
                 image_name,
                 command=[
-                    "python", judge,
+                    sys.executable, judge,
                     "--submission-dir", submission_dir,
                     "--assets-dir", assets_dir,
                     "--output-dir", output_dir,
