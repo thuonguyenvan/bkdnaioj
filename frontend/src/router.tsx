@@ -21,6 +21,7 @@ import { SchedulerDashboardPage } from './pages/scheduler-dashboard-page';
 import { DocsPage } from './pages/docs-page';
 import { ForgotPasswordPage } from './pages/forgot-password-page';
 import { ResetPasswordPage } from './pages/reset-password-page';
+import { ProfilePage } from './pages/profile-page';
 
 
 // Layout shell wrapping pages with Navbar
@@ -97,6 +98,7 @@ export const AppRouter: React.FC = () => {
             <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/contests/:contestId" element={<ContestDetailPage />} />
             <Route path="/contests/:contestId/phases/:phaseKey" element={<PhaseHubPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
 
             {/* Admin only routes */}
             <Route element={<AdminRoute />}>

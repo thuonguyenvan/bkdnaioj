@@ -364,6 +364,14 @@ export const api = {
     const res = await apiClient.post('/auth/reset-password', { token, password });
     return res.data;
   },
+  async changePassword(currentPassword: string, newPassword: string) {
+    const res = await apiClient.patch('/auth/password', { current_password: currentPassword, new_password: newPassword });
+    return res.data;
+  },
+  async updateProfile(id: string, payload: { full_name?: string; student_id?: string }) {
+    const res = await apiClient.patch(`/users/${id}`, payload);
+    return res.data as User;
+  },
 
   // Contests
   async getContests() {

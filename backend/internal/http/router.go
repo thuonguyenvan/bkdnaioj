@@ -86,6 +86,7 @@ func registerAuth(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager, r
 	auth.POST("/register", h.Register, mw.RateLimitIP(rdb, 3, time.Minute))
 	auth.POST("/login", h.Login, mw.RateLimitIP(rdb, 5, time.Minute))
 	auth.GET("/me", h.Me, mw.JWTAuth(jwtMgr))
+	auth.PATCH("/password", h.ChangePassword, mw.JWTAuth(jwtMgr))
 }
 
 func registerUsers(api *echo.Group, q *db.Queries, jwtMgr *security.JWTManager) {

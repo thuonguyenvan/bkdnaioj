@@ -130,3 +130,38 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, dto.UserToResponse(user))
 }
+
+// ChangePassword updates the current user's password after verifying the current one.
+// PATCH /api/v1/auth/password
+func (h *AuthHandler) ChangePassword(c echo.Context) error {
+	uid := mw.GetUserID(c)
+
+	var req dto.ChangePasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return mw.ErrBadRequest("invalid request body")
+	}
+	if err := h.val.Struct(req); err != nil {
+		return mw.ErrBadRequest(err.Error())
+	}
+
+	ctx := c.Request().Context()
+	user, err := h.q.GetUserByID(ctx, uid)
+	if err != nil {
+		return mw.ErrInternal("fetch user failed")
+	}
+	if !security.CheckPassword(user.PasswordHash, req.CurrentPassword) {
+		return mw.ErrUnauthorized("current password is incorrect")
+	}
+
+	hash, err := security.HashPassword(req.NewPassword)
+	if err != nil {
+		return mw.ErrInternal("failed to hash password")
+	}
+	if err := h.q.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:           uid,
+		PasswordHash: hash,
+	}); err != nil {
+		return mw.ErrInternal("update password failed")
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "password updated"})
+}

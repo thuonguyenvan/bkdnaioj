@@ -7,6 +7,7 @@ interface AuthContextType {
   login: (payload: any) => Promise<any>;
   register: (payload: any) => Promise<any>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
   isAdmin: boolean;
   isContestant: boolean;
 }
@@ -72,6 +73,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const refreshUser = async () => {
+    const u = await api.getMe();
+    setUser(u);
+  };
+
   const isAdmin = user?.role === 'admin';
   const isContestant = user?.role === 'contestant';
 
@@ -83,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        refreshUser,
         isAdmin,
         isContestant,
       }}

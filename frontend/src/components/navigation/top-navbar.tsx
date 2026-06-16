@@ -76,10 +76,10 @@ export const TopNavbar: React.FC = () => {
                   <span className="badge badge-info" style={{ textTransform: 'uppercase', fontSize: '0.65rem', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
                     {user.role}
                   </span>
-                  <span className="font-mono" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Link to="/profile" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.25rem', textDecoration: 'none' }}>
                     <UserIcon size={13} style={{ color: '#94a3b8' }} />
                     {user.full_name}
-                  </span>
+                  </Link>
                 </div>
                 <button 
                   onClick={handleLogout} 

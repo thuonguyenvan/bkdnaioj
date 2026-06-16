@@ -7,3 +7,8 @@ type UpdateProfileRequest struct {
 	StudentID *string `json:"student_id,omitempty" validate:"omitempty,max=64"`
 	AvatarURL *string `json:"avatar_url,omitempty" validate:"omitempty,url,max=500"`
 }
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8,max=128"`
+}
