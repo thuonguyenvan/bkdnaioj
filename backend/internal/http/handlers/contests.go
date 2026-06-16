@@ -255,7 +255,7 @@ func (h *ContestHandler) Delete(c echo.Context) error {
 		return mw.ErrBadRequest("invalid contest id")
 	}
 	if err := h.q.DeleteContest(c.Request().Context(), id); err != nil {
-		return mw.ErrInternal("delete contest failed")
+		return mw.ErrInternal("delete contest failed: " + err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)
 }
